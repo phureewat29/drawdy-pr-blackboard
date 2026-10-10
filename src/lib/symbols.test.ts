@@ -1,0 +1,94 @@
+import { describe, expect, it } from "@jest/globals";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { parsePatch } from "./diff.ts";
+import { callEdges, callRows, changedSymbols, findDecls, testCases } from "./symbols.ts";
+
+const fixture = JSON.parse(readFileSync(join(process.cwd(), "src/lib/fixtures/hono-5513.json"), "utf8"));
+const heads = new Map<string, string[]>(Object.entries(fixture.raw as Record<string, string>).map(([p, t]) => [p, t.split("\n")]));
+const patchOf = (path: string) => parsePatch(fixture.files.find((f: { filename: string }) => f.filename === path).patch);
+
+describe("findDecls", () => {
+    it("finds methods, private ones included, inside a class whose header spans lines", () => {
+        const names = findDecls(heads.get("src/hono-base.ts")!, "ts").map((d) => `${d.kind}:${d.parent ? `${d.parent}.` : ""}${d.name}`);
+        expect(names).toEqual(expect.arrayContaining(["class:Hono", "method:Hono.#handleError", "method:Hono.#dispatch", "method:Hono.onError"]));
+    });
+
+    it("ends a declaration where the code returns to its indentation, through a multi-line signature", () => {
+        const dispatch = findDecls(heads.get("src/hono-base.ts")!, "ts").find((d) => d.name === "#dispatch")!;
+        expect([dispatch.start, dispatch.end]).toEqual([411, 471]);
+    });
+
+    it("takes no `type X,` inside a multi-line import for a declaration", () => {
+        const lines = ["import {", "  type Options,", "  parse,", '} from "./parse"', "type Mode = 1"];
+        expect(findDecls(lines, "ts").map((d) => d.name)).toEqual(["Mode"]);
+    });
+
+    it("finds a class field typed as a function across lines, but not a field that only has that type", () => {
+        const fetch = findDecls(heads.get("src/hono-base.ts")!, "ts").find((d) => d.name === "fetch")!;
+        expect([fetch.kind, fetch.start, fetch.end]).toEqual(["method", 484, 490]);
+        const typed = ["class A {", "  handler: (", "    a: string", "  ) => void", "  run() {", "    return 1", "  }", "}"];
+        expect(findDecls(typed, "ts").map((d) => d.name)).toEqual(["A", "run"]);
+    });
+
+    it("treats # as a comment only where the language does", () => {
+        const py = ["class A:", "    # note", "    def run(self):", "        return 1", "", "def helper():", "    pass"];
+        expect(findDecls(py, "py").map((d) => `${d.kind}:${d.name}:${d.start}-${d.end}`)).toEqual(["class:A:1-4", "method:run:3-4", "function:helper:6-7"]);
+    });
+
+    it("keeps helpers nested in a function inside it", () => {
+        const names = findDecls(heads.get("src/compose.ts")!, "ts").map((d) => d.name);
+        expect(names).toContain("compose");
+        expect(names).not.toContain("dispatch");
+    });
+});
+
+describe("changedSymbols", () => {
+    it("names what a diff changed, and gives a doc comment to the declaration below it", () => {
+        const { symbols, loose } = changedSymbols("src/hono-base.ts", "ts", heads.get("src/hono-base.ts")!, patchOf("src/hono-base.ts"));
+        expect(symbols.map((s) => `${s.label} ${s.status} ${s.from}-${s.to}`)).toEqual([
+            "onError() changed 260-261",
+            "#handleError() changed 406-408",
+            "#dispatch() changed 451-451",
+        ]);
+        expect(loose).toEqual([{ path: "src/hono-base.ts", from: 7, to: 7, add: 1, del: 1 }]);
+    });
+
+    it("marks a declaration whose first line is added as new", () => {
+        const { symbols } = changedSymbols("src/compose.ts", "ts", heads.get("src/compose.ts")!, patchOf("src/compose.ts"));
+        expect(symbols.map((s) => `${s.label} ${s.status} +${s.add} −${s.del}`)).toEqual(["toError() new +3 −0", "compose() changed +4 −3"]);
+    });
+});
+
+describe("callEdges", () => {
+    const symbols = ["src/compose.ts", "src/hono-base.ts"].flatMap((p) => changedSymbols(p, "ts", heads.get(p)!, patchOf(p)).symbols);
+    const label = (id: string) => symbols.find((s) => s.id === id)!.label;
+
+    it("links changed code that calls changed code by name, without matching a parameter that shares a method's name", () => {
+        expect(callEdges(symbols, heads).map((e) => `${label(e.from)} → ${label(e.to)}`)).toEqual([
+            "compose() → toError()",
+            "#handleError() → toError()",
+            "#dispatch() → compose()",
+            "#dispatch() → #handleError()",
+        ]);
+        expect(callEdges(symbols, heads).find((e) => label(e.from) === "#dispatch()" && label(e.to) === "#handleError()")!.calls).toEqual([442, 451, 468]);
+    });
+});
+
+describe("callRows", () => {
+    it("counts a name followed by `(`, never a mention or a comment, and skips names too common to tell", () => {
+        const lines = ["const a = run", "run(a)", "// run(b)", "x.run(c)"];
+        expect(callRows(lines, 1, 4, "ts", { name: "run", kind: "function" })).toEqual([]);
+        const named = ["const fn = parseOptions", "parseOptions(a)", "// parseOptions(b)"];
+        expect(callRows(named, 1, 3, "ts", { name: "parseOptions", kind: "function" })).toEqual([2]);
+    });
+});
+
+describe("testCases", () => {
+    it("reads test names, including it.each with the name on the next line", () => {
+        const names = testCases(patchOf("src/hono.test.ts")).map((c) => `${c.t} ${c.name}`);
+        expect(names).toContain("del Should throw Error if a non-Error object is thrown in a handler");
+        expect(names).toContain("add Should pass a non-Error value thrown from a %s handler to onError as an Error cause");
+        expect(names).toHaveLength(8);
+    });
+});
