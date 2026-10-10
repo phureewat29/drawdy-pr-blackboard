@@ -1,0 +1,39 @@
+import { beforeAll, describe, expect, it } from "@jest/globals";
+import { testSyntax } from "../test/parser.ts";
+import { grammarOf, type Syntax } from "./syntax.ts";
+
+let syntax: Syntax;
+beforeAll(async () => {
+    syntax = await testSyntax();
+});
+
+describe("grammarOf", () => {
+    it("reads TypeScript, TSX and JavaScript by extension, and nothing else", () => {
+        expect(["a.ts", "a.mts", "a.cts", "a.d.ts", "a.tsx", "a.js", "a.jsx", "a.mjs", "a.cjs", "a.vue", "a.py"].map(grammarOf)).toEqual([
+            "typescript", "typescript", "typescript", "typescript", "tsx", "javascript", "javascript", "javascript", "javascript", null, null,
+        ]);
+    });
+});
+
+describe("the parser", () => {
+    it("parses TypeScript, TSX and JavaScript into a flat tree with its lines", () => {
+        const ts = syntax.parse("a.ts", "export const a: number = 1\nfunction b() {}\n")!;
+        expect(ts.type[0]).toBe("program");
+        expect(ts.lineStarts).toEqual([0, 27, 43]);
+        expect(syntax.parse("a.tsx", "export const A = () => <div>{1}</div>\n")!.errors).toBe(0);
+        expect(syntax.parse("a.js", "module.exports = { a() {} }\n")!.errors).toBe(0);
+        expect(syntax.parse("a.py", "def a(): pass")).toBeNull();
+    });
+
+    it("reads a generic call signature after a member with no semicolon, as hono writes it", () => {
+        const text = "export interface Store {\n  get: Getter\n  <K extends string>(key: K): number\n  set: Setter\n}\n";
+        expect(syntax.parse("types.ts", text)!.errors).toBe(0);
+    });
+
+    it("leaves a Flow file, or one with too many errors, to the line patterns", () => {
+        expect(syntax.parse("a.js", "/**\n * @flow strict\n */\nexport function a(x: number): number { return x }\n")).toBeNull();
+        expect(syntax.parse("a.js", "// x @flow\nconst a = 1\n")).toBeNull();
+        expect(syntax.parse("a.js", "const a = 1\n// the word @flow later is no pragma\n")).not.toBeNull();
+        expect(syntax.parse("a.ts", "const a = 1\n".repeat(20) + "function ((( {{{ ]]] )))\n")).toBeNull();
+    });
+});
