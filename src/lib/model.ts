@@ -16,12 +16,12 @@
  * `imports`.
  */
 
-import { parsePatch, type DiffLine, type Hunk } from "./diff.ts";
+import { addedHunks, parsePatch, type DiffLine, type Hunk } from "./diff.ts";
 import type { FileFacts, Unit } from "./facts.ts";
 import { sortBy, uniqBy } from "./fp.ts";
 import type { FileStatus, PrFile, PrInfo } from "./github.ts";
 import { layers } from "./graph.ts";
-import { laneRank, planBoard } from "./layout.ts";
+import { laneRank, planBoard, type BoardPlan } from "./layout.ts";
 import { languageOf, roleOf, type FileRole, type Language } from "./language.ts";
 import { builtinRule, resolveAll, type Ref } from "./linker.ts";
 import { readSources, type Parse, type Read, type Sources } from "./sources.ts";
@@ -132,14 +132,17 @@ export const LIMITS = { cards: 32, part: 8 } as const;
 /** What the read tier gave: every text read, the parsed files' facts, and the references that resolved. */
 export type Analysed = { texts: ReadonlyMap<string, string>; facts: ReadonlyMap<string, FileFacts>; refs: readonly Ref[] };
 
+/** A review and its board's plan, which fixes the review's order. */
+export type Built = { review: Review; plan: BoardPlan };
+
 const fileName = (path: string) => path.split("/").pop() ?? path;
 
 /**
  * Reads what the board needs (`sources.ts`), resolves its references and
  * builds the review: the one path from a pull request's files to its board,
- * for the driver, the tests and the score gate alike.
+ * for the parser worker, the tests and the score gate alike.
  */
-export const analyse = async (pr: PrInfo, files: readonly PrFile[], read: Read, parse: Parse): Promise<Review> => {
+export const analyse = async (pr: PrInfo, files: readonly PrFile[], read: Read, parse: Parse): Promise<Built> => {
     const sources: Sources = await readSources(files, read, parse);
     const changed = new Set(files.filter((f) => f.status !== "removed").map((f) => f.path));
     const refs = resolveAll([...sources.facts.values()], changed, { paths: sources.paths, builtin: builtinRule(pr.ref, changed) });
@@ -160,40 +163,62 @@ const pythonImports = (files: readonly ReviewFile[], heads: ReadonlyMap<string, 
     return edges;
 };
 
+/** Adds a value to the list kept under a key. */
+const push = <K, V>(map: Map<K, V[]>, key: K, value: V) => {
+    const values = map.get(key);
+    if (values) values.push(value);
+    else map.set(key, [value]);
+};
+
 /** Groups of ids joined by edges in either direction, each in the order given. */
 const components = (ids: readonly string[], edges: readonly { from: string; to: string }[]): string[][] => {
     const known = new Set(ids);
     const adj = new Map<string, string[]>();
     for (const e of edges) {
-        adj.set(e.from, [...(adj.get(e.from) ?? []), e.to]);
-        adj.set(e.to, [...(adj.get(e.to) ?? []), e.from]);
+        push(adj, e.from, e.to);
+        push(adj, e.to, e.from);
     }
-    const seen = new Set<string>();
-    const out: string[][] = [];
+    const group = new Map<string, number>();
+    let groups = 0;
     for (const id of ids) {
-        if (seen.has(id)) continue;
-        const group = new Set([id]);
+        if (group.has(id)) continue;
+        const g = groups++;
+        group.set(id, g);
         const stack = [id];
         while (stack.length > 0) {
             for (const next of adj.get(stack.pop()!) ?? []) {
                 if (group.has(next) || !known.has(next)) continue;
-                group.add(next);
+                group.set(next, g);
                 stack.push(next);
             }
         }
-        group.forEach((g) => seen.add(g));
-        out.push(ids.filter((x) => group.has(x)));
     }
+    const out: string[][] = Array.from({ length: groups }, () => []);
+    for (const id of ids) out[group.get(id)!].push(id);
     return out;
 };
 
 /** Threads, largest first, then the bottom row: the order cards are pinned in. */
-const threadsOf = (ids: readonly string[], edges: readonly { from: string; to: string }[]) =>
-    sortBy(
+const threadsOf = (ids: readonly string[], edges: readonly { from: string; to: string }[]) => {
+    const first = new Map<string, number>();
+    for (const [i, id] of ids.entries()) if (!first.has(id)) first.set(id, i);
+    return sortBy(
         components(ids, edges).filter((g) => g.length >= 2),
         (g) => -g.length,
-        (g) => ids.indexOf(g[0])
+        (g) => first.get(g[0])!
     );
+};
+
+/** For each thread, the edges between its own members, in the order given: what its columns come from. */
+const threadEdges = (threads: readonly string[][], edges: readonly { from: string; to: string }[]): (readonly [string, string])[][] => {
+    const threadOf = new Map(threads.flatMap((members, b) => members.map((id) => [id, b] as const)));
+    const out = threads.map((): (readonly [string, string])[] => []);
+    for (const e of edges) {
+        const b = threadOf.get(e.from);
+        if (b !== undefined && threadOf.get(e.to) === b) out[b].push([e.from, e.to]);
+    }
+    return out;
+};
 
 const IMPORT_LINE = /^\s*(import\b|from\s+\S+\s+import\b|export\s.*\bfrom\b|use\s|#include|require\(|const\s.*=\s*require\()/;
 
@@ -239,14 +264,19 @@ const isDeprecated = (lines: readonly string[], start: number, lang: Language): 
 const parsedChanges = (path: string, lang: Language, ff: FileFacts, hunks: readonly Hunk[], units: Map<string, Unit>): { symbols: ChangedSymbol[]; loose: LooseChange[] } => {
     const text = ff.flat.text.split("\n");
     const changed = hunks.flatMap((h) => h.lines).filter((l) => l.t !== "ctx" && !(l.t === "add" && (text[l.at - 1] ?? "").trim() === ""));
+    // Each line's owner: the unit with the shortest range holding it, the first on a tie.
+    const owners = new Array<Unit | undefined>(text.length + 2).fill(undefined);
+    for (const u of ff.units) {
+        for (let n = u.docLine; n <= u.endLine; n++) {
+            const best = owners[n];
+            if (!best || u.endLine - u.docLine < best.endLine - best.docLine) owners[n] = u;
+        }
+    }
     const owned = new Map<Unit, DiffLine[]>();
     const loose: DiffLine[] = [];
     for (const l of changed) {
-        const owner = sortBy(
-            ff.units.filter((u) => u.docLine <= l.at && l.at <= u.endLine),
-            (u) => u.endLine - u.docLine
-        )[0];
-        if (owner) owned.set(owner, [...(owned.get(owner) ?? []), l]);
+        const owner = owners[l.at];
+        if (owner) push(owned, owner, l);
         else loose.push(l);
     }
     const added = new Set(changed.filter((l) => l.t === "add").map((l) => l.n!));
@@ -266,8 +296,8 @@ const parsedChanges = (path: string, lang: Language, ff: FileFacts, hunks: reado
                 status: added.has(u.nameLine) ? "new" : "changed",
                 start: u.startLine,
                 end: u.endLine,
-                from: Math.min(...ats),
-                to: Math.max(...ats),
+                from: ats.reduce((a, b) => Math.min(a, b)),
+                to: ats.reduce((a, b) => Math.max(a, b)),
                 add: ls.filter((l) => l.t === "add").length,
                 del: ls.filter((l) => l.t === "del").length,
             },
@@ -279,7 +309,7 @@ const parsedChanges = (path: string, lang: Language, ff: FileFacts, hunks: reado
 /** A pin's first shown line: the declaration's first line, or its first change when that comes earlier. */
 const pinFrom = (s: ChangedSymbol) => Math.min(s.from, s.start);
 
-export const buildReview = (pr: PrInfo, prFiles: readonly PrFile[], analysed: Analysed): Review => {
+export const buildReview = (pr: PrInfo, prFiles: readonly PrFile[], analysed: Analysed): Built => {
     const { facts } = analysed;
     const heads = new Map([...analysed.texts].map(([path, text]) => [path, text.split("\n")]));
     /** The parsed unit behind each changed symbol of a parsed file. */
@@ -287,7 +317,9 @@ export const buildReview = (pr: PrInfo, prFiles: readonly PrFile[], analysed: An
     const files: ReviewFile[] = prFiles.map((f) => {
         const role = roleOf(f.path);
         const lang = languageOf(f.path);
-        const hunks = f.patch ? parsePatch(f.patch) : [];
+        // A file added whole is all new: when GitHub leaves its patch out, its text read gives it.
+        const whole = f.patch === undefined && f.status === "added" ? analysed.texts.get(f.path) : undefined;
+        const hunks = f.patch ? parsePatch(f.patch) : whole !== undefined ? addedHunks(whole) : [];
         const ff = role === "code" && f.status !== "removed" ? facts.get(f.path) : undefined;
         const found = ff ? parsedChanges(f.path, lang, ff, hunks, units) : role === "code" ? changedSymbols(f.path, lang, heads.get(f.path) ?? null, hunks) : { symbols: [], loose: [] };
         // A loose run inside the lines a change card shows is already on that card.
@@ -301,7 +333,7 @@ export const buildReview = (pr: PrInfo, prFiles: readonly PrFile[], analysed: An
             additions: f.additions,
             deletions: f.deletions,
             hunks,
-            hasPatch: f.patch !== undefined,
+            hasPatch: f.patch !== undefined || whole !== undefined,
             symbols: found.symbols,
             loose,
             cases: role === "test" ? testCases(hunks) : [],
@@ -313,11 +345,20 @@ export const buildReview = (pr: PrInfo, prFiles: readonly PrFile[], analysed: An
     const limited = limit(place({ ...draft, links: linksOf(draft.pins, context) }), files);
     const board = place({ ...limited, links: linksOf(limited.pins, context) });
     const review: Review = { pr, files, ...board, order: [], unpinned: unpinnedOf(board, files) };
-    return { ...review, order: planBoard(review).order };
+    const plan = planBoard(review);
+    return { review: { ...review, order: plan.order }, plan };
 };
 
-/** The cards Next and Previous walk, in board order: every one but unchanged context. */
-export const stepsOf = (review: Pick<Review, "order" | "pins">): string[] => review.order.filter((id) => review.pins.find((p) => p.id === id)?.kind !== "context");
+/**
+ * Only what the board and Read all need: a file with no card keeps its name,
+ * role and counts, not its diff. The parser worker sends the driver this, and
+ * the driver keeps it: Bun's 2,188-file rewrite would otherwise cross as
+ * 84 MB, and be stored.
+ */
+export const compact = (review: Review): Review => {
+    const carded = new Set(review.pins.map((p) => p.path));
+    return { ...review, files: review.files.map((f) => (carded.has(f.path) ? f : { ...f, hunks: [], symbols: [], loose: [], cases: [] })) };
+};
 
 type Board = Pick<Review, "mode" | "pins" | "links" | "bands">;
 type Draft = Omit<Board, "links">;
@@ -372,11 +413,12 @@ const symbolBoard = (ctx: BoardContext): Draft => {
     const patterned = symbols.filter((s) => !units.has(s.id));
     const ids = [...parsed, ...patterned].map((s) => s.id);
     const symbolOf = new Map(symbols.map((s) => [s.id, s]));
-    const changedUnits = parsed.map((s) => units.get(s.id)!);
+    const changedUnits = new Map<string, Unit[]>();
+    for (const u of parsed.map((s) => units.get(s.id)!)) push(changedUnits, u.path, u);
     // A reference inside one changed unit to another, nesting aside; a class never starts an edge, since its range holds every unchanged method.
     const edgeSet = new Map<string, { from: string; to: string }>();
     for (const r of refs) {
-        const src = innermost(changedUnits, r.path, r.start);
+        const src = innermost(changedUnits.get(r.path) ?? [], r.path, r.start);
         if (!src || src.kind === "class") continue;
         for (const target of r.units) {
             if (!units.has(target.id) || target.id === src.id || nests(src, target)) continue;
@@ -393,8 +435,9 @@ const symbolBoard = (ctx: BoardContext): Draft => {
         const from = pinFrom(s);
         return { id: s.id, kind: "change", name: s.label, path: s.path, symbol: s, from, to: s.end, band, lane, column, status: s.status, add: s.add, del: s.del, head: (heads.get(s.path) ?? []).slice(from - 1, s.end) };
     };
+    const within = threadEdges(threads, edges);
     threads.forEach((members, b) => {
-        const depth = layers(members, edges.filter((e) => members.includes(e.from) && members.includes(e.to)).map((e) => [e.from, e.to] as const));
+        const depth = layers(members, within[b]);
         for (const id of members) pins.push(changePin(symbolOf.get(id)!, b, "flow", depth.get(id)! + 1));
         bands.push({ entries: members.filter((id) => depth.get(id) === 0) });
     });
@@ -418,22 +461,27 @@ const symbolBoard = (ctx: BoardContext): Draft => {
     });
     const changedPaths = new Set(files.map((f) => f.path));
     const refsTo = new Map<string, Ref[]>();
-    for (const r of refs) for (const u of r.units) refsTo.set(u.id, [...(refsTo.get(u.id) ?? []), r]);
-    const parsedCandidates = (near: string) =>
-        sortBy(
-            [...facts.values()].filter((f) => roleOf(f.path) === "code").flatMap((f) => f.units.filter((u) => u.kind === "function" || u.kind === "method").map((u) => ({ f, u }))),
-            ({ u }) => (u.path === near ? 0 : changedPaths.has(u.path) ? 1 : 2),
-            ({ u }) => u.path,
-            ({ u }) => u.startLine
-        ).filter(({ u }) => !units.has(u.id));
+    for (const r of refs) for (const u of r.units) push(refsTo, u.id, r);
+    // The unchanged functions and methods of the parsed code, by path and line.
+    const candidates = sortBy(
+        [...facts.values()].filter((f) => roleOf(f.path) === "code").flatMap((f) => f.units.filter((u) => u.kind === "function" || u.kind === "method")),
+        (u) => u.path,
+        (u) => u.startLine
+    ).filter((u) => !units.has(u.id));
+    /** The candidates in the entry's own file first, then those in other changed files, then the rest. */
+    const parsedCandidates = (near: string) => {
+        const rank = (u: Unit) => (u.path === near ? 0 : changedPaths.has(u.path) ? 1 : 2);
+        return [0, 1, 2].flatMap((r) => candidates.filter((u) => rank(u) === r));
+    };
     const parsedCaller = (entry: Unit, band: number): Pin | null => {
         const sites = refsTo.get(entry.id) ?? [];
         if (sites.length === 0) return null;
-        for (const { f, u } of parsedCandidates(entry.path)) {
-            if (nests(u, entry) || (entry.name.startsWith("#") && u.path !== entry.path)) continue;
+        // The caller is the innermost unit around a reference, not a class around a changed method.
+        const around = new Set(sites.map((s) => innermost(facts.get(s.path)?.units ?? [], s.path, s.start)));
+        for (const u of parsedCandidates(entry.path)) {
+            if (!around.has(u) || nests(u, entry) || (entry.name.startsWith("#") && u.path !== entry.path)) continue;
             if (isDeprecated(heads.get(u.path) ?? [], u.startLine, languageOf(u.path))) continue;
-            // The caller is the innermost unit around the reference, not a class around a changed method.
-            if (sites.some((s) => s.path === u.path && s.start >= u.start && s.start < u.end && innermost(f.units, s.path, s.start) === u)) return contextPin(`ctx:${u.id}`, u.path, labelOf(u), u.startLine, u.endLine, band);
+            return contextPin(`ctx:${u.id}`, u.path, labelOf(u), u.startLine, u.endLine, band);
         }
         return null;
     };
@@ -454,17 +502,20 @@ const symbolBoard = (ctx: BoardContext): Draft => {
                 if (path === e.path && ((d.start <= e.start && e.end <= d.end) || (e.start <= d.start && d.end <= e.end))) continue;
                 const lines = heads.get(path)!;
                 if (isDeprecated(lines, d.start, languageOf(path))) continue;
-                if (callsTo(path, lines, languageOf(path), d, e).length > 0) return contextPin(`ctx:${path}:${d.start}`, path, labelOf(d), d.start, d.end, band);
+                if (callsTo(path, lines, languageOf(path), d, e).length > 0) return contextPin(`ctx:${path}:${d.start}`, path, labelOf(d, languageOf(path)), d.start, d.end, band);
             }
         }
         return null;
     };
+    // A caller of two threads' entries gets one card, with the first.
+    const callerIds = new Set<string>();
     bands.forEach((band, b) => {
         for (const entry of band.entries) {
             const unit = units.get(entry);
             const caller = unit ? parsedCaller(unit, b) : patternedCaller(symbolOf.get(entry)!, b);
             if (!caller) continue;
-            if (!pins.some((p) => p.id === caller.id)) pins.push(caller);
+            if (!callerIds.has(caller.id)) pins.push(caller);
+            callerIds.add(caller.id);
             return;
         }
     });
@@ -500,9 +551,12 @@ const fileBoard = (ctx: BoardContext): Draft => {
     const threads = threadsOf(ids, edges);
     const pins: Pin[] = [prPin()];
     const bands: Band[] = [];
+    const fileOf = new Map<string, ReviewFile>();
+    for (const f of files) if (!fileOf.has(`file:${f.path}`)) fileOf.set(`file:${f.path}`, f);
+    const within = threadEdges(threads, edges);
     threads.forEach((members, b) => {
-        const depth = layers(members, edges.filter((e) => members.includes(e.from) && members.includes(e.to)).map((e) => [e.from, e.to] as const));
-        for (const id of members) pins.push(filePin(files.find((f) => `file:${f.path}` === id)!, b, "flow", depth.get(id)! + 1));
+        const depth = layers(members, within[b]);
+        for (const id of members) pins.push(filePin(fileOf.get(id)!, b, "flow", depth.get(id)! + 1));
         bands.push({ entries: members.filter((id) => depth.get(id) === 0) });
     });
     const placed = new Set(pins.map((p) => p.id));
@@ -538,21 +592,27 @@ const linksOf = (pins: readonly Pin[], ctx: BoardContext): Link[] => {
     type Region = { pin: Pin; path: string; start: number; end: number };
     const regions: Region[] = [];
     const represented = new Map<string, string>();
-    const changedUnits = [...units.values()];
+    const pinIds = new Set(pins.map((p) => p.id));
+    const changedUnits = new Map<string, Unit[]>();
+    for (const u of units.values()) push(changedUnits, u.path, u);
     const offsetOfLine = (path: string, line: number, end = false) => {
         const t = facts.get(path)?.flat;
         if (!t) return 0;
         if (line > t.lineStarts.length) return t.text.length;
         return end ? (line < t.lineStarts.length ? t.lineStarts[line] : t.text.length) : t.lineStarts[Math.max(0, line - 1)];
     };
-    const unitOf = (p: Pin): Unit | undefined => units.get(p.id) ?? (p.kind === "context" && p.path ? facts.get(p.path)?.units.find((u) => `ctx:${u.id}` === p.id) : undefined);
+    const unitOfPin = new Map<Pin, Unit | undefined>();
+    const unitOf = (p: Pin): Unit | undefined => {
+        if (!unitOfPin.has(p)) unitOfPin.set(p, units.get(p.id) ?? (p.kind === "context" && p.path ? facts.get(p.path)?.units.find((u) => `ctx:${u.id}` === p.id) : undefined));
+        return unitOfPin.get(p);
+    };
     for (const p of pins) {
         const u = unitOf(p);
         if (!p.path || !u) continue;
         regions.push({ pin: p, path: p.path, start: u.start, end: u.end });
         represented.set(u.id, p.id);
         // Changed units nested in it without a card of their own.
-        for (const x of changedUnits) if (x !== u && x.path === u.path && u.start <= x.start && x.end <= u.end && !pins.some((k) => k.id === x.id)) represented.set(x.id, p.id);
+        for (const x of changedUnits.get(u.path) ?? []) if (x !== u && u.start <= x.start && x.end <= u.end && !pinIds.has(x.id)) represented.set(x.id, p.id);
     }
     for (const p of pins) {
         if (!p.path || (p.kind !== "file" && p.kind !== "test")) continue;
@@ -560,24 +620,30 @@ const linksOf = (pins: readonly Pin[], ctx: BoardContext): Link[] => {
         if (!t) continue;
         if (p.kind === "test" || !p.ranges) {
             regions.push({ pin: p, path: p.path, start: 0, end: t.text.length });
-            if (p.kind === "file") for (const x of changedUnits) if (x.path === p.path && !represented.has(x.id)) represented.set(x.id, p.id);
+            if (p.kind === "file") for (const x of changedUnits.get(p.path) ?? []) if (!represented.has(x.id)) represented.set(x.id, p.id);
             continue;
         }
         for (const r of p.ranges) regions.push({ pin: p, path: p.path, start: offsetOfLine(p.path, r.from), end: offsetOfLine(p.path, r.to, true) });
     }
+    const regionsIn = new Map<string, Region[]>();
+    const regionsOf = new Map<Pin, Region[]>();
+    for (const r of regions) {
+        push(regionsIn, r.path, r);
+        push(regionsOf, r.pin, r);
+    }
     const pinAt = (path: string, offset: number): Pin | null => {
         let best: Region | null = null;
-        for (const r of regions) if (r.path === path && offset >= r.start && offset < r.end && (!best || r.end - r.start < best.end - best.start)) best = r;
+        for (const r of regionsIn.get(path) ?? []) if (offset >= r.start && offset < r.end && (!best || r.end - r.start < best.end - best.start)) best = r;
         return best?.pin ?? null;
     };
     const holds = (a: Pin, b: Pin) => {
-        const ra = regions.filter((r) => r.pin === a);
-        const rb = regions.filter((r) => r.pin === b);
+        const ra = regionsOf.get(a) ?? [];
+        const rb = regionsOf.get(b) ?? [];
         return rb.length > 0 && rb.every((y) => ra.some((x) => x.path === y.path && x.start <= y.start && y.end <= x.end));
     };
     const isDecl = (p: Pin) => (p.kind === "change" || p.kind === "context") && unitOf(p) !== undefined;
     const pinById = new Map(pins.map((p) => [p.id, p]));
-    const pairs = new Map<string, { from: Pin; to: Pin; refs: Ref[] }>();
+    const pairs = new Map<string, { from: Pin; to: Pin; refs: Ref[]; seen: Set<Ref> }>();
     for (const r of refs) {
         const from = pinAt(r.path, r.start);
         if (!from) continue;
@@ -586,27 +652,44 @@ const linksOf = (pins: readonly Pin[], ctx: BoardContext): Link[] => {
             if (!to || to === from) continue;
             if (isDecl(from) && isDecl(to) && (holds(from, to) || holds(to, from))) continue;
             const key = `${from.id}>${to.id}`;
-            const pair = pairs.get(key) ?? { from, to, refs: [] };
-            if (!pair.refs.includes(r)) pair.refs.push(r);
+            const pair = pairs.get(key) ?? { from, to, refs: [], seen: new Set<Ref>() };
+            if (!pair.seen.has(r)) {
+                pair.seen.add(r);
+                pair.refs.push(r);
+            }
             pairs.set(key, pair);
         }
     }
-    const changedIn = new Map(files.map((f) => [f.path, new Set(f.hunks.flatMap((h) => h.lines).filter((l) => l.t === "add").map((l) => l.n!))]));
+    // The head lines each file adds, read once per file a string starts in.
+    const fileByPath = new Map(files.map((f) => [f.path, f]));
+    const addedLines = new Map<string, Set<number>>();
+    const changedIn = (path = ""): Set<number> => {
+        let hit = addedLines.get(path);
+        if (!hit) {
+            const f = fileByPath.get(path);
+            hit = new Set(f ? f.hunks.flatMap((h) => h.lines).filter((l) => l.t === "add").map((l) => l.n!) : []);
+            addedLines.set(path, hit);
+        }
+        return hit;
+    };
     const links = [...pairs.values()].map(({ from, to, refs: rs }) => {
         const calls = [...new Set(rs.filter((r) => r.ref === "call").map((r) => r.line))].sort((a, b) => a - b);
         const all = [...new Set(rs.map((r) => r.line))].sort((a, b) => a - b);
         const kind: LinkKind =
             from.kind === "test" ? "tests" : from.kind === "context" ? "context" : calls.length > 0 ? "calls" : rs.some((r) => r.ref !== "import" && r.ref !== "export") ? "uses" : "imports";
         const rows = kind === "calls" || (kind === "context" && calls.length > 0) ? calls : all;
-        return link(kind, from.id, to.id, rows, startRow(calls, all, changedIn.get(from.path ?? "") ?? new Set()), kind === "context" ? (calls.length > 0 ? "calls" : "uses") : undefined);
+        return link(kind, from.id, to.id, rows, startRow(calls, all, changedIn(from.path)), kind === "context" ? (calls.length > 0 ? "calls" : "uses") : undefined);
     });
 
     // Other languages, by name: calls between changed declarations, an unchanged caller's calls, and import lines.
     const patterned = pins.filter((p) => p.kind === "change" && p.symbol && !units.has(p.id)).map((p) => p.symbol!);
-    for (const e of callEdges(patterned, heads)) links.push(link("calls", e.from, e.to, e.calls, startRow(e.calls, e.calls, changedIn.get(pinById.get(e.from)?.path ?? "") ?? new Set())));
+    for (const e of callEdges(patterned, heads)) links.push(link("calls", e.from, e.to, e.calls, startRow(e.calls, e.calls, changedIn(pinById.get(e.from)?.path))));
+    // The ids of each band's cards in its flow.
+    const flowIds = new Map<number, Set<string>>();
+    for (const p of pins) if (p.lane === "flow") flowIds.set(p.band, (flowIds.get(p.band) ?? new Set<string>()).add(p.id));
     for (const c of pins.filter((p) => p.kind === "context" && !unitOf(p))) {
         const lines = heads.get(c.path!) ?? [];
-        for (const s of patterned.filter((x) => x.id !== c.id && pins.some((p) => p.id === x.id && p.lane === "flow" && p.band === c.band))) {
+        for (const s of patterned.filter((x) => x.id !== c.id && (flowIds.get(c.band)?.has(x.id) ?? false))) {
             const calls = callsTo(c.path!, lines, languageOf(c.path!), { start: c.from, end: c.to, kind: "function" }, s);
             if (calls.length > 0) links.push(link("context", c.id, s.id, calls, calls[0], "calls"));
         }
@@ -640,16 +723,25 @@ const linksOf = (pins: readonly Pin[], ctx: BoardContext): Link[] => {
  */
 const place = (board: Board): Board => {
     const restBand = board.bands.length;
-    const flowBand = (id: string) => board.pins.find((p) => p.id === id && p.lane === "flow" && (p.kind === "change" || p.kind === "file"))?.band;
+    // The band of the first card in a flow with each id, and of the first change or file card.
+    const flowBands = new Map<string, number>();
+    const codeBands = new Map<string, number>();
+    for (const p of board.pins) {
+        if (p.lane !== "flow") continue;
+        if (!flowBands.has(p.id)) flowBands.set(p.id, p.band);
+        if ((p.kind === "change" || p.kind === "file") && !codeBands.has(p.id)) codeBands.set(p.id, p.band);
+    }
+    const linksFrom = new Map<string, Link[]>();
+    for (const l of board.links) push(linksFrom, l.from, l);
     return {
         ...board,
         pins: board.pins.map((p) => {
             if (p.kind === "test") {
-                const bands = board.links.filter((l) => l.from === p.id && l.kind === "tests").map((l) => flowBand(l.to)).filter((b): b is number => b !== undefined);
+                const bands = (linksFrom.get(p.id) ?? []).filter((l) => l.kind === "tests").map((l) => codeBands.get(l.to)).filter((b): b is number => b !== undefined);
                 return bands.length > 0 ? { ...p, lane: "under" as const, band: Math.min(...bands) } : { ...p, lane: "rest" as const, band: restBand };
             }
             if (p.kind !== "file" || p.lane === "flow") return p;
-            const bands = new Set(board.links.filter((l) => l.from === p.id).map((l) => board.pins.find((x) => x.id === l.to && x.lane === "flow")?.band));
+            const bands = new Set((linksFrom.get(p.id) ?? []).map((l) => flowBands.get(l.to)));
             const [band] = bands;
             return bands.size === 1 && band !== undefined ? { ...p, lane: "under" as const, band } : { ...p, lane: "rest" as const, band: restBand };
         }),
@@ -675,13 +767,18 @@ const limit = (board: Board, files: readonly ReviewFile[]): Board => {
     if (pins.length <= LIMITS.cards) return board;
     const index = new Map(pins.map((p, i) => [p.id, i]));
     const ranks = new Map(pins.filter((p) => p.lane === "rest").map((p) => [p.id, laneRank(p, files)]));
+    const inBand = new Map<number, Pin[]>();
+    for (const p of pins) push(inBand, p.band, p);
     const flow = (b: number) =>
         sortBy(
-            pins.filter((p) => p.band === b && p.lane === "flow" && p.kind !== "pr" && p.kind !== "context"),
+            (inBand.get(b) ?? []).filter((p) => p.lane === "flow" && p.kind !== "pr" && p.kind !== "context"),
             (p) => p.column,
             (p) => index.get(p.id)!
         );
-    const tail = (b: number) => [...pins.filter((p) => p.band === b && p.kind === "context"), ...pins.filter((p) => p.band === b && p.lane === "under")];
+    const tail = (b: number) => {
+        const band = inBand.get(b) ?? [];
+        return [...band.filter((p) => p.kind === "context"), ...band.filter((p) => p.lane === "under")];
+    };
     const rest = sortBy(
         pins.filter((p) => p.lane === "rest"),
         (p) => ranks.get(p.id)![0],
@@ -692,7 +789,13 @@ const limit = (board: Board, files: readonly ReviewFile[]): Board => {
     const nearest = [pins[0], ...bands.flatMap((_, b) => [...flow(b), ...tail(b)]), ...rest];
 
     const calls = new Map<string, string[]>();
-    for (const l of links) calls.set(l.from, [...(calls.get(l.from) ?? []), l.to]);
+    // The cards each card shares a link with, either way.
+    const linked = new Map<string, string[]>();
+    for (const l of links) {
+        push(calls, l.from, l.to);
+        push(linked, l.from, l.to);
+        push(linked, l.to, l.from);
+    }
     const shared = (ids: ReadonlySet<string>) => [...ids].reduce((n, id) => n + (calls.get(id) ?? []).filter((x) => ids.has(x)).length, 0);
     /** Adds an entry and what it calls, breadth first, the three callees that call most first, while `tree` holds fewer than `LIMITS.part`. */
     const grow = (entry: Pin, members: ReadonlySet<string>, tree: Set<string>) => {
@@ -714,15 +817,16 @@ const limit = (board: Board, files: readonly ReviewFile[]): Board => {
         const ids = new Set(members.map((p) => p.id));
         const first = Math.min(...members.map((p) => p.column));
         // The entries whose own trees share the most links first.
+        const firsts = members.filter((p) => p.column === first);
+        const own = new Map(firsts.map((e) => [e, shared(grow(e, ids, new Set()))]));
         const entries = sortBy(
-            members.filter((p) => p.column === first),
-            (e) => -shared(grow(e, ids, new Set())),
+            firsts,
+            (e) => -own.get(e)!,
             (e) => index.get(e.id)!
         );
         const tree = new Set<string>();
         for (const e of entries) if (tree.size < LIMITS.part) grow(e, ids, tree);
-        const linked = tail(b).filter((p) => links.some((l) => (l.from === p.id && tree.has(l.to)) || (l.to === p.id && tree.has(l.from))));
-        return [...members.filter((p) => tree.has(p.id)), ...linked];
+        return [...members.filter((p) => tree.has(p.id)), ...tail(b).filter((p) => (linked.get(p.id) ?? []).some((x) => tree.has(x)))];
     };
     const parts = bands.map((_, b) => part(b));
     const inParts = new Set(parts.flat().map((p) => p.id));
@@ -732,7 +836,7 @@ const limit = (board: Board, files: readonly ReviewFile[]): Board => {
     const byNearest = cut(nearest);
     const byParts = cut(grown);
     const keep = shared(byParts) > shared(byNearest) ? byParts : byNearest;
-    const kept = bands.filter((_, b) => pins.some((p) => p.band === b && p.lane === "flow" && p.kind !== "pr" && keep.has(p.id)));
+    const kept = bands.filter((_, b) => (inBand.get(b) ?? []).some((p) => p.lane === "flow" && p.kind !== "pr" && keep.has(p.id)));
     const bandOf = new Map(bands.map((b, i) => [b, i]));
     const renumber = new Map(kept.map((b, i) => [bandOf.get(b)!, i]));
     return {

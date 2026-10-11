@@ -26,17 +26,22 @@ export const layers = (ids: readonly string[], edges: readonly (readonly [string
     };
     for (const id of ids) if (!state.has(id)) visit(id);
 
+    // Longest path, in topological order: the graph is a DAG now.
     const layer = new Map<string, number>(ids.map((id) => [id, 0]));
-    // Longest path: relax until nothing moves; the graph is a DAG now, so this ends.
-    for (let pass = 0; pass < ids.length; pass++) {
-        let moved = false;
-        for (const [a, b] of kept) {
-            if (layer.get(b)! < layer.get(a)! + 1) {
-                layer.set(b, layer.get(a)! + 1);
-                moved = true;
-            }
+    const waiting = new Map<string, number>(ids.map((id) => [id, 0]));
+    const after = new Map<string, string[]>(ids.map((id) => [id, []]));
+    for (const [a, b] of kept) {
+        waiting.set(b, waiting.get(b)! + 1);
+        after.get(a)!.push(b);
+    }
+    const ready = [...waiting].filter(([, n]) => n === 0).map(([id]) => id);
+    for (let i = 0; i < ready.length; i++) {
+        const a = ready[i];
+        for (const b of after.get(a)!) {
+            layer.set(b, Math.max(layer.get(b)!, layer.get(a)! + 1));
+            waiting.set(b, waiting.get(b)! - 1);
+            if (waiting.get(b) === 0) ready.push(b);
         }
-        if (!moved) break;
     }
     return layer;
 };

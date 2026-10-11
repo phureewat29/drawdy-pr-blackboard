@@ -2,7 +2,7 @@ import { describe, expect, it } from "@jest/globals";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parsePatch } from "./diff.ts";
-import { callEdges, callsTo, changedSymbols, findDecls, testCases } from "./symbols.ts";
+import { callEdges, callsTo, changedSymbols, findDecls, labelOf, testCases } from "./symbols.ts";
 
 const fixture = JSON.parse(readFileSync(join(process.cwd(), "src/lib/fixtures/hono-5513.json"), "utf8"));
 const heads = new Map<string, string[]>(Object.entries(fixture.raw as Record<string, string>).map(([p, t]) => [p, t.split("\n")]));
@@ -40,6 +40,40 @@ describe("findDecls", () => {
         const names = findDecls(heads.get("src/compose.ts")!, "ts").map((d) => d.name);
         expect(names).toContain("compose");
         expect(names).not.toContain("dispatch");
+    });
+});
+
+describe("Rust declarations", () => {
+    const rs = [
+        "pub struct Request {",
+        "    id: u32,",
+        "}",
+        "",
+        "impl Request {",
+        "    pub fn new(id: u32) -> Self {",
+        "        Self { id }",
+        "    }",
+        "",
+        "    fn then(&self) -> u32 {",
+        "        self.id",
+        "    }",
+        "}",
+        "",
+        "impl Drop for crate::dns::Lookup {",
+        "    fn drop(&mut self) {}",
+        "}",
+        "",
+        "fn helper() {}",
+    ];
+
+    it("take `fn new`, a constructor, and name a method with its type: two cards called `then()` would read the same", () => {
+        const fns = findDecls(rs, "rs").filter((d) => d.kind === "function" || d.kind === "method");
+        expect(fns.map((d) => labelOf(d, "rs"))).toEqual(["Request::new()", "Request::then()", "Lookup::drop()", "helper()"]);
+    });
+
+    it("leave other languages' names as they were: a statement in a class is no method, and a method is named alone", () => {
+        const ts = ["class A {", "  if (ready) {", "    go()", "  }", "  run() {", "    return 1", "  }", "}"];
+        expect(findDecls(ts, "ts").map((d) => labelOf(d, "ts"))).toEqual(["class A", "run()"]);
     });
 });
 

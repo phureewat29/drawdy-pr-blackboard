@@ -185,9 +185,18 @@ const styleOf = (l: Link, review: Pick<Review, "pins">): StringStyle => ({
     dash: review.pins.some((p) => p.kind === "context" && (p.id === l.from || p.id === l.to)) ? "dashed" : "solid",
 });
 
+/** Each review's file roles by path, the first file's for a path: a big pull request's bottom row ranks thousands of cards. */
+const rolesOf = new WeakMap<readonly ReviewFile[], Map<string, ReviewFile["role"]>>();
+
 /** The bottom row's order: code in path order, then docs and config, then generated files. */
 export const laneRank = (pin: Pin, files: readonly ReviewFile[]): [number, string, number] => {
-    const role = files.find((f) => f.path === pin.path)?.role ?? "code";
+    let roles = rolesOf.get(files);
+    if (!roles) {
+        roles = new Map();
+        for (const f of files) if (!roles.has(f.path)) roles.set(f.path, f.role);
+        rolesOf.set(files, roles);
+    }
+    const role = (pin.path === undefined ? undefined : roles.get(pin.path)) ?? "code";
     return [role === "generated" ? 2 : role === "docs" || role === "config" ? 1 : 0, pin.path ?? "", pin.from];
 };
 
@@ -344,6 +353,9 @@ export const planBoard = (review: Plannable): BoardPlan => {
     }
     return best;
 };
+
+/** The cards Next and Previous walk, in board order: every one but unchanged context. */
+export const stepsOf = (review: Pick<Review, "order" | "pins">): string[] => review.order.filter((id) => review.pins.find((p) => p.id === id)?.kind !== "context");
 
 const planWith = (review: Plannable, gap: number, stack: number): BoardPlan => {
     const L = LAYOUT;

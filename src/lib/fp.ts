@@ -42,6 +42,22 @@ export const serial = () => {
     };
 };
 
+/** A pool of `size` slots: at most that many jobs run at once, the rest in turn. */
+export const limiter = (size: number) => {
+    let running = 0;
+    const waiting: (() => void)[] = [];
+    return async <T>(job: () => Promise<T>): Promise<T> => {
+        if (running >= size) await new Promise<void>((resolve) => waiting.push(resolve));
+        running++;
+        try {
+            return await job();
+        } finally {
+            running--;
+            waiting.shift()?.();
+        }
+    };
+};
+
 /** A count with its digits grouped: `1,009,257`. */
 export const count = (n: number): string => n.toLocaleString("en-US");
 

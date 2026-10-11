@@ -2,7 +2,8 @@ import { beforeAll, describe, expect, it } from "@jest/globals";
 import { honoFixture, reviewOf } from "../test/fixture.ts";
 import { crowded, sixtyFunctions, syntheticPr, twoThreads } from "../test/synthetic.ts";
 import type { PrFile } from "./github.ts";
-import { LIMITS, stepsOf, type Review } from "./model.ts";
+import { stepsOf } from "./layout.ts";
+import { LIMITS, type Review } from "./model.ts";
 
 /** A pull request of a few files, each one hunk, with the head texts given. */
 const small = (heads: Record<string, string>, patches: Record<string, string>) => {
@@ -169,6 +170,20 @@ describe("other languages", () => {
         );
         expect(review.links.map((l) => `${l.kind} ${l.from} → ${l.to}`)).toEqual(["calls app/run.py:3 → app/util.py:3"]);
         expect(review.pins.find((p) => p.kind === "test")!.lane).toBe("rest");
+    });
+});
+
+describe("a file added whole without its patch", () => {
+    it("is read anyway: every line is new, so its declarations are cards and their calls link", async () => {
+        const { pr } = honoFixture();
+        const text = "pub struct Request {\n    id: u32,\n}\n\nimpl Request {\n    pub fn new(id: u32) -> Self {\n        Self::check(id);\n        Self { id }\n    }\n\n    fn check(id: u32) {}\n}\n";
+        const files: PrFile[] = [{ path: "src/request.rs", status: "added", additions: 12, deletions: 0 }];
+        const review = await reviewOf({ pr: { ...pr, changedFiles: 1 }, files, raw: new Map([["src/request.rs", text]]) });
+        expect(review.files[0]).toMatchObject({ hasPatch: true });
+        expect(review.files[0].hunks.flatMap((h) => h.lines).every((l) => l.t === "add")).toBe(true);
+        expect(review.pins.filter((p) => p.kind === "change").map((p) => `${p.name} ${p.status}`)).toEqual(expect.arrayContaining(["Request::new() new", "Request::check() new"]));
+        const name = (id: string) => review.pins.find((p) => p.id === id)!.name;
+        expect(review.links.map((l) => `${l.kind} ${name(l.from)} → ${name(l.to)}`)).toEqual(["calls Request::new() → Request::check()"]);
     });
 });
 

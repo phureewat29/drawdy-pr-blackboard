@@ -196,22 +196,27 @@ export const findDecls = (lines: readonly string[], lang: Language): Decl[] => {
     const patterns = patternsFor(lang);
     if (patterns.length === 0) return [];
     const decls: Decl[] = [];
+    // Containers in the order found; one that has ended leaves once it is the last.
     const containers: Decl[] = [];
+    // The last line of the functions found so far.
+    let functionsEnd = 0;
     for (let i = 1; i <= lines.length; i++) {
         const line = lines[i - 1];
         if (isBlank(line) || isComment(line, lang)) continue;
         const indent = indentOf(line);
-        const container = containers.filter((c) => c.start < i && c.end >= i).pop();
+        while (containers.length > 0 && containers[containers.length - 1].end < i) containers.pop();
+        const container = containers[containers.length - 1];
         // Helpers nested in a function belong to it: a reader thinks of the
         // change as one to the outer function.
-        const inFunction = decls.some((d) => (d.kind === "function" || d.kind === "method") && d.start < i && d.end >= i);
-        if (inFunction) continue;
+        if (i <= functionsEnd) continue;
         for (const p of patterns) {
             if (p.topOnly && indent > 0) continue;
             if (p.inClassOnly && !container) continue;
             const m = p.re.exec(line);
             const name = m?.[p.group ?? 1];
-            if (!m || !name || KEYWORDS.has(name.replace(/^#/, ""))) continue;
+            // A statement in a class can look like a method, so a keyword is no name. Rust's patterns
+            // take only what follows `fn` or `struct`, and a Rust constructor is `fn new`.
+            if (!m || !name || (lang !== "rs" && KEYWORDS.has(name.replace(/^#/, "")))) continue;
             // A method is a direct member of its class, not a statement.
             if (p.inClassOnly && container && (indent !== firstMemberIndent(lines, container, lang) || /;\s*$/.test(line))) continue;
             const end = extentEnd(lines, i);
@@ -220,6 +225,7 @@ export const findDecls = (lines: readonly string[], lang: Language): Decl[] => {
             const decl: Decl = { name, kind, start: i, end, indent, ...(container ? { parent: container.name } : {}) };
             decls.push(decl);
             if (p.container) containers.push(decl);
+            if (kind === "function" || kind === "method") functionsEnd = Math.max(functionsEnd, end);
             break;
         }
     }
@@ -243,11 +249,12 @@ const firstMemberIndent = (lines: readonly string[], container: Decl, lang: Lang
     return container.indent + 2;
 };
 
-export const labelOf = (decl: Pick<Decl, "name" | "kind">): string => {
+/** A card's name for a declaration. A Rust method takes its type's name, `GetAddrInfoRequest::then()`: a crate has many a `then()`. */
+export const labelOf = (decl: Pick<Decl, "name" | "kind" | "parent">, lang?: Language): string => {
     switch (decl.kind) {
         case "function":
         case "method":
-            return `${decl.name}()`;
+            return lang === "rs" && decl.kind === "method" && decl.parent ? `${decl.parent.split("::").pop()}::${decl.name}()` : `${decl.name}()`;
         case "class":
             return `class ${decl.name}`;
         case "type":
@@ -263,9 +270,9 @@ export const labelOf = (decl: Pick<Decl, "name" | "kind">): string => {
  * The declaration a doc comment or decorator belongs to: the next one, when
  * only comments, decorators and blank lines lie between.
  */
-const documented = (lines: readonly string[], decls: readonly Decl[], line: number, lang: Language): Decl | null => {
+const documented = (lines: readonly string[], starts: ReadonlyMap<number, Decl>, line: number, lang: Language): Decl | null => {
     for (let i = line; i <= Math.min(lines.length, line + 60); i++) {
-        const decl = decls.find((d) => d.start === i);
+        const decl = starts.get(i);
         if (decl && i > line) return decl;
         const text = lines[i - 1];
         if (!(isBlank(text) || isComment(text, lang) || /^\s*@/.test(text))) return decl ?? null;
@@ -273,10 +280,17 @@ const documented = (lines: readonly string[], decls: readonly Decl[], line: numb
     return null;
 };
 
-const innermost = (decls: readonly Decl[], line: number): Decl | null =>
-    decls
-        .filter((d) => d.start <= line && line <= d.end)
-        .reduce<Decl | null>((best, d) => (best === null || d.end - d.start < best.end - best.start ? d : best), null);
+/** Each line's innermost declaration: the shortest that holds it, the first found on a tie. */
+const innermostByLine = (decls: readonly Decl[], count: number): (Decl | null)[] => {
+    const out: (Decl | null)[] = new Array(count + 1).fill(null);
+    for (const d of decls) {
+        for (let line = d.start; line <= Math.min(d.end, count); line++) {
+            const best = out[line];
+            if (best === null || d.end - d.start < best.end - best.start) out[line] = d;
+        }
+    }
+    return out;
+};
 
 /**
  * The declarations a file's diff changes, in line order, plus the changes
@@ -291,6 +305,9 @@ export const changedSymbols = (
     const changed = hunks.flatMap((h) => h.lines).filter((l) => l.t !== "ctx");
     if (!head) return { symbols: [], loose: looseRuns(path, changed) };
     const decls = findDecls(head, lang);
+    const starts = new Map<number, Decl>();
+    for (const d of decls) if (!starts.has(d.start)) starts.set(d.start, d);
+    const innermost = innermostByLine(decls, head.length);
     const added = new Set(changed.filter((l) => l.t === "add").map((l) => l.n!));
     const owner = new Map<Decl, DiffLine[]>();
     const loose: DiffLine[] = [];
@@ -302,10 +319,13 @@ export const changedSymbols = (
             ? previous && l.at - previous.line.at <= 1
                 ? previous.target
                 : undefined
-            : ((isComment(text, lang) || /^\s*@/.test(text) ? documented(head, decls, l.at, lang) : null) ?? innermost(decls, l.at));
+            : ((isComment(text, lang) || /^\s*@/.test(text) ? documented(head, starts, l.at, lang) : null) ?? innermost[l.at] ?? null);
         if (target === undefined) continue;
-        if (target) owner.set(target, [...(owner.get(target) ?? []), l]);
-        else loose.push(l);
+        if (target) {
+            const owned = owner.get(target);
+            if (owned) owned.push(l);
+            else owner.set(target, [l]);
+        } else loose.push(l);
         previous = { line: l, target };
     }
     const symbols = [...owner.entries()]
@@ -317,14 +337,14 @@ export const changedSymbols = (
                 path,
                 lang,
                 name: d.name,
-                label: labelOf(d),
+                label: labelOf(d, lang),
                 kind: d.kind,
                 ...(d.parent ? { parent: d.parent } : {}),
                 status: added.has(d.start) ? "new" : "changed",
                 start: d.start,
                 end: d.end,
-                from: Math.min(...ats),
-                to: Math.max(...ats),
+                from: ats.reduce((a, b) => Math.min(a, b)),
+                to: ats.reduce((a, b) => Math.max(a, b)),
                 add: lines.filter((l) => l.t === "add").length,
                 del: lines.filter((l) => l.t === "del").length,
             };
@@ -430,7 +450,11 @@ export const callEdges = (symbols: readonly ChangedSymbol[], headByPath: Readonl
     const edges: CallEdge[] = [];
     const order = new Map(symbols.map((s, i) => [s, i]));
     const byName = new Map<string, ChangedSymbol[]>();
-    for (const s of symbols) byName.set(s.name, [...(byName.get(s.name) ?? []), s]);
+    for (const s of symbols) {
+        const named = byName.get(s.name);
+        if (named) named.push(s);
+        else byName.set(s.name, [s]);
+    }
     const byStart = new Map(symbols.map((s) => [`${s.path}:${s.start}`, s]));
     for (const a of symbols) {
         const lines = headByPath.get(a.path);

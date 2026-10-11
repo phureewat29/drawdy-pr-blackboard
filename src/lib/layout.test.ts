@@ -3,8 +3,8 @@ import { reviewElements } from "../driver/elements.ts";
 import { excalidrawFixture, honoFixture, reviewOf } from "../test/fixture.ts";
 import { crowded, syntheticPr, twoThreads } from "../test/synthetic.ts";
 import { catmullRomSpline, distanceToPath, inflate, nearRun, pathHits } from "./curve.ts";
-import { LAYOUT, STRING_COLOURS, hooks, planBoard, shiftPlan, stringCrossings, textRect, throughBends, type BoardPlan, type PlannedString, type Point, type Rect } from "./layout.ts";
-import { stepsOf, type Review } from "./model.ts";
+import { LAYOUT, STRING_COLOURS, hooks, planBoard, shiftPlan, stepsOf, stringCrossings, textRect, throughBends, type BoardPlan, type PlannedString, type Point, type Rect } from "./layout.ts";
+import type { Review } from "./model.ts";
 
 const overlaps = (a: Rect, b: Rect) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
 /** Just under the clearance, so boxes exactly 8 apart pass. */

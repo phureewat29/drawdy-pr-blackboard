@@ -39,7 +39,7 @@ const load = (file: string, ref: PrRef) => {
 export type SavedPr = { pr: PrInfo; files: readonly PrFile[]; raw: ReadonlyMap<string, string> };
 
 /** The review PR Blackboard builds for a saved pull request, its files read from `raw`. */
-export const reviewOf = (saved: SavedPr): Promise<Review> => analyse(saved.pr, saved.files, async (path) => saved.raw.get(path) ?? null, testParse);
+export const reviewOf = async (saved: SavedPr): Promise<Review> => (await analyse(saved.pr, saved.files, async (path) => saved.raw.get(path) ?? null, testParse)).review;
 
 /** honojs/hono#5513, saved from GitHub with the files its board reads. */
 export const honoFixture = () => load("hono-5513.json", { owner: "honojs", repo: "hono", number: 5513 });

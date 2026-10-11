@@ -1,8 +1,8 @@
 import { beforeAll, describe, expect, it } from "@jest/globals";
 import { excalidrawFixture, honoFixture, reviewOf, type SavedPr } from "../test/fixture.ts";
 import { nameRect } from "./card.ts";
-import { planBoard, type BoardPlan, type Rect } from "./layout.ts";
-import { stepsOf, type Review } from "./model.ts";
+import { planBoard, stepsOf, type BoardPlan, type Rect } from "./layout.ts";
+import type { Review } from "./model.ts";
 import { VIEW, overviewCamera, placeReadAll, stepCamera, usable, type Camera, type Screen } from "./view.ts";
 
 let review: Review;
