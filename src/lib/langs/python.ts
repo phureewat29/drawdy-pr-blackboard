@@ -630,13 +630,13 @@ const layoutOf = (ctx: ModuleContext): Layout => {
 };
 
 /** List methods that change `sys.path` in place. */
-const PATH_CHANGES = new Set(["insert", "append", "extend", "remove", "pop", "clear", "sort", "reverse", "__setitem__", "__delitem__", "__iadd__"]);
-
 /**
- * Where a file's code first changes `sys.path`, or -1: a method that adds
- * to it, takes from it or reorders it, an item or slice set or deleted, `+=`,
- * the list replaced, `site.addsitedir`. Under any name: `import sys as s`,
- * `from sys import path`, a name the list is assigned to.
+ * Where a file's code first changes `sys.path`, or might, or -1. The list
+ * goes by any name: `sys.path` through `import sys as s` or any attribute
+ * chain ending in `.sys` (`os.sys.path`), `from sys import path` or `*`,
+ * and a name the list is assigned to. A change: any method called on it, an
+ * item or slice set or deleted, an augmented assignment, the attribute
+ * rebound, the list passed to any call, `site.addsitedir`.
  */
 const firstPathChange = (t: Flat): number => {
     const sysNames = new Set(["sys"]);
@@ -652,15 +652,21 @@ const firstPathChange = (t: Flat): number => {
             }
         } else if (t.type[n] === "import_from_statement") {
             const mod = child(t, n, "module_name");
-            if (mod < 0 || textOf(t, mod).replace(/\s+/g, "") !== "sys") continue;
+            const from = mod >= 0 ? textOf(t, mod).replace(/\s+/g, "") : "";
             for (const c of namedChildren(t, n)) {
                 if (c === mod) continue;
-                if (t.type[c] === "wildcard_import" || (t.type[c] === "dotted_name" && textOf(t, c) === "path")) pathNames.add("path");
-                else if (t.type[c] === "aliased_import" && textOf(t, child(t, c, "name")) === "path") pathNames.add(textOf(t, child(t, c, "alias")));
+                const name = t.type[c] === "aliased_import" ? textOf(t, child(t, c, "name")) : t.type[c] === "dotted_name" ? textOf(t, c) : null;
+                const local = t.type[c] === "aliased_import" ? textOf(t, child(t, c, "alias")) : name;
+                // `from sys import path`, or `*`; `sys` taken from any module (`from os import sys`).
+                if (from === "sys" && (t.type[c] === "wildcard_import" || name === "path")) pathNames.add(local ?? "path");
+                if (name === "sys" && local) sysNames.add(local);
+                if (name === "site" && local) siteNames.add(local);
             }
         }
     }
-    const isSysPath = (e: number) => e >= 0 && t.type[e] === "attribute" && t.type[child(t, e, "object")] === "identifier" && sysNames.has(textOf(t, child(t, e, "object"))) && textOf(t, child(t, e, "attribute")) === "path";
+    // `sys`, by any of its names or as an attribute (`os.sys`).
+    const isSys = (e: number) => e >= 0 && ((t.type[e] === "identifier" && sysNames.has(textOf(t, e))) || (t.type[e] === "attribute" && textOf(t, child(t, e, "attribute")) === "sys"));
+    const isSysPath = (e: number) => e >= 0 && t.type[e] === "attribute" && isSys(child(t, e, "object")) && textOf(t, child(t, e, "attribute")) === "path";
     const isPath = (e: number) => isSysPath(e) || (e >= 0 && t.type[e] === "identifier" && pathNames.has(textOf(t, e)));
     // A name the list is assigned to, and one that name is: `search = sys.path`.
     for (let grew = true; grew; ) {
@@ -682,10 +688,12 @@ const firstPathChange = (t: Flat): number => {
         const ty = t.type[n];
         if (ty === "call") {
             const fn = child(t, n, "function");
-            if (fn < 0 || t.type[fn] !== "attribute") continue;
-            const obj = child(t, fn, "object");
-            const attr = textOf(t, child(t, fn, "attribute"));
-            if ((isPath(obj) && PATH_CHANGES.has(attr)) || (attr === "addsitedir" && t.type[obj] === "identifier" && siteNames.has(textOf(t, obj)))) found(n);
+            const obj = fn >= 0 && t.type[fn] === "attribute" ? child(t, fn, "object") : -1;
+            const attr = fn >= 0 && t.type[fn] === "attribute" ? textOf(t, child(t, fn, "attribute")) : "";
+            // A method on the list, the list handed to a call (`prepend(sys.path, ...)`), `site.addsitedir`.
+            const args = child(t, n, "arguments");
+            const passed = args >= 0 && namedChildren(t, args).some((a) => isPath(a) || ((t.type[a] === "keyword_argument" || t.type[a] === "list_splat" || t.type[a] === "parenthesized_expression") && namedChildren(t, a).some(isPath)));
+            if (isPath(obj) || passed || (attr === "addsitedir" && t.type[obj] === "identifier" && siteNames.has(textOf(t, obj)))) found(n);
         } else if (ty === "assignment" || ty === "augmented_assignment") {
             const left = child(t, n, "left");
             if (isSysPath(left) || (ty === "augmented_assignment" && isPath(left)) || (left >= 0 && t.type[left] === "subscript" && isPath(child(t, left, "value")))) found(n);

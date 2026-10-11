@@ -44,9 +44,22 @@ const expressionMacro = (t: Flat, n: number): number => {
 
 const opensCall = (t: Flat, n: number) => n >= 0 && t.type[n] === "token_tree" && t.text[t.start[n]] === "(";
 
-/** Tokens after which a `|` starts a closure: a tree's opening, a separator, an assignment or arrow, `&`, another closure, `move`, `return`. */
-const CLOSURE_AFTER = new Set(["(", "[", "{", ",", ";", ":", "=", "=>", "&", "|", "move", "return"]);
-const opensClosure = (t: Flat, prev: number) => prev < 0 || CLOSURE_AFTER.has(t.type[prev]) || (t.type[prev] === "identifier" && (textOf(t, prev) === "move" || textOf(t, prev) === "return"));
+/** Keywords a macro's tokens may hold as identifiers: none of them ends an operand. */
+const KEYWORDS = new Set("as async await break const continue dyn else enum extern fn for if impl in let loop match mod move mut pub ref return static struct trait type unsafe use where while yield box try macro".split(" "));
+
+/**
+ * Whether a token ends an operand, so a `|` after it is a bitwise or: a
+ * name that isn't a keyword, a literal, `self`, a `(...)` or `[...]` group,
+ * `?`. After anything else a `|` opens a closure's parameters, so a case
+ * not foreseen binds its names and links nothing.
+ */
+const endsOperand = (t: Flat, prev: number): boolean => {
+    if (prev < 0) return false;
+    const ty = t.type[prev];
+    if (ty === "identifier") return !KEYWORDS.has(textOf(t, prev));
+    if (ty === "token_tree") return t.text[t.start[prev]] === "(" || t.text[t.start[prev]] === "[";
+    return ty === "?" || ty === "self" || ty === "super" || ty === "crate" || ty.endsWith("_literal");
+};
 
 /**
  * The names a macro's tokens bind, which are no uses anywhere in them: a
@@ -87,8 +100,8 @@ const macroBound = (t: Flat, macro: number): Set<string> => {
                 else if (armBody && braces && prev >= 0 && t.type[prev] === "=>") (armBody = false), (arm = true);
                 continue;
             }
-            // A `|` opens a closure's parameters only where a closure can start; else it is a bitwise or, unless it closes them.
-            if (ty === "|" && (pipes % 2 === 1 || opensClosure(t, prev))) pipes++;
+            // A `|` is a bitwise or right after an operand; anywhere else it opens a closure's parameters, or closes them.
+            if (ty === "|" && (pipes % 2 === 1 || !endsOperand(t, prev))) pipes++;
             else if (ty === ",") {
                 commas++;
                 if (mode === "arms" && armBody) (armBody = false), (arm = true);
