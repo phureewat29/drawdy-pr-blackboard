@@ -135,6 +135,23 @@ describe("buildReview on made-up pull requests", () => {
         expect(review.pins.filter((p) => p.kind === "change").map((p) => p.name)).toEqual(Array.from({ length: 31 }, (_, i) => `link${i}()`));
         expect(review.unpinned).toEqual({ functions: 9, files: 0 });
     });
+
+    it("keeps cards that share strings when a thread has more entries than the board has room", async () => {
+        const star = syntheticPr("feat: forty callers of one helper", [
+            {
+                path: "src/star.ts",
+                functions: [
+                    ...Array.from({ length: 40 }, (_, i) => ({ name: `caller${i}`, calls: ["hub"], change: "changed" as const })),
+                    { name: "hub", calls: ["leaf"], change: "changed" as const },
+                    { name: "leaf", change: "changed" as const },
+                ],
+            },
+        ]);
+        const review = await reviewOf(star);
+        expect(review.pins).toHaveLength(LIMITS.cards);
+        expect(review.pins.map((p) => p.name)).toEqual(expect.arrayContaining(["hub()", "leaf()"]));
+        expect(review.links).toHaveLength(30);
+    });
 });
 
 describe("other languages", () => {

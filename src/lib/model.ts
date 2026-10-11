@@ -27,7 +27,7 @@ import { builtinRule, resolveAll, type Ref } from "./linker.ts";
 import { readSources, type Parse, type Read, type Sources } from "./sources.ts";
 import {
     callEdges,
-    callRows,
+    callsTo,
     changedSymbols,
     findDecls,
     isComment,
@@ -35,7 +35,6 @@ import {
     looseRuns,
     testCases,
     type ChangedSymbol,
-    type Decl,
     type LooseChange,
     type TestCase,
 } from "./symbols.ts";
@@ -127,17 +126,13 @@ export type Review = {
     unpinned: { functions: number; files: number };
 };
 
-/** Cards a board holds at most, the PR card and context cards included. */
-export const LIMITS = { cards: 32 } as const;
+/** Cards a board holds at most, the PR card and context cards included; and the most one thread's part takes when threads overflow it. */
+export const LIMITS = { cards: 32, part: 8 } as const;
 
 /** What the read tier gave: every text read, the parsed files' facts, and the references that resolved. */
 export type Analysed = { texts: ReadonlyMap<string, string>; facts: ReadonlyMap<string, FileFacts>; refs: readonly Ref[] };
 
 const fileName = (path: string) => path.split("/").pop() ?? path;
-
-/** Instrumentation for the bun30412 harness: phase timings and counts, when globalThis.__dbg is set. */
-const DBG: any = (globalThis as any).__dbg ?? null;
-const tick = (label: string, since: number) => { if (DBG) DBG.phases.push({ label, ms: Math.round(performance.now() - since) }); return performance.now(); };
 
 /**
  * Reads what the board needs (`sources.ts`), resolves its references and
@@ -289,7 +284,6 @@ export const buildReview = (pr: PrInfo, prFiles: readonly PrFile[], analysed: An
     const heads = new Map([...analysed.texts].map(([path, text]) => [path, text.split("\n")]));
     /** The parsed unit behind each changed symbol of a parsed file. */
     const units = new Map<string, Unit>();
-    let t0 = performance.now();
     const files: ReviewFile[] = prFiles.map((f) => {
         const role = roleOf(f.path);
         const lang = languageOf(f.path);
@@ -313,26 +307,13 @@ export const buildReview = (pr: PrInfo, prFiles: readonly PrFile[], analysed: An
             cases: role === "test" ? testCases(hunks) : [],
         };
     });
-    t0 = tick("files: symbols per file", t0);
     const context: BoardContext = { files, heads, facts, refs: analysed.refs, units };
     const draft = files.flatMap((f) => f.symbols).length >= 2 ? symbolBoard(context) : fileBoard(context);
-    t0 = tick("draft board", t0);
-    if (DBG) DBG.draft = draft;
     // Which cards a full board keeps depends on where tests hang, so links are found once on every card, then again on those kept.
-    const draftLinks = linksOf(draft.pins, context);
-    t0 = tick("links on every card", t0);
-    if (DBG) DBG.draftLinks = draftLinks;
-    const placed = place({ ...draft, links: draftLinks });
-    t0 = tick("place (draft)", t0);
-    const limited = limit(placed, files);
-    t0 = tick("limit", t0);
+    const limited = limit(place({ ...draft, links: linksOf(draft.pins, context) }), files);
     const board = place({ ...limited, links: linksOf(limited.pins, context) });
-    t0 = tick("links on kept cards + place", t0);
     const review: Review = { pr, files, ...board, order: [], unpinned: unpinnedOf(board, files) };
-    t0 = tick("unpinned", t0);
-    const order = planBoard(review).order;
-    t0 = tick("planBoard (for order)", t0);
-    return { ...review, order };
+    return { ...review, order: planBoard(review).order };
 };
 
 /** The cards Next and Previous walk, in board order: every one but unchanged context. */
@@ -402,13 +383,8 @@ const symbolBoard = (ctx: BoardContext): Draft => {
             edgeSet.set(`${src.id}>${target.id}`, { from: src.id, to: target.id });
         }
     }
-    let t1 = performance.now();
-    const patternedEdges = callEdges(patterned, heads);
-    t1 = tick("  symbolBoard: callEdges", t1);
-    const edges = [...edgeSet.values(), ...patternedEdges];
+    const edges = [...edgeSet.values(), ...callEdges(patterned, heads)];
     const threads = threadsOf(ids, edges);
-    t1 = tick("  symbolBoard: threads", t1);
-    if (DBG) Object.assign(DBG, { parsed: parsed.length, patterned: patterned.length, refEdges: edgeSet.size, callEdges: patternedEdges, threads: threads.map((t) => t.length) });
     const inThread = new Set(threads.flat());
     const pins: Pin[] = [prPin()];
     const bands: Band[] = [];
@@ -462,24 +438,27 @@ const symbolBoard = (ctx: BoardContext): Draft => {
         return null;
     };
     const unparsed = [...heads.keys()].filter((path) => !facts.has(path));
-    const decls = new Map(unparsed.map((path) => [path, findDecls(heads.get(path)!, languageOf(path))]));
+    const pinnedAt = new Set(symbols.map((s) => `${s.path}:${s.start}`));
+    // Unchanged functions of the files read without the parser, by path, in line order.
+    const callers = new Map(
+        sortBy(unparsed, (path) => path).map((path) => [
+            path,
+            findDecls(heads.get(path)!, languageOf(path)).filter((d) => (d.kind === "function" || d.kind === "method") && !pinnedAt.has(`${path}:${d.start}`)),
+        ])
+    );
     const patternedCaller = (e: ChangedSymbol, band: number): Pin | null => {
-        const pinned = (path: string, d: Decl) => symbols.some((s) => s.path === path && s.start === d.start);
-        const candidates = sortBy(
-            [...decls].flatMap(([path, list]) => list.filter((d) => d.kind === "function" || d.kind === "method").map((d) => ({ path, d }))),
-            ({ path }) => (path === e.path ? 0 : 1),
-            ({ path }) => path,
-            ({ d }) => d.start
-        );
-        for (const { path, d } of candidates) {
-            if (pinned(path, d) || (path === e.path && ((d.start <= e.start && e.end <= d.end) || (e.start <= d.start && d.end <= e.end))) || (e.name.startsWith("#") && path !== e.path)) continue;
-            const lines = heads.get(path)!;
-            if (isDeprecated(lines, d.start, languageOf(path))) continue;
-            if (callRows(lines, d.start + 1, d.end, languageOf(path), e).length > 0) return contextPin(`ctx:${path}:${d.start}`, path, labelOf(d), d.start, d.end, band);
+        // Its own file first; a Rust call is proved only inside its file.
+        const paths = [e.path, ...(e.lang === "rs" || e.name.startsWith("#") ? [] : [...callers.keys()].filter((path) => path !== e.path))];
+        for (const path of paths) {
+            for (const d of callers.get(path) ?? []) {
+                if (path === e.path && ((d.start <= e.start && e.end <= d.end) || (e.start <= d.start && d.end <= e.end))) continue;
+                const lines = heads.get(path)!;
+                if (isDeprecated(lines, d.start, languageOf(path))) continue;
+                if (callsTo(path, lines, languageOf(path), d, e).length > 0) return contextPin(`ctx:${path}:${d.start}`, path, labelOf(d), d.start, d.end, band);
+            }
         }
         return null;
     };
-    t1 = performance.now();
     bands.forEach((band, b) => {
         for (const entry of band.entries) {
             const unit = units.get(entry);
@@ -490,7 +469,6 @@ const symbolBoard = (ctx: BoardContext): Draft => {
         }
     });
 
-    t1 = tick("  symbolBoard: context callers", t1);
     // File cards: changes outside every declaration, and files without readable code.
     for (const f of files) {
         if (f.role === "test") continue;
@@ -629,12 +607,13 @@ const linksOf = (pins: readonly Pin[], ctx: BoardContext): Link[] => {
     for (const c of pins.filter((p) => p.kind === "context" && !unitOf(p))) {
         const lines = heads.get(c.path!) ?? [];
         for (const s of patterned.filter((x) => x.id !== c.id && pins.some((p) => p.id === x.id && p.lane === "flow" && p.band === c.band))) {
-            const calls = callRows(lines, c.from + 1, c.to, languageOf(c.path!), s);
+            const calls = callsTo(c.path!, lines, languageOf(c.path!), { start: c.from, end: c.to, kind: "function" }, s);
             if (calls.length > 0) links.push(link("context", c.id, s.id, calls, calls[0], "calls"));
         }
     }
     const symbols = pins.filter((p) => p.kind === "change" && p.symbol).map((p) => p.symbol!);
-    for (const p of pins.filter((x) => x.kind === "file" && x.ranges && x.name.endsWith(" imports") && !facts.has(x.path!))) {
+    // Rust's `use` lines name items through module paths; a name alone proves nothing there.
+    for (const p of pins.filter((x) => x.kind === "file" && x.ranges && x.name.endsWith(" imports") && !facts.has(x.path!) && languageOf(x.path!) !== "rs")) {
         const f = files.find((x) => x.path === p.path)!;
         const lines = f.hunks.flatMap((h) => h.lines).filter((l) => l.t !== "ctx" && p.ranges!.some((r) => l.at >= r.from && l.at <= r.to));
         const names = new Set(addedImports(lines));
@@ -683,31 +662,76 @@ const place = (board: Board): Board => {
  * cards nearest the entry first; then the bottom row, code before docs and
  * config before generated files, the largest changes first. The order runs
  * band by band, so the bands left are always the first ones.
+ *
+ * Cards nearest the entries share no string when a thread has more entries
+ * than the board has room, so a second order is tried: a part of each
+ * thread, largest first, of at most `LIMITS.part` cards, grown from its
+ * entries along what they call; then the rest of each thread, then the
+ * bottom row. The order whose cards share more links fills the board; on
+ * a tie, the first.
  */
 const limit = (board: Board, files: readonly ReviewFile[]): Board => {
-    const { pins, bands } = board;
+    const { pins, bands, links } = board;
     if (pins.length <= LIMITS.cards) return board;
-    const order = [
-        pins[0],
-        ...bands.flatMap((_, b) => [
-            ...sortBy(
-                pins.filter((p) => p.band === b && p.lane === "flow" && p.kind !== "pr" && p.kind !== "context"),
-                (p) => p.column,
-                (p) => pins.indexOf(p)
-            ),
-            ...pins.filter((p) => p.band === b && p.kind === "context"),
-            ...pins.filter((p) => p.band === b && p.lane === "under"),
-        ]),
-        ...sortBy(
-            pins.filter((p) => p.lane === "rest"),
-            (p) => laneRank(p, files)[0],
-            (p) => -(p.add + p.del),
-            (p) => laneRank(p, files)[1],
-            (p) => laneRank(p, files)[2]
-        ),
-    ];
-    if (DBG) DBG.order = order.map((p) => p.id);
-    const keep = new Set(order.slice(0, LIMITS.cards).map((p) => p.id));
+    const index = new Map(pins.map((p, i) => [p.id, i]));
+    const ranks = new Map(pins.filter((p) => p.lane === "rest").map((p) => [p.id, laneRank(p, files)]));
+    const flow = (b: number) =>
+        sortBy(
+            pins.filter((p) => p.band === b && p.lane === "flow" && p.kind !== "pr" && p.kind !== "context"),
+            (p) => p.column,
+            (p) => index.get(p.id)!
+        );
+    const tail = (b: number) => [...pins.filter((p) => p.band === b && p.kind === "context"), ...pins.filter((p) => p.band === b && p.lane === "under")];
+    const rest = sortBy(
+        pins.filter((p) => p.lane === "rest"),
+        (p) => ranks.get(p.id)![0],
+        (p) => -(p.add + p.del),
+        (p) => ranks.get(p.id)![1],
+        (p) => ranks.get(p.id)![2]
+    );
+    const nearest = [pins[0], ...bands.flatMap((_, b) => [...flow(b), ...tail(b)]), ...rest];
+
+    const calls = new Map<string, string[]>();
+    for (const l of links) calls.set(l.from, [...(calls.get(l.from) ?? []), l.to]);
+    const shared = (ids: ReadonlySet<string>) => [...ids].reduce((n, id) => n + (calls.get(id) ?? []).filter((x) => ids.has(x)).length, 0);
+    /** Adds an entry and what it calls, breadth first, the three callees that call most first, while `tree` holds fewer than `LIMITS.part`. */
+    const grow = (entry: Pin, members: ReadonlySet<string>, tree: Set<string>) => {
+        const queue = [entry.id];
+        const seen = new Set<string>();
+        while (queue.length > 0 && tree.size < LIMITS.part) {
+            const id = queue.shift()!;
+            if (seen.has(id)) continue;
+            seen.add(id);
+            tree.add(id);
+            const next = (calls.get(id) ?? []).filter((x) => members.has(x) && !seen.has(x));
+            queue.push(...sortBy(next, (x) => -(calls.get(x)?.length ?? 0), (x) => index.get(x)!).slice(0, 3));
+        }
+        return tree;
+    };
+    const part = (b: number): Pin[] => {
+        const members = flow(b);
+        if (members.length <= LIMITS.part) return [...members, ...tail(b)];
+        const ids = new Set(members.map((p) => p.id));
+        const first = Math.min(...members.map((p) => p.column));
+        // The entries whose own trees share the most links first.
+        const entries = sortBy(
+            members.filter((p) => p.column === first),
+            (e) => -shared(grow(e, ids, new Set())),
+            (e) => index.get(e.id)!
+        );
+        const tree = new Set<string>();
+        for (const e of entries) if (tree.size < LIMITS.part) grow(e, ids, tree);
+        const linked = tail(b).filter((p) => links.some((l) => (l.from === p.id && tree.has(l.to)) || (l.to === p.id && tree.has(l.from))));
+        return [...members.filter((p) => tree.has(p.id)), ...linked];
+    };
+    const parts = bands.map((_, b) => part(b));
+    const inParts = new Set(parts.flat().map((p) => p.id));
+    const grown = [pins[0], ...parts.flat(), ...bands.flatMap((_, b) => [...flow(b), ...tail(b)].filter((p) => !inParts.has(p.id))), ...rest];
+
+    const cut = (order: Pin[]) => new Set(order.slice(0, LIMITS.cards).map((p) => p.id));
+    const byNearest = cut(nearest);
+    const byParts = cut(grown);
+    const keep = shared(byParts) > shared(byNearest) ? byParts : byNearest;
     const kept = bands.filter((_, b) => pins.some((p) => p.band === b && p.lane === "flow" && p.kind !== "pr" && keep.has(p.id)));
     const bandOf = new Map(bands.map((b, i) => [b, i]));
     const renumber = new Map(kept.map((b, i) => [bandOf.get(b)!, i]));
