@@ -2,6 +2,43 @@
 
 ## Unreleased
 
+### Faster, and off the shared worker
+
+- **Reading and parsing in a worker of its own.** Drawdy runs every
+  extension in one shared worker. PR Blackboard now reads a pull
+  request's files, parses and links them and plans the board in a worker
+  it starts there, so a big pull request no longer stalls the others, or
+  its own loading steps. The longest stall of the shared worker while a
+  pull request opens: hono#5513 53 to 31 ms, excalidraw#12237 230 to
+  51 ms, oven-sh/bun#30412 2.6 s to 59 ms. Where no worker can start, the
+  same code runs as before, on the shared worker.
+- **Faster, with the same boards.** Steps that grew with the square of a
+  big pull request now grow with its size: grouping cards into threads,
+  reading a patch, finding declarations by shape, Rust's proven calls,
+  the bottom row's order and the card cut. Raw files are read 16 at a
+  time, not 8, the file list keeps four pages in flight, and the board is
+  planned once, not twice. bun#30412 opens in 1.8 s of work, not 3.5;
+  excalidraw#12237 in 0.85 s, not 0.98. Every board is the same to the
+  byte, and the score gate the same to the link: 169 strings, none wrong.
+- **Rust.** `fn new` counts as a declaration (`new` is a JavaScript
+  keyword, and 57 constructors in Bun's rewrite had no card), and a
+  method's card takes its type's name, `GetAddrInfoRequest::then()`, so
+  two `then()` cards no longer read the same.
+- **A file added whole needs no patch.** When GitHub leaves out a big new
+  file's patch, PR Blackboard reads the file and counts every line new:
+  Bun's rewrite gets the same board however many patches GitHub sends.
+- **Rebuild, the driver's side.** The panel can ask to build the board
+  being read again from GitHub, past this device's copy; the new board
+  takes the old one's place and only then does the old one go, the
+  reader's own notes kept. Two undo steps bring the old board back. The
+  toolbar's button comes with its design.
+- **The icon** is the chalkboard: three pinned diff cards joined by
+  strings. `npm run icon` wires in a new one, for the listing and the
+  button alike.
+- **Removed**: the Lucide `presentation` artwork and `rsvg-convert`; the
+  parser's runtime download for a pull request with no TypeScript or
+  JavaScript, which never used it.
+
 ### Strings that are facts
 
 - **Links come from a parser.** TypeScript and JavaScript are parsed with

@@ -122,9 +122,12 @@ An uncertain link is neither drawn nor listed.
 | `lib/sources.ts` | The read tier (2.2.3): tsconfig paths, import candidates, reading through an injected `read(path)` | the source list in `open.ts` |
 | `lib/model.ts` | Cards and links from A's `board.ts`: line ownership, thread edges, the context caller, file cards, links by region. `Review`, `Pin` and `Link` keep their shape; a parsed unit becomes a `ChangedSymbol`, id `path:nameLine` | `symbolBoard`, `fileBoard`, `addTests` and the mention block |
 | `lib/symbols.ts` | Today's finder, now only for files the parser doesn't read (2.2.7), and `testCases` | |
-| `driver/grammars.ts` | The pins, the download, kv-storage, the parse that loads a grammar an import needs (2.2.2) | |
+| `driver/grammars.ts` | The parser's files: the pins, the download, kv-storage, the SHA-256 check (2.2.2) | |
+| `worker/serve.ts` | The parser worker (2.2.2): the read tier, the parse, the links and the review with its board's plan, asking the driver for the parser's files | |
+| `worker/script.ts` | `serve` and all it uses, bundled by `npm run worker` into one script kept as text; a test and `npm run check` fail while it is behind its sources | |
+| `driver/parser.ts` | Starts the worker from that script, or runs the script on the driver's thread where no worker starts; answers its asks for files; reports the download | |
 | `driver/words.ts` | `inWords`: an error whose message the panel shows as it is | the runtime's `IN_WORDS` |
-| `driver/open.ts` | `loadReview`: the pull request, its files, the grammars, the read tier, `buildReview` | |
+| `driver/open.ts` | `loadReview`: the pull request and its files from GitHub, then the parser's review and plan | |
 
 `buildReview` stays pure: it takes the pull request, its files, the texts
 read, and the facts and resolved sites. The facts are not stored; the
@@ -132,7 +135,9 @@ stored review holds what it holds today, and `REVIEW_VERSION` becomes 7.
 
 2.2.2 **Loading tree-sitter.** The driver runs the parser, so the board
 works with the panel closed (Read all on a teammate's screen rebuilds the
-review). Proved in Drawdy's own sandbox (`drawdy.io/sandbox/bootstrap.html`
+review), and it runs it in a worker of its own (request 57), so Drawdy's
+driver worker, which every extension shares, stays free while a pull
+request is read. Proved in Drawdy's own sandbox (`drawdy.io/sandbox/bootstrap.html`
 in an `allow-scripts` iframe, its `host-worker.js`, the driver evaluated by
 `new Function`): a blob worker of origin `null`, no `document`, no
 `crypto.subtle`, fetches the files below from jsDelivr (CORS `*`, no CSP on
@@ -174,9 +179,25 @@ runtime, 30 ms for TypeScript), parses and resolves.
   over the wire), 3.07 MB with TSX (352 KB), 0.62 MB for JavaScript alone
   (132 KB). Later opens read storage, and later pull requests in the
   session reuse the loaded parser.
-- The loaded languages live for the session. Parsing yields to the event
-  loop between files, so the shared worker keeps answering other
-  extensions; the facts are dropped once the review is built.
+- **The parser worker.** The driver starts a dedicated worker from a
+  `blob:` URL it makes of `WORKER_SCRIPT`: the driver's own worker is a
+  `blob:` worker of origin `null` in an `allow-scripts` iframe, and its
+  nested worker, proved live on drawdy.io, runs WebAssembly and reads
+  raw.githubusercontent.com (no CSP on the bootstrap, so `worker-src`
+  falls to nothing). The marketplace bundles `src/index.ts` alone and
+  allows no import but `@drawdy/driver-protocol`, so the worker's code
+  comes as text (`worker/script.ts`), which keeps the parse and the
+  linker in the bundle once: the driver never imports them. The driver
+  sends the pull request and its file list (Bun's 44 MB of patches cross
+  in about 40 ms); the worker reads the files itself, asks the driver for
+  each parser file it needs, checked, and sends back the review the
+  driver keeps (`compact`: no diff of a file without a card, 3 MB for
+  Bun's, against 84 MB whole) with the board's plan, so the driver plans
+  nothing. Where a worker can't start, or breaks, the same script runs on
+  the driver's thread, its messages copied as a worker's are. A worker
+  idle for 30 s ends: Drawdy tells a driver nothing when it unloads.
+- The loaded languages live as long as the worker; the facts are dropped
+  once the review is built.
 
 2.2.3 **The read tier.** All from `raw.githubusercontent.com` at the head
 commit, which costs no API quota; the GitHub API costs what it costs today,
@@ -185,7 +206,10 @@ commit, which costs no API quota; the GitHub API costs what it costs today,
 1. The changed code and test files (up to 40 code files and 40 test
    files, each under 400 000 characters). Past 40, the files with the most
    changed lines, as request 40 sets out for big pull requests; none of the
-   scored pull requests reaches 40.
+   scored pull requests reaches 40. Code the parser doesn't read is read
+   for its diff, so a file GitHub sends no patch for is left out, but for
+   one added whole: every line of it is new, and its text gives the patch
+   GitHub left out (request 53).
 2. The `tsconfig.json` or `jsconfig.json` nearest each changed file,
    trying each directory up to the root, then its relative `extends` (4
    deep at most), for `baseUrl` and `paths`; `.d.ts` files a config names
@@ -199,7 +223,9 @@ commit, which costs no API quota; the GitHub API costs what it costs today,
    importers: neither changed a link on the scored pull requests.
 4. The builtin files of 2.2.5, which are changed files and so already read.
 
-Up to 8 requests in flight. Measured with git at each head (`SCRATCH/
+Up to 16 requests in flight (8 before request 57: excalidraw#12237's 231
+reads take 1.6 s less at 100 ms each, the same reads in the same order).
+Measured with git at each head (`SCRATCH/
 links-plan/sim/requests.ts`):
 
 | Pull request | Files read | Raw requests (404s) | Text |
@@ -306,7 +332,10 @@ variance); React#37113's two changed source files, both `@flow`, measure
 `syntax.ts`). A file the parser doesn't read is not followed for imports. `symbols.ts` finds
 declarations by shape and indentation, and draws only two kinds. `calls`: a changed declaration whose body calls another
 by name (the name followed by `(`); the context card only when it calls
-the entry. `imports`: a run of import lines that adds a name another
+the entry. Rust draws a call only where its own file proves it
+(`rust.ts`, request 53), and a Rust method's card takes its type's name,
+`GetAddrInfoRequest::then()`; `fn new` is a declaration like any, though
+`new` is a JavaScript keyword. `imports`: a run of import lines that adds a name another
 card declares, and in files mode Python's relative imports. No `uses` and
 no `tests`: measured at 52 % and 36 % right, and the errors are not a
 language's. Test cards of these languages sit in the bottom row.
@@ -1204,9 +1233,11 @@ stroke: `link` in the field, `chevron-left` and `chevron-right` for
 Previous and Next, `circle`, `loader-circle` and `circle-check` while
 loading, `x` for Read all's close button (an image of the SVG, since a
 schema has no SVG node, stroked in the pinned theme's ink). The
-extension's own icon is the one exception: a generated image (request
-43), `assets/icon.png` for the listing and its 64 px copy as a PNG data
-URI in the 20 px action button. Only Next's chevron changes the stroke, to 2.5, so it holds its weight on
+extension's own icon is the one exception: a generated image (requests
+43 and 45, the chalkboard), `assets/icon.png` for the listing, 512 px,
+and its 64 px copy as a PNG data URI in an SVG for the 20 px action
+button, which Drawdy draws as an image. `npm run icon -- <listing.png>
+<64px.png>` writes both. Only Next's chevron changes the stroke, to 2.5, so it holds its weight on
 lime. Text that is not an icon stays text: `+N −M`, `–` in `– / 9`, the
 state pill, the cards' `→` and `⋯`.
 
@@ -1294,7 +1325,7 @@ reading view has focus. Tab: Overview, Previous, Next, Read all, the link
 names, Open another.
 
 7.3.5 **Messages** from the panel: `ready`, `open`, `start`, `next`,
-`previous`, `overview`, `follow`, `read-all`, `close`.
+`previous`, `overview`, `follow`, `read-all`, `close`, `rebuild` (8.6).
 
 ## 8. Loading and marks
 
@@ -1324,8 +1355,9 @@ earlier mark shape is read (request 32).
 to its overview, silently: the camera shows it is there. A board at an older commit is another board: the new one goes in
 free space beside it.
 
-8.4 **Stored reviews.** One shape, `REVIEW_VERSION` 7; a stored copy of
-any other version is fetched again. Nothing is migrated.
+8.4 **Stored reviews.** One shape, `REVIEW_VERSION` 9 (Rust's card
+names, request 53); a stored copy of any other version is fetched again.
+Nothing is migrated.
 
 8.5 **Edge cases.** No readable declarations: file cards joined by
 `imports` strings. Only docs or config: the PR card and one row of file
@@ -1333,6 +1365,26 @@ cards. A diff GitHub left out: a file card with an info row. An empty
 description: no rule and no description, the card ends after the meta. A
 moved card: its string ends follow, bends and labels stay. A deleted
 card: Next skips it; its unbound strings stay.
+
+8.6 **Rebuild** (request 48; the driver's side, the toolbar's control to
+come). `rebuild` from the panel reads the pull request being read from
+GitHub again, ignoring this device's copy and the last read, and parses
+and plans it anew; the parser's files stay stored. The new board goes
+where the old PR card stands (where the reader left it), in one add
+call; then the old board's elements go, the ones whose mark names this
+pull request at the board's head commit, read just before the add, so a
+note or stroke of the reader's stays. That is two undo steps in DDP 1.3,
+which snapshots before every scene command: the add, then the removal,
+in that order, so a failed add leaves the old board whole. A removal the
+rebuild made is not the reader's: the board stays picked up. The panel's
+view carries `rebuildCost`, `{ files, requests }` when reading GitHub
+again costs more than 2 requests (1 plus a page per 100 files), else
+null, and `rebuilding`, the loading step's words while a rebuild runs;
+the reading view stays. Any failure (GitHub, the parser, the pin) leaves
+the old board as it was, puts the error in the view, `GitHub can't find
+this pull request any more.` when it is gone, and clears it at the
+panel's next action. Done, the new board lands as an opened one does:
+the PR card current, one flight to the overview.
 
 ## 9. Fixtures and previews
 
@@ -1543,8 +1595,9 @@ the dev server on a local board. G: the score gate, outside the repository
    camera call comes before the add; one overview flight follows it.
 2. (C) The 32-card synthetic board's add payload is under 512 KB. The
    bundle, built unminified as the marketplace builds it, is under 1 MB
-   (about 238 KB), prints its size, and has no bare import but
-   `@drawdy/driver-protocol`.
+   (about 670 KB, 440 KB of it the parser worker's script), prints its
+   size, and has no bare import but `@drawdy/driver-protocol`. The
+   listing icon is a 512 px PNG and the button draws its 64 px copy.
 3. (T, C) Every arrow: both bindings, no `elbowRouting`, no `roughness`;
    `bend` of exactly 3 points, or for R1' 3 or more spaced evenly along
    its course (no step more than 1.6 times another). On hono every string
@@ -1720,4 +1773,22 @@ the dev server on a local board. G: the score gate, outside the repository
     the review's links. hono's ten links, among them the dashed `tests`
     string from `hono.test.ts` into `fetch()`, which stays in the bottom
     row (P: the overview still calm, light and dark).
-
+28. (T, C, L) The parser worker (2.2.2). T, C: `worker/script.ts` is
+    current with its sources; the script run on the driver's thread builds
+    the same review and plan as the source; when the worker breaks, the
+    open goes on on the driver's thread with the same board; the review
+    the driver gets keeps no diff of a file without a card. C: the bundle
+    holds the parse and the linker only inside that script. L: on
+    drawdy.io the driver starts its worker, and the shared worker stays
+    free while hono#5513 opens.
+29. (T, C) Rebuild (8.6) on hono: 2 GitHub requests and no download;
+    first the add, then the removal of exactly the old board's elements;
+    the new PR card where the reader moved the old one; the reader's own
+    element kept; the PR card current. A failed read or pin leaves the old
+    board as it was and the error in the reading view, cleared by the
+    next step; the old board's removal, reported by Drawdy before the
+    command answers, doesn't put the new board away.
+30. (T) Rust and whole files (request 53): `fn new` is a declaration,
+    `Request::new()`; a method is named with its type, the last segment of
+    a path; an added file with no patch is read, every line new, and its
+    calls link. Fixtures and the gate stay as they were.

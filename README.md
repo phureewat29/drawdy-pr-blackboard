@@ -141,8 +141,14 @@ sticky notes, shapes and pen: it's your board.
   call through an untyped parameter has no string. On the 15 pull requests
   checked against TypeScript's own references, none of the 169 strings it
   drew was wrong. Other languages are read by the shape of their lines,
-  with `calls` and `imports` strings only. The first TypeScript or
-  JavaScript pull request downloads the parser, under 0.5 MB, once.
+  with `calls` and `imports` strings only; in Rust a call gets a string
+  only where its file proves it, and a method's card carries its type,
+  `GetAddrInfoRequest::then()`. The first TypeScript or JavaScript pull
+  request downloads the parser, under 0.5 MB, once.
+- **Out of the way.** Drawdy runs every extension in one shared worker.
+  PR Blackboard reads and parses a pull request in a worker of its own,
+  so other extensions keep answering while even Bun's 2,188-file rewrite
+  opens.
 - **Big pull requests.** A board holds up to 32 cards, the PR card
   included: whole threads first, largest first, then the rest, the largest
   changes first. On a pull request of more than 40 code files, it reads
@@ -179,7 +185,11 @@ your browser.
 
 ## Status
 
-STATUS_PLACEHOLDER
+In development, not yet on Drawdy's marketplace. Every change is checked
+by the tests, a check that reproduces the marketplace's build, and a score
+gate:
+on 15 pull requests checked against TypeScript's own references, none of
+the 169 strings it draws is wrong.
 
 Links to GitHub wait until Drawdy lets an extension open a URL.
 
@@ -198,6 +208,7 @@ and [JavaScript](https://github.com/tree-sitter/tree-sitter-javascript)
 0.25.0 grammars (MIT), downloaded from jsDelivr. Icons are from
 [Lucide](https://lucide.dev) 1.53.0 (ISC), inlined: `link`,
 `chevron-left`, `chevron-right`, `circle`, `loader-circle`,
-`circle-check` and `x`. ICON_PLACEHOLDER
+`circle-check` and `x`. The extension's icon was generated with OpenAI
+GPT Image 2.5.
 
 MIT licensed.

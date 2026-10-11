@@ -11,8 +11,10 @@ for the earlier research, [design.md](design.md).
 drawdy.io
 ├── extension host: sandboxed iframe → blob: worker
 │     PR Blackboard driver (src/index.ts, src/driver/)
-│     fetches the PR, parses its code, builds the review, pins it,
-│     follows the reader
+│     fetches the PR, pins its board, follows the reader
+│     └── parser worker: a blob: worker of the driver's own (src/worker/)
+│           reads the PR's files, parses and links them, builds the
+│           review and plans its board
 │                 ▲ messages, checked at runtime (src/shared/protocol.ts)
 │                 ▼
 ├── PR Blackboard panel: webview (src/webview/)
@@ -22,30 +24,36 @@ drawdy.io
 ```
 
 Opening a pull request runs one pipeline, each stage a pure function in
-`src/lib/`:
+`src/lib/`. The driver runs the first stage and the last; the parser
+worker runs the rest (see below).
 
 1. **Fetch** (`github.ts`): the pull request and its file list from
-   `api.github.com`, four pages at a time. A PR's `.diff` URL sends no CORS
-   headers, so the diff comes from the files endpoint.
+   `api.github.com`, four pages in flight at a time. A PR's `.diff` URL
+   sends no CORS headers, so the diff comes from the files endpoint.
 2. **Read the code** (`sources.ts`): from `raw.githubusercontent.com` at
-   the head commit, which costs no API quota, up to 8 requests in flight,
-   each path once. The changed code files and the tests the parser reads
+   the head commit, which costs no API quota, up to 16 requests in flight,
+   each path once, each text taken in the same order however the requests
+   come back. The changed code files and the tests the parser reads
    (up to 40 of each, under 400,000 characters; past 40, `pickFiles` takes
    the largest changes in the pull request's main languages, spread across
-   its top folders); the `tsconfig.json` or `jsconfig.json` nearest each
+   its top folders; code the parser doesn't read only with its patch, but
+   a file added whole, whose every line is new, also without one); the
+   `tsconfig.json` or `jsconfig.json` nearest each
    changed JavaScript or TypeScript file, its relative `extends` followed,
    for `paths`; the typings a config names; and each changed file's direct
    imports, trying TypeScript's candidates in order (`./client` is
    `client.ts`, …, `client/index.ts`) until one answers. Nothing past the
    direct imports, and no search for importers.
-3. **Parse** (`syntax.ts`, `facts.ts`, driver's `grammars.ts`): tree-sitter
-   (web-tree-sitter 0.27.1, vendored in `src/vendor/web-tree-sitter.ts`)
-   with the TypeScript, TSX and JavaScript grammars, downloaded from
-   jsDelivr at pinned versions, checked against a SHA-256 written in
-   `PINS` (`sha256.ts`; the worker has no `crypto.subtle`), and kept in
-   kv-storage as `{ sha256, blob }` under `wasm:runtime`, `wasm:typescript`,
-   `wasm:tsx` and `wasm:javascript`. A pull request loads only the grammars
-   its files need, beside the raw reads. The tree is flattened into typed
+3. **Parse** (`syntax.ts`, `facts.ts`): tree-sitter (web-tree-sitter
+   0.27.1, vendored in `src/vendor/web-tree-sitter.ts`) with the
+   TypeScript, TSX and JavaScript grammars. The driver's `grammars.ts`
+   downloads them from jsDelivr at pinned versions, checks each against a
+   SHA-256 written in `PINS` (`sha256.ts`; the worker has no
+   `crypto.subtle`), and keeps them in kv-storage as `{ sha256, blob }`
+   under `wasm:runtime`, `wasm:typescript`, `wasm:tsx` and
+   `wasm:javascript`; the parser worker asks the driver for each. A pull
+   request loads only the grammars its files need, beside the raw reads,
+   and none without TypeScript or JavaScript. The tree is flattened into typed
    arrays, then `facts.ts` reads each file's units (the declarations a card
    can stand for), scopes and bindings, sites (every name that refers to
    something), imports, exports and the members of its classes and objects.
@@ -64,7 +72,8 @@ Opening a pull request runs one pipeline, each stage a pure function in
 5. **Build the review** (`model.ts`): pins and links. In a parsed file a
    changed line belongs to the innermost unit whose range, from its first
    comment to its last line, holds it; other files keep the line patterns
-   of `symbols.ts`. Changed declarations joined by references form threads
+   of `symbols.ts`, which take `fn new` in Rust and name a Rust method's card
+   with its type, `GetAddrInfoRequest::then()`. Changed declarations joined by references form threads
    (`graph.ts` gives each a column, callers left, cycles broken). Each
    thread gets at most one context card: the first unchanged function in
    the files read whose code references its entry, and isn't
@@ -114,14 +123,63 @@ Opening a pull request runs one pipeline, each stage a pure function in
    between columns, then also 58 between stacked cards, room for a second
    lane; the plan drawing more strings, then crossing less, wins. Labels go last, beside a bend between
    two bends. The panel lists every link, drawn or not. `buildReview`
-   keeps this plan's board order as `review.order` (`stepsOf` leaves out
-   context cards), so the board and the steps share one order and the
-   navigator never plans again.
-   `buildReview` plans once to fix them.
+   returns the review with this plan, and keeps its board order as
+   `review.order` (`stepsOf` in `layout.ts` leaves out context cards), so
+   the board and the steps share one order, the board is planned once,
+   and the navigator never plans again.
 7. **Pin it** (`driver/open.ts`, `driver/elements.ts`): in free space near
    the camera (`driver/space.ts`), in one `add-drawdy-elements` call: the
    cards, then each string with its label, nothing grouped. That is one
    undo step. Only then does the camera move, once, to the overview.
+
+**The parser worker** (`src/worker/`, `driver/parser.ts`). Stages 2 to 6
+run off Drawdy's driver worker, which every extension shares: a big pull
+request would otherwise stall them all, and the panel's own loading
+steps, for as long as it takes to read (oven-sh/bun#30412: 2.6 s at a
+stretch before; 59 ms now). Drawdy's driver worker is a `blob:` worker of
+origin `null`; a worker it starts from a `blob:` URL runs WebAssembly and
+reads raw.githubusercontent.com, as the live probe showed on drawdy.io,
+and nothing on the bootstrap page sets a CSP. The marketplace bundles
+`src/index.ts` alone and allows no import but `@drawdy/driver-protocol`,
+so the worker's code reaches the driver as text: `npm run worker` bundles
+`src/worker/main.ts` (which serves `serve.ts`) with esbuild into
+`src/worker/script.ts`, `WORKER_SCRIPT`, and a test and `npm run check`
+fail while it is behind its sources. The driver never imports the parser
+or the linker itself, so they are in the bundle once, inside that
+script. The dev server runs `npm run worker` on every change under
+`src/` (`vite.config.ts`), so what it serves is never behind; elsewhere,
+run it after changing anything under `src/lib/` or `src/vendor/` the
+worker uses.
+
+`driver/parser.ts` starts the worker from the script as a `blob:` URL
+and sends it the pull request and its file list (Bun's 44 MB of patches
+in about 40 ms). The worker reads the raw files itself and asks the
+driver for each parser file, which `grammars.ts` loads and checks; the
+driver reports the download as a loading step. It sends back the review
+the driver keeps, `compact` (no diff of a file without a card: 3 MB for
+Bun's, 84 MB whole, half a second to copy), and the board's plan, so the
+driver plans nothing. Where no worker can start, or one breaks, the same
+script runs on the driver's thread, its messages copied as a worker's
+are: the boards are the same, and so is what Node runs, which has no
+`Worker` (the tests and `npm run check`). A worker idle for 30 s ends,
+since Drawdy tells a driver nothing when it unloads. The tests and the
+score gate serve `serve.ts` from source on their own thread
+(`connectSource` in `src/test/parser.ts`).
+
+**Rebuild** (request 48; the panel's control comes with the toolbar). A
+`rebuild` message reads the pull request being read from GitHub again,
+past this device's copy and the last read (`loadReview`'s `fresh`), and
+parses and plans it anew. The new board goes where the old PR card
+stands, then the old board's elements go, found by their marks (this
+pull request at the board's head commit) just before the add, so the
+reader's own notes and strokes stay. DDP 1.3 snapshots history before
+every scene command, so that is two undo steps, the add and then the
+removal; two undos bring the old board back. Any failure leaves the old
+board as it was and puts the error in the reading view's `error`. The
+view carries `rebuildCost` when reading GitHub again costs more than 2
+requests, and `rebuilding`, the step under way. A removal the rebuild
+made is not the reader's (`swept` in the runtime), so the board stays
+picked up even when Drawdy reports it before the command answers.
 
 Every element carries a mark in its `meta` (`driver/elements.ts`): the PR,
 the head commit and what the element is (`pr`, `pin`, `link`, `label`). A
@@ -131,9 +189,10 @@ pinned in. A string's mark holds its link id, kind and both pin ids. So the
 board works from its marks alone, after a reload or on a teammate's
 screen. One strict reader takes these marks and nothing else: PR
 Blackboard hasn't shipped, so no earlier shape is read. Reviews kept on
-the device carry their own version (`REVIEW_VERSION = 7` in
+the device carry their own version (`REVIEW_VERSION = 9` in
 `driver/store.ts`); a copy of another version is fetched again. A stored
-review keeps a file's diff only when it has a card.
+review keeps a file's diff only when it has a card (`compact` in
+`model.ts`), as the parser worker sends it.
 
 **Colours.** A string's colour tells it apart; its label says what it
 means. `colourStrings` in `layout.ts` gives every string leaving one card
@@ -316,12 +375,16 @@ npm run build        # dist/a-pr-blackboard.drawdyx
 npm run check        # reproduce the marketplace build and smoke-test it
 npm run preview      # serve the marketplace build to Drawdy on :5174
 npm run preview:board  # render the board and screenshot it (needs Google Chrome)
-npm run icon         # render assets/icon.png from src/shared/app-icon.ts (needs rsvg-convert)
+npm run worker       # bundle the parser worker into src/worker/script.ts
+npm run icon -- <listing.png> <64px.png>  # wire in the extension's icon
 ```
 
 `npm run check` builds with esbuild as the marketplace does, unminified,
-and reports that size. It fails on any import but `@drawdy/driver-protocol`
-and on a bundle of 1 MB or more. Then it boots the bundle in a fake Drawdy
+and reports that size. It fails on any import but `@drawdy/driver-protocol`,
+on a bundle of 1 MB or more, on a parser worker script behind its sources,
+and on the parser or the linker reaching the bundle outside that script;
+it checks the listing icon is a 512 px PNG and the button draws its 64 px
+copy. Then it boots the bundle in a fake Drawdy
 host (`src/test/fake-host.ts`), whose kv-storage keeps what it is given,
 and runs the panel in jsdom. It opens honojs/hono#5513 from the saved
 fixture through one fake fetch (`src/test/fake-fetch.ts`: GitHub's two
@@ -339,8 +402,12 @@ both sizes with `✕`, and `Open another` back to the start view with the
 board kept, a card click bringing the reading view back. Then it boots
 the bundle again, as after a reload, and with the panel never opened
 follows a label and opens Read all from a fold row, clearing the card's
-selection, with no request to jsDelivr. Last, a 32-card board's add
-payload stays under 512 KB.
+selection, with no request to jsDelivr. Before the reload it rebuilds the
+board: 2 GitHub requests and no download, the add and then the removal
+of the old board's elements, the new PR card where the old one was moved
+to, and a note of the reader's kept. Node has no `Worker`, so the parser
+worker's script runs on the driver's thread throughout. Last, a 32-card
+board's add payload stays under 512 KB.
 
 `npm run preview:board` renders hono, excalidraw#12237 and made-up boards
 (`src/test/synthetic.ts`: two threads with a description holding every
@@ -374,6 +441,8 @@ src/
   driver/              runtime, panel channel, open, the parser's
                        download (grammars), navigator, Read all, board
                        marks, camera, storage
+  worker/              the parser worker: its side (serve), its entry, and its
+                       script as text (generated by npm run worker)
   webview/             the panel: functions the driver serializes into the webview
   shared/              driver ⇄ webview protocol, the examples, Lucide
                        icons and the extension's icon
@@ -388,7 +457,7 @@ src/
   test/                the fixtures, made-up pull requests, a fake host, a
                        fake fetch, tree-sitter from node_modules
 scripts/               marketplace check, preview server, board preview,
-                       icon renderer
+                       the parser worker's bundler, the icon's wiring
 ```
 
 **Code style.** The same as Marie Kondo: functional TypeScript, a pure core
@@ -452,57 +521,67 @@ use `.ts` extensions, so scripts and tests run on Node 24 without a build step.
 
 ## Status
 
-Verified with `npm run typecheck` (clean), `npm test` (12 suites, 222
-tests), `npm run check` (all checks, bundle about 238 KB unminified) and
-`npm run preview:board` (hono#5513: 8 of 8 links drawn, no crossings, two
-colours; excalidraw#12237: 33 of 46 drawn, 28 crossings, as for straight
-strings, four colours, no two crossing strings from different
-cards sharing one; no string along any card edge on hono, excalidraw,
-elysia#1734, bun#34519 or vite#23586; description estimates 2 to 8 %
-above Chrome's measure).
+Verified with `npm run typecheck` (clean), `npm test` (21 suites, 288
+tests), `npm run check` (all 50 checks; the bundle 672.1 KB unminified,
+441 KB of it the parser worker's script) and the score gate
+(`node SCRATCH/research/gate/run.ts`: on its 15 pull requests, 169
+strings drawn, none wrong, and 169 of 186 true links found, 91 %;
+bun#34519 at 86 %, its floor; `GATE PASS`).
 
-Verified live on drawdy.io (new local boards, the localhost:5173 dev
-server, system Chrome at 1920 × 1080 and 1280 × 800, Drawdy dark and then
-light, the harness `SCRATCH/live/run4.mjs`, 5 GitHub requests):
+The speed work of request 57 changes no board: hono#5513's and
+excalidraw#12237's reviews and board plans are the same to the byte as
+before it (`SCRATCH/perf/same.ts`), and so are oven-sh/bun#30412's, which
+keeps its 32 cards and 41 links. Request 53's Rust names then change only
+its cards' names, and one more of its 41 links gets a string (32). It gets
+the same board whether GitHub sends every patch or leaves big files' out.
 
-- The start view in both themes: the field, no button, no heading, the
-  eight example rows each its coloured tag above its title at one left
-  edge; the list scrolls (444 of 510) while the field stays put.
-- A GitLab link gets the GitHub-only error, the link kept.
-- hono#5513 opens from its row, its tag shown while loading; ten cards and
-  the strings in their colours.
-- Next clears Drawdy's selection (its toolbar gone).
-- A label click follows `compose()` → `toError()`; Read all at 1280 × 800
-  opens right of `#dispatch()`, clear of the panel.
-- After a reload with the panel never reopened, a fold row on `compose()`
-  opens Read all and a label follows its string.
-- The paste field's popover lists the seven other examples with `This
-  board stays on the canvas.`; Esc closes it; its row opens
-  mattpocock/skills#783 beside hono's board; a pasted vitejs/vite#23586
-  link opens too; `not a link` shows the error above the field, gone on
-  typing. (Round 6 replaced this field and popover with `Open another`.)
-- No console errors.
+Measured from saved data (`SCRATCH/perf/bench2.ts`: raw files from git at
+the head commit, the parser's files already stored, a fresh process each
+run, the median of 5 runs, 3 for Bun offline). The stall is the longest
+the shared driver worker went without answering; the network figures
+give each API request 300 ms and each raw read 100 ms.
 
-Round 6 (the harnesses `SCRATCH/live/rev6.mjs`, `rev7.mjs` and
-`rev7b.mjs`, the local board from round 5, 1 GitHub request): on
-excalidraw#12237 step 4 the current card sits clear of the minimap at
-1920 × 1080 and 1280 × 800, and so do steps 5 to 7 at 1280 × 800; the
-overview shows the whole board; after a fold-row click Drawdy's
-selection is gone, a click on empty board leaves Read all open, and Esc
-closes it; `Open another` shows the start view with the field focused,
-in light and dark, and a click on a card brings back its reading view;
-Open another stays at the foot when the PR card is current; Previous and
-Next draw Lucide chevrons; the loading marks turn and tick; Read all's
-close button is Lucide `x` (an image, which drawdy.io loads); no console
-errors.
+| Pull request | Wall time, before → after | Same, with the network | CPU | Longest stall |
+|---|---|---|---|---|
+| hono#5513 | 264 → 269 ms | 2.09 → 2.03 s | 540 → 545 ms | 53 → 31 ms |
+| excalidraw#12237 | 977 → 854 ms | 4.86 → 3.88 s | 1.64 → 1.44 s | 230 → 51 ms |
+| oven-sh/bun#30412 | 3.52 → 1.81 s | 8.76 → 6.19 s | 4.54 → 2.81 s | 2,563 → 59 ms |
 
-Round 4 (the harness `SCRATCH/live/run6.mjs`, one new local board, 1
-GitHub request): the PR step's panel shows `Description` and `Read all`
-in dark and light; Read all on `toError()` opens 128 px tall from the
-panel and from its `⋯ 1 line cut short · Read all` row, at 1920 × 1080
-and 1280 × 800, and on `compose()`, `compose.test.ts` and the PR card
-640 px with the page scrolling; `⋯ Test code · Read all` opens the test
-file's diff; no console errors.
+Where no worker can start, the parser's script runs on the shared worker
+and stalls it as long as its longest step: 53 ms for hono, 223 ms for
+excalidraw and 1,040 ms for Bun.
 
-Not verified live: a teammate's screen, and a switch of Drawdy's theme
-after pinning (by design the cards keep the pinned theme).
+Verified live on drawdy.io (a new local board, the localhost:5173 dev
+server, system Chrome at 1920 × 1080, Drawdy dark then light,
+`SCRATCH/perf/live-open.mjs` on `SCRATCH/live/harness.mjs`, 2 GitHub
+requests): hono#5513 opened with its ten cards and strings. The parser
+worker started, a `blob:` worker inside the driver's, and had ended,
+idle, 40 s later. A 5 ms ticker inside the shared driver worker saw it stall
+35 ms at most while the pull request opened. 75 raw reads, 2 jsDelivr
+downloads (the first run), no console errors. The 20 px button and the
+panel's title show the new icon in both themes.
+
+Not verified live this round: a rebuild (the fake host and `npm run check`
+test it; the panel has no button for it yet), Read all, a reload with the
+panel closed, 1280 × 800, a teammate's screen, and a switch of Drawdy's
+theme after pinning (by design the cards keep the pinned theme). This
+round changed none of their code.
+
+## The icon
+
+The extension's icon is a picture, generated outside the repository: a
+wooden-framed chalkboard with three diff cards pinned to it, joined by
+strings. `assets/icon.png`, 512 px, is the listing's; its 64 px copy, a
+PNG data URI in `src/shared/app-icon.ts`, is the 20 px action button's,
+which Drawdy draws as an image. `npm run icon -- <listing.png> <64px.png>`
+wires in both, so trying another candidate is one command. The prompt:
+
+```text
+Design a square app icon for a code-review tool named PR Blackboard.
+
+The whole canvas is the icon: a rounded square (corner radius about 20% of the width) in deep charcoal #1E1E21 with a faint lighter rim, filling the canvas edge to edge.
+
+Centred inside: a small blackboard seen straight on, a deep slate chalkboard (#26302C) in a thin warm wooden frame, used as an investigation board. Three cream code cards (#F3EEE3) are pinned to it, each held by a round pin; each card carries two or three short horizontal bars, one green and one coral red, like lines of a code diff. Curved strings run pin to pin between the cards, one lime-green (#C6F000) and one periwinkle blue (#6A8CF0). One four-point lime sparkle at the upper left of the tile.
+
+Flat vector style with soft, minimal shading and crisp edges. Large, simple shapes that stay readable at 20 pixels. No text, letters, numbers, logos or watermark, and nothing outside the rounded square.
+```
