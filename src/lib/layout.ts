@@ -652,11 +652,17 @@ const planWith = (review: Plannable, gap: number, stack: number): BoardPlan => {
     const groups = new Map<string, Link[]>();
     for (const l of links) groups.set(`${l.to} ${l.kind}`, [...(groups.get(`${l.to} ${l.kind}`) ?? []), l]);
     const crowd = new Set([...groups.values()].flatMap((group) => sortBy(group, distance).slice(L.fanIn).map((l) => l.id)));
+    // From the row under, a string rises only to a card above its own card, the two overlapping in x: one running sideways would cross the board, so the panel lists it.
+    const sideways = (l: Link) => {
+        if (pinOf(l.from).lane !== "under") return false;
+        const [A, B] = [placed.get(l.from)!, placed.get(l.to)!];
+        return !(A.x < B.x + B.width && B.x < A.x + A.width);
+    };
     const strings: PlannedString[] = [];
     const undrawn: string[] = [];
     const tangle = { curved: 0, straight: 0 };
     for (const l of links) {
-        if (crowd.has(l.id)) {
+        if (crowd.has(l.id) || sideways(l)) {
             undrawn.push(l.id);
             continue;
         }

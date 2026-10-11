@@ -115,6 +115,14 @@ describe.each(boards())("planBoard on %s", (_, make) => {
         }
     });
 
+    it("draws a string from the row under only to a card above its own card, overlapping it in x", () => {
+        const pinRect = (id: string) => plan.pins.get(id)!;
+        for (const s of plan.strings.filter((x) => review.pins.find((p) => p.id === x.from.pin)!.lane === "under")) {
+            const [a, b] = [pinRect(s.from.pin), pinRect(s.to.pin)];
+            expect([s.link, a.x < b.x + b.width && b.x < a.x + a.width]).toEqual([s.link, true]);
+        }
+    });
+
     it("ties every card in the row under a band to the board with at least one string", () => {
         for (const p of review.pins.filter((x) => x.lane === "under")) expect([p.name, plan.strings.some((s) => s.from.pin === p.id)]).toEqual([p.name, true]);
     });
@@ -336,6 +344,31 @@ describe("throughBends", () => {
         expect(inLane.every((b) => Math.abs(b.y - 500) < 0.001)).toBe(true);
         const path = catmullRomSpline([{ x: 0, y: 0 }, ...bends, { x: 2000, y: 300 }], 20);
         expect(path.filter((p) => p.x >= 400 && p.x <= 1200).every((p) => Math.abs(p.y - 500) < 4)).toBe(true);
+    });
+});
+
+describe("planBoard from the row under", () => {
+    it("leaves a test's string to a card not above it to the panel: it would cross the board sideways", async () => {
+        const chain = syntheticPr("feat: a chain and its tests", [
+            {
+                path: "src/chain.ts",
+                functions: [
+                    { name: "first", calls: ["second"], change: "changed" },
+                    { name: "second", calls: ["third"], change: "changed" },
+                    { name: "third", calls: ["fourth"], change: "changed" },
+                    { name: "fourth", change: "changed" },
+                ],
+            },
+            { path: "test/chain.test.ts", tests: ["first", "fourth"] },
+            { path: "test/second.test.ts", tests: ["second"] },
+        ]);
+        const review = await reviewOf(chain);
+        const plan = planBoard(review);
+        const name = (id: string) => review.pins.find((p) => p.id === id)!.name;
+        const said = (ids: readonly string[]) => ids.map((id) => review.links.find((l) => l.id === id)!).map((l) => `${l.kind} ${name(l.from)} → ${name(l.to)}`);
+        expect(review.pins.filter((p) => p.lane === "under").map((p) => p.name)).toEqual(["chain.test.ts", "second.test.ts"]);
+        expect(said(plan.strings.map((s) => s.link)).sort()).toEqual(["calls first() → second()", "calls second() → third()", "calls third() → fourth()", "tests chain.test.ts → fourth()", "tests second.test.ts → second()"]);
+        expect(said(plan.undrawn)).toEqual(["tests chain.test.ts → first()"]);
     });
 });
 
