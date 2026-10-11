@@ -1,20 +1,23 @@
 /**
- * Syntax trees for TypeScript and JavaScript from tree-sitter grammars,
- * flattened into typed arrays so the linker works on plain numbers instead
- * of crossing into WebAssembly for every node.
+ * Syntax trees from tree-sitter grammars, flattened into typed arrays so the
+ * linkers work on plain numbers instead of crossing into WebAssembly for
+ * every node. For the grammars with a `tags.scm` (`tags.ts`), the tree also
+ * carries the declarations it defines.
  *
  * The caller supplies the wasm bytes: the driver downloads them and checks
  * each against its SHA-256 (`driver/grammars.ts`), the tests read them from
  * the pinned devDependencies. Nothing here does I/O.
  */
 
-import { Language, Parser, type Tree } from "../vendor/web-tree-sitter.ts";
+import { Language, Parser, Query, type Tree } from "../vendor/web-tree-sitter.ts";
+import { TAGS } from "./tags.ts";
 
 // The vendored file is untyped JavaScript: its classes are values, so their instances get names here.
 type Lang = InstanceType<typeof Language>;
 type ParseTree = InstanceType<typeof Tree>;
+type TagQuery = InstanceType<typeof Query>;
 
-export type Grammar = "typescript" | "tsx" | "javascript";
+export type Grammar = "typescript" | "tsx" | "javascript" | "python" | "go" | "rust";
 
 /** A syntax tree as arrays indexed by node id; node 0 is the root. */
 export type Flat = {
@@ -33,6 +36,8 @@ export type Flat = {
     lineStarts: number[];
     /** Characters inside ERROR nodes, plus one for each MISSING node. */
     errors: number;
+    /** The `definition.*` captures of the grammar's `tags.scm`, on node ids, when it has one. */
+    tags?: { capture: string; node: number }[];
 };
 
 export type Syntax = {
@@ -48,6 +53,9 @@ export const grammarOf = (path: string): Grammar | null => {
     if (ext === "tsx") return "tsx";
     if (ext === "ts" || ext === "mts" || ext === "cts") return "typescript";
     if (ext === "js" || ext === "jsx" || ext === "mjs" || ext === "cjs") return "javascript";
+    if (ext === "py") return "python";
+    if (ext === "go") return "go";
+    if (ext === "rs") return "rust";
     return null;
 };
 
@@ -67,6 +75,18 @@ export const readable = (t: Flat): boolean => !/@flow\b/.test(LEADING_COMMENTS.e
 
 let runtime: Promise<void> | null = null;
 
+/** A grammar's `tags.scm` with only what defines something left on: no references are matched or captured. */
+const definitions = (lang: Lang, source: string): TagQuery => {
+    const query = new Query(lang, source);
+    const names: string[] = query.captureNames;
+    const defines = (name: string) => name.startsWith("definition.");
+    (query.captureQuantifiers as number[][]).forEach((used, pattern) => {
+        if (!used.some((q, capture) => q !== 0 && defines(names[capture]))) query.disablePattern(pattern);
+    });
+    for (const name of names) if (!defines(name)) query.disableCapture(name);
+    return query;
+};
+
 /** Starts the tree-sitter runtime once per worker; a failed start is tried again on the next call. */
 export const createSyntax = async (runtimeBytes: Uint8Array): Promise<Syntax> => {
     runtime ??= Parser.init({ wasmBinary: runtimeBytes, locateFile: (name: string) => name } as never).catch((err: unknown) => {
@@ -75,10 +95,15 @@ export const createSyntax = async (runtimeBytes: Uint8Array): Promise<Syntax> =>
     });
     await runtime;
     const languages = new Map<Grammar, Lang>();
+    const queries = new Map<Grammar, TagQuery>();
     const parser = new Parser();
     return {
         add: async (grammar, bytes) => {
-            if (!languages.has(grammar)) languages.set(grammar, await Language.load(bytes));
+            if (languages.has(grammar)) return;
+            const lang = await Language.load(bytes);
+            languages.set(grammar, lang);
+            const tags = TAGS[grammar];
+            if (tags) queries.set(grammar, definitions(lang, tags));
         },
         parse: (path, text) => {
             const g = grammarOf(path);
@@ -88,7 +113,8 @@ export const createSyntax = async (runtimeBytes: Uint8Array): Promise<Syntax> =>
             const tree = parser.parse(g === "typescript" ? repairCallSignatures(text) : text, null, undefined);
             if (!tree) return null;
             try {
-                const flat = flatten(tree, text, lang);
+                const query = queries.get(g);
+                const flat = flatten(tree, text, lang, query ? query.captures(tree.rootNode) : null);
                 return readable(flat) ? flat : null;
             } finally {
                 tree.delete();
@@ -119,10 +145,22 @@ const repairCallSignatures = (text: string): string => {
     return lines.join("\n");
 };
 
-/** One pre-order walk with a cursor: every node, named or not, with its field and family links. */
-const flatten = (tree: ParseTree, text: string, lang: Lang): Flat => {
+/**
+ * One pre-order walk with a cursor: every node, named or not, with its field
+ * and family links, and the query's captures moved onto the flat ids.
+ */
+const flatten = (tree: ParseTree, text: string, lang: Lang, captures: { name: string; node: { id: number; startIndex: number } }[] | null): Flat => {
+    // The captured nodes by where they start, so only a node starting there is asked for its id.
+    const wanted = new Map<number, { id: number; capture: string }[]>();
+    for (const c of captures ?? []) {
+        const at = c.node.startIndex;
+        wanted.set(at, [...(wanted.get(at) ?? []), { id: c.node.id, capture: c.name }]);
+    }
+    const tags: { capture: string; node: number }[] = [];
     const fieldNames = lang.fields;
     const types = lang.types;
+    // Whether a node is named depends on its type alone: asked once per type rather than once per node.
+    const namedType: (boolean | undefined)[] = [];
     let cap = 1024;
     const type: string[] = [];
     const field: string[] = [];
@@ -156,20 +194,29 @@ const flatten = (tree: ParseTree, text: string, lang: Lang): Flat => {
     const add = (): number => {
         if (count >= cap) grow();
         const id = count++;
-        type[id] = types[c.nodeTypeId] ?? c.nodeType;
+        const typeId = c.nodeTypeId;
+        type[id] = types[typeId] ?? c.nodeType;
         const f = c.currentFieldId;
         field[id] = f ? (fieldNames[f] ?? "") : "";
-        named[id] = c.nodeIsNamed ? 1 : 0;
-        start[id] = c.startIndex;
-        end[id] = c.endIndex;
+        named[id] = (namedType[typeId] ??= lang.nodeTypeIsNamed(typeId)) ? 1 : 0;
+        const s = c.startIndex;
+        const e = c.endIndex;
+        start[id] = s;
+        end[id] = e;
         first[id] = -1;
         next[id] = -1;
         const p = stack.length > 0 ? stack[stack.length - 1] : -1;
         parent[id] = p;
         const outer = p >= 0 && inError[p] === 1;
         inError[id] = outer || type[id] === "ERROR" ? 1 : 0;
-        if (!outer && type[id] === "ERROR") errors += c.endIndex - c.startIndex;
-        if (c.nodeIsMissing) errors++;
+        if (!outer && type[id] === "ERROR") errors += e - s;
+        // A MISSING node takes no room.
+        if (s === e && c.nodeIsMissing) errors++;
+        const here = wanted.size > 0 ? wanted.get(s) : undefined;
+        if (here) {
+            const node = c.nodeId;
+            for (const w of here) if (w.id === node) tags.push({ capture: w.capture, node: id });
+        }
         if (p >= 0) {
             const last = lastChild[lastChild.length - 1];
             if (last < 0) first[p] = id;
@@ -204,7 +251,7 @@ const flatten = (tree: ParseTree, text: string, lang: Lang): Flat => {
     c.delete();
     const lineStarts = [0];
     for (let i = 0; i < text.length; i++) if (text.charCodeAt(i) === 10) lineStarts.push(i + 1);
-    return { text, count, type, field, named, start, end, parent, first, next, lineStarts, errors };
+    return { text, count, type, field, named, start, end, parent, first, next, lineStarts, errors, ...(captures ? { tags } : {}) };
 };
 
 export const children = (t: Flat, n: number): number[] => {
