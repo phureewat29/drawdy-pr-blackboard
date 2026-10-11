@@ -644,10 +644,25 @@ const READERS = new Set("print len list tuple sorted str repr any all enumerate 
  * it), `site.addsitedir`.
  */
 const firstPathChange = (t: Flat): number => {
+    // A star import, or a write through `globals()`, `vars()` or `setattr`, may give any builtin's name another meaning unseen.
+    let hidden: boolean | undefined;
+    const namesHidden = (): boolean => {
+        if (hidden === undefined) {
+            hidden = false;
+            for (let x = 0; x < t.count && !hidden; x++) {
+                if (t.type[x] === "wildcard_import") hidden = true;
+                else if (t.type[x] === "call") {
+                    const f = child(t, x, "function");
+                    if (f >= 0 && t.type[f] === "identifier" && /^(?:globals|vars|setattr)$/.test(textOf(t, f))) hidden = true;
+                }
+            }
+        }
+        return hidden;
+    };
     // A builtin that only reads its arguments, where the file uses its name for nothing but calls.
     const calledOnly = new Map<string, boolean>();
     const reads = (fn: number): boolean => {
-        if (fn < 0 || t.type[fn] !== "identifier" || !READERS.has(textOf(t, fn))) return false;
+        if (fn < 0 || t.type[fn] !== "identifier" || !READERS.has(textOf(t, fn)) || namesHidden()) return false;
         const name = textOf(t, fn);
         let hit = calledOnly.get(name);
         if (hit === undefined) {

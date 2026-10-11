@@ -27,7 +27,7 @@ describe("buildReview on hono#5513", () => {
 
     it("pins the PR card, each changed function, the unchanged caller, the tests and the imports", () => {
         expect(review.pins.map((p) => `${p.kind} ${p.name} ${p.lane}`)).toEqual([
-            "pr The pull request flow",
+            "pr The PR flow",
             "change toError() flow",
             "change compose() flow",
             "change #handleError() flow",
@@ -43,7 +43,7 @@ describe("buildReview on hono#5513", () => {
     it("finds one thread from #dispatch(), callers left of what they call", () => {
         expect(review.bands).toEqual([{ entries: ["src/hono-base.ts:411"] }]);
         const columns = Object.fromEntries(review.pins.filter((p) => p.lane === "flow").map((p) => [p.name, p.column]));
-        expect(columns).toEqual({ "The pull request": 0, "fetch()": 0, "#dispatch()": 1, "#handleError()": 2, "compose()": 2, "toError()": 3 });
+        expect(columns).toEqual({ "The PR": 0, "fetch()": 0, "#dispatch()": 1, "#handleError()": 2, "compose()": 2, "toError()": 3 });
     });
 
     it("links the cards by resolved references, each from the row that makes it, and nothing from the PR card", () => {
@@ -64,9 +64,8 @@ describe("buildReview on hono#5513", () => {
         expect(review.unpinned).toEqual({ functions: 0, files: 0 });
     });
 
-    it("walks the cards in board order, nine steps, never the unchanged caller", () => {
+    it("walks the code in board order, eight steps, never the PR card or the unchanged caller", () => {
         expect(stepsOf(review).map(nameOf)).toEqual([
-            "The pull request",
             "#dispatch()",
             "#handleError()",
             "compose()",
@@ -108,7 +107,7 @@ describe("buildReview on made-up pull requests", () => {
         expect(docs.mode).toBe("files");
         expect(docs.bands).toEqual([]);
         expect(docs.links).toEqual([]);
-        expect(docs.pins.map((p) => p.name)).toEqual(["The pull request", "README.md", "package.json"]);
+        expect(docs.pins.map((p) => p.name)).toEqual(["The PR", "README.md", "package.json"]);
     });
 
     it("holds at most 32 cards, the PR card included, threads first, and counts the rest on the PR card", async () => {
@@ -175,12 +174,31 @@ describe("Python, Go and Rust", () => {
         expect(review.pins.find((p) => p.kind === "test")!.lane).toBe("under");
     });
 
+    it("count a module the read tier found but didn't take, over READ.chars, so a module two roots hold makes no string (review 2's P16)", async () => {
+        const main = "from core import thing\n\ndef run():\n    thing()\n";
+        const lib = "def thing():\n    pass\n";
+        const raw = new Map([
+            ["app/__init__.py", ""],
+            ["app/main.py", main],
+            ["libs/core/__init__.py", lib],
+            ["core.py", `${lib}\n${"# padding\n".repeat(41_000)}`],
+        ]);
+        const { pr } = honoFixture();
+        const added = (path: string) => ({ path, status: "added" as const, additions: raw.get(path)!.split("\n").length, deletions: 0 });
+        const review = await reviewOf({ pr: { ...pr, changedFiles: 2 }, files: [added("app/main.py"), added("libs/core/__init__.py")], raw });
+        expect(review.links.filter((l) => l.kind === "calls")).toEqual([]);
+        // Without the long one, libs/core is the only `core`.
+        raw.delete("core.py");
+        const alone = await reviewOf({ pr: { ...pr, changedFiles: 2 }, files: [added("app/main.py"), added("libs/core/__init__.py")], raw });
+        expect(alone.links.filter((l) => l.kind === "calls")).toHaveLength(1);
+    });
+
     it("draw no string in a language without a rule table: its cards come from line patterns", async () => {
         const review = await small(
             { "lib/a.rb": "class A\n  def run\n    helper(1)\n  end\n\n  def helper(x)\n    x\n  end\nend\n" },
             { "lib/a.rb": "@@ -1,9 +1,9 @@\n class A\n   def run\n-    helper(0)\n+    helper(1)\n   end\n \n   def helper(x)\n-    x + 1\n+    x\n   end\n end" }
         );
-        expect(review.pins.map((p) => p.name)).toEqual(["The pull request", "run()", "helper()"]);
+        expect(review.pins.map((p) => p.name)).toEqual(["The PR", "run()", "helper()"]);
         expect(review.links).toEqual([]);
     });
 
@@ -220,7 +238,7 @@ describe("the two Vite cases", () => {
             { "src/asset.ts": "export const a = 2\n\n/** Doc. */\nexport function render(x: number) {\n  return x\n}\n" },
             { "src/asset.ts": "@@ -1,7 +1,6 @@\n-export const a = 1\n+export const a = 2\n \n-// old note\n /** Doc. */\n export function render(x: number) {\n-  return x + 1\n+  return x\n }" }
         );
-        expect(review.pins.map((p) => p.name)).toEqual(["The pull request", "a", "render()"]);
+        expect(review.pins.map((p) => p.name)).toEqual(["The PR", "a", "render()"]);
         expect(review.pins.find((p) => p.name === "render()")).toMatchObject({ from: 3, del: 2, add: 1 });
     });
 

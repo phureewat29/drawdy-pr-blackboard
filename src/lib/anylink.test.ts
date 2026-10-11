@@ -15,6 +15,17 @@ const links = async (files: Record<string, string>): Promise<string[]> => {
     return resolveAny(parsed, (f) => langOf(f.path)!.resolver, (path) => files[path]).flatMap((r) => r.units.map((u) => `${r.path}:${r.line} ${r.ref} ${labels.get(u.id)}`));
 };
 
+/** Every reference that resolves, as `links` gives them, with what the reads found to exist: true, a 404 (false), or never asked. */
+const linksKnowing = async (files: Record<string, string>, exists: (path: string) => boolean | undefined): Promise<string[]> => {
+    const parsed: GFile[] = [];
+    for (const [path, text] of Object.entries(files)) {
+        const f = await testParse(path, text);
+        if (f && isGeneric(f)) parsed.push(f);
+    }
+    const labels = new Map(parsed.flatMap((f) => [...f.labels]));
+    return resolveAny(parsed, (f) => langOf(f.path)!.resolver, (path) => files[path], exists).flatMap((r) => r.units.map((u) => `${r.path}:${r.line} ${r.ref} ${labels.get(u.id)}`));
+};
+
 /** Every reference that resolves, as `path:line ref path:line` of the declaration it names, where names alone would be alike. */
 const targets = async (files: Record<string, string>): Promise<string[]> => {
     const parsed: GFile[] = [];
@@ -159,6 +170,108 @@ describe("Python", () => {
         });
         expect(found.filter((l) => /^(app|homeassistant|scripts|tests)\//.test(l))).toEqual(["app/view.py:4 call dumps()", "app/view.py:1 import dumps()"]);
     });
+
+    it("decides a module is unique from every path the reads found, a file too long to take among them, and names nothing where a root was never asked about (review 2's P16)", async () => {
+        const files = {
+            "app/__init__.py": "",
+            "app/main.py": "from core import thing\n\ndef run():\n    thing()\n",
+            "libs/core/__init__.py": "def thing():\n    pass\n",
+        };
+        // The read tier reads package markers up to the first missing one: libs/__init__.py is a 404.
+        const asked = (answers: Record<string, boolean>) => (path: string) => (path in files ? true : path === "libs/__init__.py" ? false : answers[path]);
+        // core.py at the top is there, over READ.chars: two roots hold `core`.
+        expect(await linksKnowing(files, asked({ "core.py": true }))).toEqual([]);
+        // Neither `core.py` nor `core/__init__.py` is: libs/core is the one.
+        expect(await linksKnowing(files, asked({ "core.py": false, "core/__init__.py": false }))).toEqual(["app/main.py:4 call thing()", "app/main.py:1 import thing()"]);
+        // Never asked: the top might hold it.
+        expect(await linksKnowing(files, asked({}))).toEqual([]);
+    });
+
+    it("links no absolute import that runs after its file changes `sys.path` (review 2's P12)", async () => {
+        const found = await links({
+            "tools/run.py": 'import os\nimport sys\nsys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))\nimport helpers\n\ndef main():\n    helpers.go()\n',
+            "tools/again.py": "import sys\nsys.path += ['lib']\nfrom helpers import go\n\ndef main():\n    go()\n",
+            "tools/plain.py": "import sys\nprint(sys.path[0])\nimport helpers\n\ndef main():\n    helpers.go()\n",
+            "lib/helpers.py": "def go():\n    pass\n",
+            "helpers.py": "def go():\n    pass\n",
+        });
+        expect(found.filter((l) => l.startsWith("tools/"))).toEqual(["tools/plain.py:6 call go()"]);
+    });
+
+    it("links the module-level imports above a file's first `sys.path` change as usual: they run before it (transformers#44943's test)", async () => {
+        const found = await links({
+            "app/__init__.py": "",
+            "app/config.py": "def load():\n    pass\n",
+            "custom.py": "class Custom:\n    pass\n",
+            "tests/test_config.py": "import sys\nfrom pathlib import Path\n\nfrom app.config import load\n\nsys.path.append(str(Path(__file__).parent / 'utils'))\nfrom custom import Custom\n\ndef test_load():\n    load()\n    Custom()\n",
+        });
+        expect(found.filter((l) => l.startsWith("tests/") && l.includes(" call "))).toEqual(["tests/test_config.py:10 call load()"]);
+    });
+
+    it("links the imports above a change inside a function, never one inside a function, whose run order is unknown (mypy's build.py)", async () => {
+        const found = await links({
+            "mypy/__init__.py": "",
+            "mypy/graph_utils.py": "def topsort(x):\n    pass\n",
+            "plugin.py": "def go():\n    pass\n",
+            "mypy/build.py": "import sys\n\nfrom mypy.graph_utils import topsort\n\ndef load_plugins(plugin_dir):\n    sys.path.insert(0, plugin_dir)\n    import plugin\n    plugin.go()\n\ndef order(x):\n    return topsort(x)\n",
+        });
+        expect(found.filter((l) => l.includes(" call "))).toEqual(["mypy/build.py:11 call topsort()"]);
+    });
+
+    it("links no module-level import below the first change, though a function holds it and is called above the import", async () => {
+        const found = await links({
+            "app/__init__.py": "",
+            "app/early.py": "def first():\n    pass\n",
+            "late.py": "def second():\n    pass\n",
+            "run.py": "import sys\nfrom app.early import first\n\ndef setup():\n    sys.path.insert(0, 'vendor')\n\nsetup()\nfrom late import second\n\ndef main():\n    first()\n    second()\n",
+        });
+        expect(found.filter((l) => l.includes(" call ") && !l.includes("setup"))).toEqual(["run.py:11 call first()"]);
+    });
+
+    it("counts a `sys.path` change under any name: `import sys as _sys`, `from sys import path`, a name the list is assigned to (review 3's L2)", async () => {
+        const root = { "lib/helpers.py": "def go():\n    pass\n", "helpers.py": "def go():\n    pass\n" };
+        const calls = async (body: string) => (await links({ ...root, "tools/run.py": body })).filter((l) => l.startsWith("tools/") && l.includes(" call "));
+        expect(await calls("import sys as _sys\n_sys.path.insert(0, 'lib')\nimport helpers\n\ndef main():\n    helpers.go()\n")).toEqual([]);
+        expect(await calls("from sys import path\npath.insert(0, 'lib')\nimport helpers\n\ndef main():\n    helpers.go()\n")).toEqual([]);
+        expect(await calls("import sys\nsearch = sys.path\nsearch.insert(0, 'lib')\nimport helpers\n\ndef main():\n    helpers.go()\n")).toEqual([]);
+        // Class bodies count as module level, by position.
+        expect(await calls("import sys\n\nclass Tool:\n    import helpers\n    sys.path.insert(0, 'lib')\n\n    def main(self):\n        self.helpers.go()\n\nimport helpers as later\n\ndef run():\n    later.go()\n")).toEqual([]);
+        // Only reading it, or naming it in a string, changes nothing.
+        expect(await calls("import sys as _sys\nprint(_sys.path[0])\nnote = 'sys.path.insert(0, lib)'\nimport helpers\n\ndef main():\n    helpers.go()\n")).toEqual(["tools/run.py:7 call go()"]);
+    });
+
+    it("counts any change to `sys.path`: through `os.sys.path` or any chain ending in `.sys`, any method on it, the list handed to any call (review 4's P27)", async () => {
+        const root = { "lib/helpers.py": "def go():\n    pass\n", "helpers.py": "def go():\n    pass\n" };
+        const calls = async (body: string) => (await links({ ...root, "tools/run.py": body })).filter((l) => l.startsWith("tools/") && l.includes(" call go()"));
+        expect(await calls("import os\nos.sys.path.insert(0, 'lib')\nimport helpers\n\ndef main():\n    helpers.go()\n")).toEqual([]);
+        expect(await calls("import sys\n\ndef prepend(paths, where):\n    paths.insert(0, where)\n\nprepend(sys.path, 'lib')\nimport helpers\n\ndef main():\n    helpers.go()\n")).toEqual([]);
+        expect(await calls("import sys\nsetup(paths=sys.path)\nimport helpers\n\ndef main():\n    helpers.go()\n")).toEqual([]);
+        expect(await calls("from sys import *\np = path\nq = p\nq.insert(0, 'lib')\nimport helpers\n\ndef main():\n    helpers.go()\n")).toEqual([]);
+        expect(await calls("from os import sys as s\ns.path[:0] = ['lib']\nimport helpers\n\ndef main():\n    helpers.go()\n")).toEqual([]);
+        // A copy handed on, or one item read, leaves the list as it is.
+        expect(await calls("import sys\nshow(sys.path[:])\nprint(sys.path[0])\nimport helpers\n\ndef main():\n    helpers.go()\n")).toEqual(["tools/run.py:7 call go()"]);
+        // A builtin that only reads the list changes nothing, unless the file gives its name another meaning.
+        expect(await calls("import sys\nprint(sys.path)\nn = len(sys.path)\nimport helpers\n\ndef main():\n    helpers.go()\n")).toEqual(["tools/run.py:7 call go()"]);
+        expect(await calls("import sys\nfrom tools.log import print\nprint(sys.path)\nimport helpers\n\ndef main():\n    helpers.go()\n")).toEqual([]);
+        expect(await calls("import sys\n\ndef list(x):\n    x.insert(0, 'lib')\n\nlist(sys.path)\nimport helpers\n\ndef main():\n    helpers.go()\n")).toEqual([]);
+        // A star import, or a write through globals(), may make the name mean something else: the list handed to it counts again.
+        expect(await calls("import sys\nfrom tools.log import *\nprint(sys.path)\nimport helpers\n\ndef main():\n    helpers.go()\n")).toEqual([]);
+        expect(await calls("import sys\nglobals()['print'] = sys.path.append\nprint(sys.path)\nimport helpers\n\ndef main():\n    helpers.go()\n")).toEqual([]);
+    });
+
+    it("links no method annotation naming a class its class binds below it, deferred or not; one above it names the nested class (review 3's P25)", async () => {
+        const below = "class Mode:\n    def describe(self):\n        pass\n\nclass Config:\n    def show(self, m: Mode):\n        m.describe()\n\n    class Mode:\n        def describe(self):\n            pass\n";
+        expect(await targets({ "a.py": `from __future__ import annotations\n\n${below}` })).toEqual([]);
+        expect(await targets({ "a.py": below })).toEqual([]);
+        const above = "class Mode:\n    def describe(self):\n        pass\n\nclass Config:\n    class Mode:\n        def describe(self):\n            pass\n\n    def show(self, m: Mode):\n        m.describe()\n";
+        expect(await targets({ "a.py": above })).toEqual(["a.py:10 type a.py:6", "a.py:11 call a.py:7"]);
+    });
+
+    it("reads a class body's annotation as deferred annotations do: under `from __future__ import annotations` the nested class below it; without, where the Python version decides, nothing (review 2's P22)", async () => {
+        const body = "class Mode:\n    def describe(self):\n        pass\n\nclass Config:\n    mode: Mode\n\n    class Mode:\n        def describe(self):\n            pass\n\n    def show(self):\n        self.mode.describe()\n";
+        expect((await targets({ "a.py": `from __future__ import annotations\n\n${body}` })).filter((l) => / (call|type) /.test(l))).toEqual(["a.py:8 type a.py:10", "a.py:15 call a.py:11"]);
+        expect(await targets({ "a.py": body })).toEqual([]);
+    });
 });
 
 describe("Go", () => {
@@ -247,6 +360,53 @@ describe("Go", () => {
         expect(found).toEqual(["a.go:10 type type folder"]);
     });
 
+    it("keeps no build answer from one review for the next in the same worker (review 2's N1)", async () => {
+        const target = "//go:build linux\n\npackage term\n\nfunc getch() {}\n";
+        const first = await targets({ "go.mod": "module example.com/m\n", "term/a.go": "//go:build linux\n\npackage term\n\nfunc Read() {\n\tgetch()\n}\n", "term/f.go": target });
+        expect(first).toEqual(["term/a.go:6 call term/f.go:5"]);
+        const second = await targets({ "go.mod": "module example.com/m\n", "term/a.go": "package term\n\nfunc Read() {\n\tgetch()\n}\n", "term/f.go": target });
+        expect(second).toEqual([]);
+    });
+
+    it("reads a build constraint as go/build does, the file name cut at its first dot (review 2's N5, among its 25 cases)", async () => {
+        const fn = (pkg: string, header = "") => `${header}package ${pkg}\n\nfunc f() {}\n`;
+        const call = (pkg: string, header = "") => `${header}package ${pkg}\n\nfunc Caller() {\n\tf()\n}\n`;
+        const cases: [string, string, string, string, boolean][] = [
+            ["a.go", call("p"), "f_linux.go", fn("p"), false],
+            ["a_linux.go", call("p"), "f_linux.go", fn("p"), true],
+            ["a_android.go", call("p"), "f_linux.go", fn("p"), true],
+            ["a_linux.go", call("p"), "f_android.go", fn("p"), false],
+            ["a.go", call("p", "//go:build linux || darwin\n\n"), "f.go", fn("p", "//go:build unix\n\n"), true],
+            ["a.go", call("p", "//go:build !windows\n\n"), "f.go", fn("p", "//go:build unix\n\n"), false],
+            ["a.go", call("p"), "f.go", fn("p", "//go:build integration\n\n"), false],
+            ["a.go", call("p", "//go:build integration\n\n"), "f.go", fn("p", "//go:build integration\n\n"), true],
+            ["a.go", call("p", "//go:build integration && linux\n\n"), "f_linux.go", fn("p"), true],
+            ["a_linux_test.go", call("p"), "f_linux.go", fn("p"), true],
+            ["a_test.go", call("p"), "f_linux.go", fn("p"), false],
+            ["a.go", call("p"), "linux.go", fn("p"), true],
+            ["linux_test.go", call("p"), "f_linux.go", fn("p"), false],
+            ["a.go", call("p", "// +build linux,amd64\n\n"), "f_linux.go", fn("p"), true],
+            ["a.go", call("p", "// +build linux darwin\n\n"), "f_linux.go", fn("p"), false],
+            ["a.go", call("p"), "f.go", fn("p", "//go:build go1.21\n\n"), true],
+            ["a.go", call("p"), "f.go", fn("p", "//go:build !go1.21\n\n"), false],
+            ["a.go", call("p"), "gen.go", fn("p", "//go:build ignore\n\n"), false],
+            ["a.go", call("p"), "f.go", fn("p", "//go:build linux &&\n\n"), false],
+            ["a.go", call("p"), "types_linux.pb.go", fn("p"), false],
+            ["a_linux.go", call("p"), "types_linux.pb.go", fn("p"), true],
+            ["a_linux_amd64.go", call("p"), "f_linux.go", fn("p"), true],
+            ["a_linux.go", call("p"), "f_linux_amd64.go", fn("p"), false],
+            ["a_amd64.go", call("p"), "f_amd64.go", fn("p"), true],
+            ["a.go", call("p", "//go:build (linux && amd64) || (linux && arm64)\n\n"), "f_linux.go", fn("p"), true],
+            ["a.go", call("p"), "f.go", "package p\n\n//go:build linux\n\nfunc f() {}\n", true],
+        ];
+        const got: string[] = [];
+        for (const [k, [from, fromText, to, toText, link]] of cases.entries()) {
+            const found = await targets({ "go.mod": "module example.com/m\n", [`p${k}/${from}`]: fromText.replace("package p", `package p${k}`), [`p${k}/${to}`]: toText.replace("package p", `package p${k}`) });
+            if (found.some((l) => l.includes(" call ")) !== link) got.push(`${from} -> ${to}: ${link ? "no link" : "a link"}`);
+        }
+        expect(got).toEqual([]);
+    });
+
     it("calls a conversion `T(v)` a use of the type", async () => {
         const found = await links({ "p/a.go": "package p\n\ntype Mode int\n\nfunc set(v int) Mode {\n\treturn Mode(v)\n}\n" });
         expect(found).toEqual(["p/a.go:5 type type Mode", "p/a.go:6 type type Mode"]);
@@ -311,5 +471,69 @@ describe("Rust", () => {
             "src/a.rs": "struct Foo;\n\nimpl Foo {\n    fn consume(&self) {}\n    fn count(&self) -> usize { 0 }\n    fn size(&self) -> usize { 0 }\n    fn go(&self) {\n        self.count();\n    }\n}\n\ntrait Take {\n    fn consume(self);\n}\n\nimpl Take for Foo {\n    fn consume(self) {}\n}\n\nfn run(f: Foo) {\n    f.consume();\n    f.count();\n    f.size();\n    Foo::consume(&f);\n}\n",
         });
         expect(found.filter((l) => l.includes(" call "))).toEqual(["src/a.rs:8 call Foo::count()", "src/a.rs:23 call Foo::size()", "src/a.rs:24 call Foo::consume()"]);
+    });
+
+    it("probes `x.f()` as rustc does: a `&mut self` receiver finds a trait's `f(&mut self)` or `f(self)` before an inherent `f(&self)`, and the standard library's Write, Read and by-value methods count (review 2's R16)", async () => {
+        const log = await links({
+            "src/log.rs": "use std::io::{self, Write};\n\npub struct Log;\n\nimpl Log {\n    pub fn flush(&self) {}\n}\n\nimpl Write for Log {\n    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {\n        Ok(buf.len())\n    }\n    fn flush(&mut self) -> io::Result<()> {\n        Ok(())\n    }\n}\n\nimpl Log {\n    pub fn close(&mut self) {\n        self.flush();\n    }\n    pub fn peek(&self) {\n        self.flush();\n    }\n}\n",
+        });
+        expect(log.filter((l) => l.includes(" call "))).toEqual(["src/log.rs:23 call Log::flush()"]);
+        const pos = await links({
+            "src/pos.rs": "#[derive(Clone, Copy)]\npub struct Pos(u32);\n\npub trait Shift {\n    fn shift(self) -> Pos;\n}\n\nimpl Shift for Pos {\n    fn shift(self) -> Pos {\n        self\n    }\n}\n\nimpl Pos {\n    pub fn shift(&self) -> Pos {\n        *self\n    }\n    pub fn step(&mut self) {\n        self.shift();\n    }\n}\n",
+        });
+        expect(pos.filter((l) => l.includes(" call "))).toEqual([]);
+        const buf = await links({
+            "src/buf.rs": "use std::io::{self, Read};\n\npub struct Buf(Vec<u8>);\n\nimpl Buf {\n    pub fn bytes(&self) -> &[u8] {\n        &self.0\n    }\n}\n\nimpl Read for Buf {\n    fn read(&mut self, out: &mut [u8]) -> io::Result<usize> {\n        Ok(0)\n    }\n}\n\npub fn count(b: Buf) -> usize {\n    b.bytes().count()\n}\n",
+        });
+        expect(buf.filter((l) => l.includes(" call "))).toEqual([]);
+    });
+
+    it("never resolves a receiver a macro's nested tokens bind: a destructured closure parameter, `if let`, a `match` arm (review 2's R17)", async () => {
+        const found = await targets({
+            "src/check.rs": "pub struct Version;\n\nimpl Version {\n    pub fn parse() -> Version {\n        Version\n    }\n    pub fn check(&self) -> bool {\n        true\n    }\n}\n\npub struct Entry;\n\nimpl Entry {\n    pub fn check(&self) -> bool {\n        false\n    }\n}\n\npub fn all_ok(pairs: Vec<(u32, Entry)>, opt: Option<Entry>) {\n    let v = Version::parse();\n    assert!(pairs.iter().all(|(_, v)| v.check()));\n    assert!(if let Some(v) = &opt { v.check() } else { true });\n    println!(\"{}\", match &opt { Some(v) => v.check(), None => false });\n    assert!(v.check());\n}\n",
+        });
+        expect(found.filter((l) => l.includes(" call "))).toEqual(["src/check.rs:21 call src/check.rs:4", "src/check.rs:25 call src/check.rs:7"]);
+    });
+
+    it("lets a trait method of any mode come first for a receiver of another type: `self: Box<Self>`, `self: Rc<Self>`, `&&T` (review 3's L1)", async () => {
+        const boxed = await links({
+            "src/name.rs": "pub struct Name(String);\n\nimpl Name {\n    pub fn as_ref(&self) -> &str {\n        &self.0\n    }\n    pub fn describe(&self) {}\n    pub fn into_label(self: Box<Self>) -> usize {\n        self.describe();\n        let n: &Name = self.as_ref();\n        n.0.len()\n    }\n    pub fn shared(self: std::rc::Rc<Self>) {\n        self.as_ref();\n    }\n}\n",
+        });
+        expect(boxed.filter((l) => l.includes(" call "))).toEqual(["src/name.rs:9 call Name::describe()"]);
+        const double = await links({
+            "src/a.rs": "use std::fmt;\n\npub struct Foo;\n\nimpl fmt::Display for Foo {\n    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {\n        write!(f, \"foo\")\n    }\n}\n\nimpl Foo {\n    pub fn to_string(&self) -> String {\n        String::new()\n    }\n}\n\npub fn show(x: &&Foo) -> String {\n    x.to_string()\n}\n\npub fn once(x: &Foo) -> String {\n    x.to_string()\n}\n",
+        });
+        expect(double.filter((l) => l.includes(" call "))).toEqual(["src/a.rs:22 call Foo::to_string()"]);
+    });
+
+    it("gives a typed parameter its receiver mode, as `self` has one: `&T`, `&mut T`, `T` (review 3's R21)", async () => {
+        const found = await targets({
+            "src/d.rs": "pub struct Table;\n\nimpl Table {\n    pub fn find(&self, k: u32) -> Option<u32> {\n        None\n    }\n    pub fn len(&self) -> usize {\n        0\n    }\n    pub fn add(&mut self, k: u32) {}\n    pub fn next(&mut self) -> Option<u32> {\n        None\n    }\n    pub fn count(&self) -> usize {\n        0\n    }\n}\n\npub fn outside(t: &Table, m: &mut Table, v: Table) {\n    t.find(1);\n    t.len();\n    m.add(1);\n    m.next();\n    m.find(1);\n    v.len();\n    v.count();\n}\n",
+        });
+        // `m.find`: Iterator's `find(&mut self)` would come first; `v.count`: Iterator's `count(self)`.
+        expect(found.filter((l) => l.includes(" call "))).toEqual(["src/d.rs:20 call src/d.rs:4", "src/d.rs:21 call src/d.rs:7", "src/d.rs:22 call src/d.rs:10", "src/d.rs:23 call src/d.rs:11", "src/d.rs:25 call src/d.rs:7"]);
+    });
+
+    it("reads a `|` in a macro's tokens as a closure's but right after an operand: `async |v|`, `&mut |v|`, `break |v|` bind v (review 4's R25)", async () => {
+        const pre = "pub struct Version;\n\nimpl Version {\n    pub fn parse() -> Version {\n        Version\n    }\n    pub fn check(&self) -> bool {\n        true\n    }\n}\n\npub fn run<F>(f: F) -> bool {\n    true\n}\n\n";
+        const found = await targets({
+            "src/a.rs": `${pre}pub fn probe() -> Version {\n    let v = Version::parse();\n    assert!(run(async |v| v.check()));\n    assert!(run(&mut |v: &Version| v.check()));\n    assert!(run(loop { break |v: &Version| v.check(); }));\n    assert!(run(move |v: &Version| v.check()));\n    v\n}\n`,
+        });
+        expect(found.filter((l) => l.endsWith(":7"))).toEqual([]);
+        // A label's name and an attribute's group end no operand (review 5's R27).
+        const marked = await targets({
+            "src/a.rs": `${pre}pub fn probe() -> Version {\n    let v = Version::parse();\n    assert!(run('outer: loop { break 'outer |v: &Version| v.check(); }));\n    assert!(run(#[allow(unused)] |v: &Version| v.check()));\n    v\n}\n`,
+        });
+        expect(marked.filter((l) => l.endsWith(":7"))).toEqual([]);
+    });
+
+    it("reads a `|` in a macro's tokens as a closure's only where a closure can start: a bitwise or binds nothing (review 3's R23)", async () => {
+        const found = await targets({
+            "src/n.rs": "pub struct Version;\n\nimpl Version {\n    pub fn parse() -> Version {\n        Version\n    }\n    pub fn check(&self) -> bool {\n        true\n    }\n}\n\npub fn flags(a: u32, b: u32, list: Vec<u32>) {\n    let v = Version::parse();\n    assert!(a | b > 0 && v.check());\n    assert!(list.iter().all(|x| *x > 0 && v.check()));\n    assert!(list.iter().all(|v| v.check()));\n    assert!(list.iter().map(move |v| v.check()).count() > 0);\n}\n",
+        });
+        expect(found.filter((l) => l.includes(" call ") && l.endsWith(":7"))).toEqual(["src/n.rs:14 call src/n.rs:7", "src/n.rs:15 call src/n.rs:7"]);
+        // A primitive type ends an operand: `x as u32 | 1` is a bitwise or.
+        const cast = await targets({ "src/c.rs": "pub struct Version;\n\nimpl Version {\n    pub fn flags(&self) -> u32 {\n        0\n    }\n}\n\npub fn mask(x: u8, v: Version) {\n    assert_eq!(x as u32 | 1, v.flags());\n}\n" });
+        expect(cast.filter((l) => l.includes(" call "))).toEqual(["src/c.rs:10 call src/c.rs:4"]);
     });
 });
