@@ -24,9 +24,9 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { nameRect, prCard, readAllOf } from "../src/lib/card.ts";
-import { planBoard, stringCrossings, stringPath, union, type BoardPlan, type PlannedString, type Point, type Rect } from "../src/lib/layout.ts";
+import { planBoard, stepsOf, stringCrossings, stringPath, union, type BoardPlan, type PlannedString, type Point, type Rect } from "../src/lib/layout.ts";
 import { MARKDOWN_CSS, lexMarkdown, markdownHtml, segments } from "../src/lib/markdown.ts";
-import { stepsOf, type Review } from "../src/lib/model.ts";
+import type { Review } from "../src/lib/model.ts";
 import { VIEW, overviewCamera, placeReadAll, stepCamera, type Camera, type Screen } from "../src/lib/view.ts";
 import { themeCss } from "../src/driver/channel.ts";
 import { reviewElements } from "../src/driver/elements.ts";
@@ -143,6 +143,8 @@ const baseView = (review: Review): Omit<PanelView, "phase"> => {
         hasPrevious: false,
         hasNext: false,
         card: null,
+        rebuildCost: null,
+        rebuilding: null,
     };
 };
 

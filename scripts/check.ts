@@ -5,15 +5,18 @@
  * 1. bundles src/index.ts with esbuild as one browser CommonJS file (ES2020),
  *    unminified, as the marketplace builds it;
  * 2. fails on any bare import other than `@drawdy/driver-protocol`;
- * 3. fails if the bundle reaches 1 MB;
+ * 3. fails if the bundle reaches 1 MB, or if the parser worker's script
+ *    (src/worker/script.ts) is behind its sources;
  * 4. boots the bundle in a fake Drawdy host, opens the panel, runs the
  *    generated webview in jsdom until it reports `ready`, then opens a saved
  *    pull request (honojs/hono#5513), its files and the parser's served by a
  *    fake fetch, and checks the investigation board: what is pinned in its
  *    one add call, the camera, the curved strings and their colours,
- *    stepping and Read all; then boots it again, as after a reload, and
- *    checks the board works with the panel never opened and nothing comes
- *    from jsDelivr; then checks a 32-card board's add payload stays small;
+ *    stepping, Read all and a rebuild. Node has no Worker, so the parser
+ *    worker's script runs on the driver's thread, as where no worker can
+ *    start. Then it boots the bundle again, as after a reload, and checks
+ *    the board works with the panel never opened and nothing comes from
+ *    jsDelivr; then checks a 32-card board's add payload stays small;
  * 5. packs dist/marketplace/<driver-id>.drawdyx (see `npm run preview`).
  *
  * Usage: node scripts/check.ts
@@ -32,6 +35,7 @@ import { fakeFetch } from "../src/test/fake-fetch.ts";
 import { fakeHost } from "../src/test/fake-host.ts";
 import { reviewOf } from "../src/test/fixture.ts";
 import { crowded } from "../src/test/synthetic.ts";
+import { SCRIPT_FILE, workerScriptFile } from "./worker.ts";
 
 const ROOT = join(import.meta.dirname, "..");
 const ALLOWED_IMPORTS = new Set(["@drawdy/driver-protocol"]);
@@ -68,6 +72,7 @@ const result = await build({
     target: "es2020",
     minify: false,
     write: false,
+    metafile: true,
     logLevel: "silent",
     plugins: [recordBareImports],
 });
@@ -78,6 +83,10 @@ const banned = [...bareImports].filter((name) => !ALLOWED_IMPORTS.has(name));
 expectThat(banned.length === 0, banned.length === 0 ? "imports only @drawdy/driver-protocol" : `imports outside the whitelist: ${banned.join(", ")}`);
 const bytes = Buffer.byteLength(code);
 expectThat(bytes < MAX_BUNDLE_BYTES, `bundle is ${(bytes / 1024).toFixed(1)} KB (limit 1 MB)`);
+expectThat(readFileSync(SCRIPT_FILE, "utf8") === (await workerScriptFile()), "the parser worker's script is current with its sources (npm run worker)");
+const inputs = Object.keys(result.metafile!.inputs);
+const parsing = ["src/lib/facts.ts", "src/lib/linker.ts", "src/lib/syntax.ts", "src/vendor/web-tree-sitter.ts"].filter((file) => inputs.some((input) => input.endsWith(file)));
+expectThat(parsing.length === 0, parsing.length === 0 ? "the parser and the linker reach the bundle only inside the worker's script" : `the driver imports the parser itself: ${parsing.join(", ")}`);
 
 // 4. Boot it the way Drawdy's host worker does.
 const net = fakeFetch("hono-5513.json");
@@ -158,6 +167,12 @@ try {
     expectThat(posted.includes("ready"), "webview script runs on its own and reports ready");
 
     expectThat(!host.calls.some((c) => c.type.includes("context-menu")), "registers no context menu");
+    const listing = readFileSync(join(ROOT, (JSON.parse(manifestText) as { icon: string }).icon));
+    const button = String(callsOf("command:dom:create-action-button")[0]?.req.svg ?? "");
+    expectThat(
+        listing.toString("latin1", 1, 4) === "PNG" && listing.readUInt32BE(16) === 512 && listing.readUInt32BE(20) === 512 && /^<svg[^>]* width="20" height="20"[^>]*><image href="data:image\/png;base64,/.test(button),
+        `the listing icon is a 512 px PNG, and the 20 px button draws its 64 px copy (${(button.length / 1024).toFixed(1)} KB)`
+    );
     const opening = host.calls.length;
     await tell({ type: "open", url: "https://github.com/honojs/hono/pull/5513" }, 3000);
     expectThat(jsdelivr() === 2 && kv.has("wasm:runtime") && kv.has("wasm:typescript"), `the first open downloads the runtime and the TypeScript grammar once, and keeps them (${jsdelivr()} jsDelivr requests)`);
@@ -296,6 +311,31 @@ try {
     const [toErrorId, toErrorEl] = [...host.elements].find(([, e]) => e.schema.type === "component" && e.schema.meta?.prBlackboard?.pin === "src/compose.ts:4")!;
     await click([toErrorId], { x: toErrorEl.rect.x + 40, y: toErrorEl.rect.y + 20 }, 80);
     expectThat(startShown && shown()?.phase === "ready" && shown()?.card?.name === "toError()", "Open another shows the start view and keeps the board; a click on toError() brings the reading view back");
+
+    // Rebuild: GitHub read again past the stored copy, the new board where the old PR card stands, then the old board's elements off.
+    const ours = () => [...host.elements].filter(([, e]) => e.schema.meta?.prBlackboard).map(([id]) => id);
+    const prCard = () => [...host.elements].find(([, e]) => e.schema.meta?.prBlackboard?.part === "pr")![1];
+    const oldIds = ours();
+    // The reader moved the PR card, and wrote a note of their own above it.
+    Object.assign(prCard().rect, { x: prCard().rect.x + 300, y: prCard().rect.y + 40 });
+    const corner = { x: prCard().rect.x, y: prCard().rect.y };
+    host.add({ type: "text", drawdyElementId: "readers-note", x: corner.x, y: corner.y - 120, text: "mine" });
+    const githubBefore = net.requests.filter((url) => url.startsWith("https://api.github.com/")).length;
+    const requestsBefore = net.requests.length;
+    const rebuilding = host.calls.length;
+    await tell({ type: "rebuild" }, 3000);
+    const swap = host.calls.slice(rebuilding).filter((c) => /^command:scene:(add|remove|update)-/.test(c.type));
+    const removed = new Set<string>(swap[1]?.req.drawdyElementIds ?? []);
+    const github = net.requests.filter((url) => url.startsWith("https://api.github.com/")).length - githubBefore;
+    expectThat(
+        swap.map((c) => c.type).join() === "command:scene:add-drawdy-elements,command:scene:remove-drawdy-elements" && removed.size === oldIds.length && oldIds.every((id) => removed.has(id)),
+        `Rebuild adds the new board, then removes the old one's ${oldIds.length} elements: two undo steps in DDP 1.3`
+    );
+    expectThat(github === 2 && jsdelivr(requestsBefore) === 0, `Rebuild reads GitHub again past the stored copy (${github} requests) and downloads no parser`);
+    expectThat(
+        prCard().rect.x === corner.x && prCard().rect.y === corner.y && host.elements.has("readers-note") && ours().length === oldIds.length && shown()?.card?.pin === "pr",
+        "the new PR card stands where the old one stood, the reader's own note stays, and the PR card is current"
+    );
 
     // A reload: the bundle starts again on the same board, and the panel is never opened.
     const beforeReload = net.requests.length;
