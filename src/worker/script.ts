@@ -113,7 +113,7 @@ export const WORKER_SCRIPT = `"use strict";
     const pr = async (ref) => {
       const raw2 = await getJson(repoPath(ref));
       const p = parse(pullShape, raw2);
-      if (!p) return fail({ kind: "http", status: 200 }, "GitHub returned a pull request PR Blackboard can't read");
+      if (!p) return fail({ kind: "http", status: 200 }, "PR Blackboard can't read the PR GitHub returned");
       const state = p.merged || p.merged_at ? "merged" : p.state === "closed" ? "closed" : p.draft ? "draft" : "open";
       return {
         ref,
@@ -6267,13 +6267,10 @@ export const WORKER_SCRIPT = `"use strict";
     return e && at2 === tokens.length ? e : null;
   };
   var all = (xs) => xs.reduce((a, b2) => a ? { op: "and", a, b: b2 } : b2, null);
-  var constraintCache = /* @__PURE__ */ new Map();
   var constraintOf = (path, text) => {
-    const key = \`\${path}
-\${text.length}\`;
-    if (constraintCache.has(key)) return constraintCache.get(key);
     const terms = [];
-    const name2 = (path.split("/").pop() ?? "").replace(/\\.go$/, "");
+    const base = path.split("/").pop() ?? "";
+    const name2 = base.includes(".") ? base.slice(0, base.indexOf(".")) : base;
     const under = name2.indexOf("_");
     if (under >= 0) {
       const l3 = name2.slice(under).split("_");
@@ -6296,9 +6293,12 @@ export const WORKER_SCRIPT = `"use strict";
         if (line) terms.push(line);
       }
     }
-    const out2 = unknown2 ? "unknown" : all(terms);
-    constraintCache.set(key, out2);
-    return out2;
+    return unknown2 ? "unknown" : all(terms);
+  };
+  var constraints = /* @__PURE__ */ new WeakMap();
+  var constraintOfFile = (f2) => {
+    if (!constraints.has(f2.flat)) constraints.set(f2.flat, constraintOf(f2.path, f2.flat.text));
+    return constraints.get(f2.flat);
   };
   var tagsOf = (e, out2 = /* @__PURE__ */ new Set()) => {
     if (e.op === "tag") out2.add(e.tag);
@@ -6330,20 +6330,20 @@ export const WORKER_SCRIPT = `"use strict";
     }
     return out2;
   };
-  var reachCache = /* @__PURE__ */ new Map();
+  var reachCache = /* @__PURE__ */ new WeakMap();
   var reaches = (from, to) => {
     if (from.path === to.path) return true;
-    const target = constraintOf(to.path, to.flat.text);
+    const target = constraintOfFile(to);
     if (target === null) return true;
-    const source = constraintOf(from.path, from.flat.text);
+    const source = constraintOfFile(from);
     if (target === "unknown" || source === "unknown") return false;
-    const key = \`\${from.path}
-\${to.path}\`;
-    let hit = reachCache.get(key);
+    let byTarget = reachCache.get(from.flat);
+    if (!byTarget) reachCache.set(from.flat, byTarget = /* @__PURE__ */ new WeakMap());
+    let hit = byTarget.get(to.flat);
     if (hit === void 0) {
       const envs = builds(source ? [source, target] : [target]);
       hit = envs !== null && envs.every((env) => (source ? !holds(source, env) : false) || holds(target, env));
-      reachCache.set(key, hit);
+      byTarget.set(to.flat, hit);
     }
     return hit;
   };
@@ -6467,8 +6467,8 @@ export const WORKER_SCRIPT = `"use strict";
       if (ty === "import_statement") {
         for (const c of namedChildren(t, n)) {
           if (t.type[c] === "dotted_name") {
-            const first = ids(c)[0];
-            if (first !== void 0) out2.push({ local: textOf(t, first), spec: textOf(t, first), level: 0, name: null, node: -1, bind: first, stmt: n });
+            const first2 = ids(c)[0];
+            if (first2 !== void 0) out2.push({ local: textOf(t, first2), spec: textOf(t, first2), level: 0, name: null, node: -1, bind: first2, stmt: n });
           } else if (t.type[c] === "aliased_import") {
             const alias = child(t, c, "alias");
             out2.push({ local: textOf(t, alias), spec: flat(child(t, c, "name")), level: 0, name: null, node: -1, bind: alias, stmt: n });
@@ -6498,7 +6498,15 @@ export const WORKER_SCRIPT = `"use strict";
         }
       }
     }
+    const first = firstPathChange(t);
+    if (first >= 0) {
+      for (const i2 of out2) if (i2.level === 0 && (t.start[i2.stmt] > first || inFunction(t, i2.stmt))) i2.unproven = true;
+    }
     return out2;
+  };
+  var inFunction = (t, n) => {
+    for (let x2 = t.parent[n]; x2 >= 0; x2 = t.parent[x2]) if (t.type[x2] === "function_definition" || t.type[x2] === "lambda") return true;
+    return false;
   };
   var importCache2 = /* @__PURE__ */ new WeakMap();
   var imports2 = (t) => {
@@ -6802,6 +6810,40 @@ export const WORKER_SCRIPT = `"use strict";
   var BUILTINS = new Set(
     "abs all any ascii bin bool breakpoint bytearray bytes callable chr classmethod compile complex delattr dict dir divmod enumerate eval exec filter float format frozenset getattr globals hasattr hash help hex id input int isinstance issubclass iter len list locals map max memoryview min next object oct open ord pow print property range repr reversed round set setattr slice sorted staticmethod str sum super tuple type vars zip __import__ NotImplemented Ellipsis None True False".split(" ")
   );
+  var deferring = /* @__PURE__ */ new WeakMap();
+  var defersAnnotations = (t) => {
+    let hit = deferring.get(t);
+    if (hit === void 0) {
+      hit = false;
+      for (let n = 0; n < t.count && !hit; n++) if (t.type[n] === "future_import_statement" && /\\bannotations\\b/.test(textOf(t, n))) hit = true;
+      deferring.set(t, hit);
+    }
+    return hit;
+  };
+  var inClassAnnotation = (t, n) => {
+    let x2 = n;
+    while (x2 >= 0 && !(t.type[x2] === "type" && t.field[x2] === "type" && t.type[t.parent[x2]] === "assignment")) {
+      if (t.type[x2] === "function_definition" || t.type[x2] === "lambda" || t.type[x2] === "class_definition" || t.type[x2] === "block") return false;
+      x2 = t.parent[x2];
+    }
+    const stmt = x2 >= 0 ? t.parent[t.parent[x2]] : -1;
+    const block = stmt >= 0 ? t.parent[stmt] : -1;
+    return stmt >= 0 && t.type[stmt] === "expression_statement" && block >= 0 && t.type[block] === "block" && t.type[t.parent[block]] === "class_definition";
+  };
+  var inMethodAnnotation = (t, n) => {
+    let x2 = n;
+    while (x2 >= 0 && t.type[x2] !== "type") {
+      if (t.type[x2] === "function_definition" || t.type[x2] === "lambda" || t.type[x2] === "class_definition" || t.type[x2] === "block") return false;
+      x2 = t.parent[x2];
+    }
+    if (x2 < 0) return false;
+    const p = t.parent[x2];
+    const fn = t.type[p] === "function_definition" && t.field[x2] === "return_type" ? p : (t.type[p] === "typed_parameter" || t.type[p] === "typed_default_parameter") && t.field[x2] === "type" ? t.parent[t.parent[p]] : -1;
+    if (fn < 0 || t.type[fn] !== "function_definition") return false;
+    let up = t.parent[fn];
+    if (up >= 0 && t.type[up] === "decorated_definition") up = t.parent[up];
+    return up >= 0 && t.type[up] === "block" && t.type[t.parent[up]] === "class_definition";
+  };
   var PYTHON_TYPING = {
     hint: hint2,
     typeName: typeName2,
@@ -6813,7 +6855,10 @@ export const WORKER_SCRIPT = `"use strict";
     mro: true,
     builtins: BUILTINS,
     selfClass,
-    starNames
+    starNames,
+    // Deferred, a class body's annotation is read once the body ran (Python 3.14 defers them all, so without the future import the version decides).
+    // A method's annotations, deferred, are read in the module (\`get_type_hints\`) or the class (type checkers): a class binding below them names nothing sure.
+    deferredAnnotation: (t, n) => inClassAnnotation(t, n) ? defersAnnotations(t) ? "deferred" : "unknown" : inMethodAnnotation(t, n) ? "unknown" : null
   };
   var STDLIB = new Set(
     "__future__ abc aifc annotationlib antigravity argparse array ast asynchat asyncio asyncore atexit audioop base64 bdb binascii bisect builtins bz2 cProfile calendar cgi cgitb chunk cmath cmd code codecs codeop collections colorsys compileall compression concurrent configparser contextlib contextvars copy copyreg crypt csv ctypes curses dataclasses datetime dbm decimal difflib dis distutils doctest email encodings ensurepip enum errno faulthandler fcntl filecmp fileinput fnmatch fractions ftplib functools gc genericpath getopt getpass gettext glob graphlib grp gzip hashlib heapq hmac html http idlelib imaplib imghdr imp importlib inspect io ipaddress itertools json keyword lib2to3 linecache locale logging lzma mailbox mailcap marshal math mimetypes mmap modulefinder msilib msvcrt multiprocessing netrc nis nntplib nt ntpath nturl2path numbers opcode operator optparse os ossaudiodev pathlib pdb pickle pickletools pipes pkgutil platform plistlib poplib posix posixpath pprint profile pstats pty pwd py_compile pyclbr pydoc pydoc_data pyexpat queue quopri random re readline reprlib resource rlcompleter runpy sched secrets select selectors shelve shlex shutil signal site smtpd smtplib sndhdr socket socketserver spwd sqlite3 sre_compile sre_constants sre_parse ssl stat statistics string stringprep struct subprocess sunau symtable sys sysconfig syslog tabnanny tarfile telnetlib tempfile termios textwrap this threading time timeit tkinter token tokenize tomllib trace traceback tracemalloc tty turtle turtledemo types typing unicodedata unittest urllib uu uuid venv warnings wave weakref webbrowser winreg winsound wsgiref xdrlib xml xmlrpc zipapp zipfile zipimport zlib zoneinfo".split(" ")
@@ -6829,13 +6874,23 @@ export const WORKER_SCRIPT = `"use strict";
     let hit = layouts.get(ctx);
     if (hit) return hit;
     const known = new Set(ctx.known);
-    const exists = (path) => known.has(path) || ctx.text(path) !== void 0;
-    const isPackage = (d) => d.length > 0 && exists([...d, "__init__.py"].join("/"));
+    const exists = (path) => known.has(path) || ctx.text(path) !== void 0 || ctx.exists?.(path) === true;
+    const missing = (path) => ctx.exists ? ctx.exists(path) === false : !exists(path);
+    const isPackage = (d) => {
+      if (d.length === 0) return false;
+      const marker = [...d, "__init__.py"].join("/");
+      return exists(marker) ? true : missing(marker) ? false : void 0;
+    };
     const rootOf = (dir) => {
-      if (!isPackage(dir)) return dir.join("/");
+      const here = isPackage(dir);
+      if (here !== true) return here === false ? dir.join("/") : null;
       let top = dir;
-      while (isPackage(top.slice(0, -1))) top = top.slice(0, -1);
-      return top.slice(0, -1).join("/");
+      for (; ; ) {
+        const above = isPackage(top.slice(0, -1));
+        if (above === void 0) return null;
+        if (!above) return top.slice(0, -1).join("/");
+        top = top.slice(0, -1);
+      }
     };
     const sourceRoots = /* @__PURE__ */ new Set();
     const shown = /* @__PURE__ */ new Set();
@@ -6845,13 +6900,107 @@ export const WORKER_SCRIPT = `"use strict";
       if (!path.endsWith(".py")) continue;
       shown.add(path.slice(0, -3));
       const dir = segs.slice(0, -1);
-      if (isPackage(dir)) sourceRoots.add(rootOf(dir));
+      const root = isPackage(dir) ? rootOf(dir) : null;
+      if (root !== null) sourceRoots.add(root);
     }
     if ([...known].some((p) => p.startsWith("src/"))) sourceRoots.add("src");
     sourceRoots.delete("");
-    hit = { exists, rootOf, sourceRoots: [...sourceRoots].sort(), shown };
+    hit = { exists, missing, rootOf, sourceRoots: [...sourceRoots].sort(), shown };
     layouts.set(ctx, hit);
     return hit;
+  };
+  var READERS = new Set("print len list tuple sorted str repr any all enumerate iter set frozenset reversed id type isinstance".split(" "));
+  var firstPathChange = (t) => {
+    let hidden;
+    const namesHidden = () => {
+      if (hidden === void 0) {
+        hidden = false;
+        for (let x2 = 0; x2 < t.count && !hidden; x2++) {
+          if (t.type[x2] === "wildcard_import") hidden = true;
+          else if (t.type[x2] === "call") {
+            const f2 = child(t, x2, "function");
+            if (f2 >= 0 && t.type[f2] === "identifier" && /^(?:globals|vars|setattr)$/.test(textOf(t, f2))) hidden = true;
+          }
+        }
+      }
+      return hidden;
+    };
+    const calledOnly = /* @__PURE__ */ new Map();
+    const reads = (fn) => {
+      if (fn < 0 || t.type[fn] !== "identifier" || !READERS.has(textOf(t, fn)) || namesHidden()) return false;
+      const name2 = textOf(t, fn);
+      let hit = calledOnly.get(name2);
+      if (hit === void 0) {
+        hit = true;
+        for (let x2 = 0; x2 < t.count && hit; x2++) if (t.type[x2] === "identifier" && textOf(t, x2) === name2 && !(t.type[t.parent[x2]] === "call" && t.field[x2] === "function")) hit = false;
+        calledOnly.set(name2, hit);
+      }
+      return hit;
+    };
+    const sysNames = /* @__PURE__ */ new Set(["sys"]);
+    const siteNames = /* @__PURE__ */ new Set(["site"]);
+    const pathNames = /* @__PURE__ */ new Set();
+    for (let n = 0; n < t.count; n++) {
+      if (t.type[n] === "import_statement") {
+        for (const c of namedChildren(t, n)) {
+          if (t.type[c] !== "aliased_import") continue;
+          const name2 = textOf(t, child(t, c, "name")).replace(/\\s+/g, "");
+          if (name2 === "sys") sysNames.add(textOf(t, child(t, c, "alias")));
+          if (name2 === "site") siteNames.add(textOf(t, child(t, c, "alias")));
+        }
+      } else if (t.type[n] === "import_from_statement") {
+        const mod = child(t, n, "module_name");
+        const from = mod >= 0 ? textOf(t, mod).replace(/\\s+/g, "") : "";
+        for (const c of namedChildren(t, n)) {
+          if (c === mod) continue;
+          const name2 = t.type[c] === "aliased_import" ? textOf(t, child(t, c, "name")) : t.type[c] === "dotted_name" ? textOf(t, c) : null;
+          const local = t.type[c] === "aliased_import" ? textOf(t, child(t, c, "alias")) : name2;
+          if (from === "sys" && (t.type[c] === "wildcard_import" || name2 === "path")) pathNames.add(local ?? "path");
+          if (name2 === "sys" && local) sysNames.add(local);
+          if (name2 === "site" && local) siteNames.add(local);
+        }
+      }
+    }
+    const isSys = (e) => e >= 0 && (t.type[e] === "identifier" && sysNames.has(textOf(t, e)) || t.type[e] === "attribute" && textOf(t, child(t, e, "attribute")) === "sys");
+    const isSysPath = (e) => e >= 0 && t.type[e] === "attribute" && isSys(child(t, e, "object")) && textOf(t, child(t, e, "attribute")) === "path";
+    const isPath = (e) => isSysPath(e) || e >= 0 && t.type[e] === "identifier" && pathNames.has(textOf(t, e));
+    for (let grew = true; grew; ) {
+      grew = false;
+      for (let n = 0; n < t.count; n++) {
+        if (t.type[n] !== "assignment") continue;
+        const left = child(t, n, "left");
+        if (left >= 0 && t.type[left] === "identifier" && !pathNames.has(textOf(t, left)) && isPath(child(t, n, "right"))) {
+          pathNames.add(textOf(t, left));
+          grew = true;
+        }
+      }
+    }
+    let first = -1;
+    const found = (n) => {
+      if (first < 0 || t.start[n] < first) first = t.start[n];
+    };
+    for (let n = 0; n < t.count; n++) {
+      const ty = t.type[n];
+      if (ty === "call") {
+        const fn = child(t, n, "function");
+        const obj = fn >= 0 && t.type[fn] === "attribute" ? child(t, fn, "object") : -1;
+        const attr = fn >= 0 && t.type[fn] === "attribute" ? textOf(t, child(t, fn, "attribute")) : "";
+        const args2 = child(t, n, "arguments");
+        const passed = args2 >= 0 && namedChildren(t, args2).some((a) => isPath(a) || (t.type[a] === "keyword_argument" || t.type[a] === "list_splat" || t.type[a] === "parenthesized_expression") && namedChildren(t, a).some(isPath));
+        if (isPath(obj) || passed && !reads(fn) || attr === "addsitedir" && t.type[obj] === "identifier" && siteNames.has(textOf(t, obj))) found(n);
+      } else if (ty === "assignment" || ty === "augmented_assignment") {
+        const left = child(t, n, "left");
+        if (isSysPath(left) || ty === "augmented_assignment" && isPath(left) || left >= 0 && t.type[left] === "subscript" && isPath(child(t, left, "value"))) found(n);
+      } else if (ty === "delete_statement") {
+        for (let x2 = n + 1; x2 < t.count && t.start[x2] < t.end[n]; x2++) {
+          if (isSysPath(x2) || t.type[x2] === "subscript" && isPath(child(t, x2, "value"))) {
+            found(n);
+            break;
+          }
+        }
+      }
+    }
+    return first;
   };
   var filesUnder = (root, parts2) => {
     const base = [...root ? [root] : [], ...parts2].join("/");
@@ -6866,8 +7015,15 @@ export const WORKER_SCRIPT = `"use strict";
     }
     if (parts2.length === 0 || STDLIB.has(parts2[0])) return [];
     const layout = layoutOf(ctx);
-    const found = [.../* @__PURE__ */ new Set([layout.rootOf(dir), "", ...layout.sourceRoots])].map((root) => filesUnder(root, parts2)).filter((files) => files.some(layout.exists));
-    return found.length === 1 ? found[0].filter(layout.exists) : [];
+    const own = layout.rootOf(dir);
+    if (own === null) return [];
+    const held = [];
+    for (const root of /* @__PURE__ */ new Set([own, "", ...layout.sourceRoots])) {
+      const files = filesUnder(root, parts2);
+      if (files.some(layout.exists)) held.push(files.filter(layout.exists));
+      else if (!files.every(layout.missing) && !(parts2.length > 1 && filesUnder(root, parts2.slice(0, 1)).every(layout.missing))) return [];
+    }
+    return held.length === 1 ? held[0] : [];
   };
   var pythonModuleTries = (from, spec, level, ctx) => {
     if (level > 0) return [{ files: pythonModuleFiles(from, spec, level, ctx) }];
@@ -6875,7 +7031,7 @@ export const WORKER_SCRIPT = `"use strict";
     const parts2 = spec ? spec.split(".") : [];
     if (parts2.length === 0 || STDLIB.has(parts2[0])) return [];
     const layout = layoutOf(ctx);
-    const roots = [.../* @__PURE__ */ new Set([layout.rootOf(dir), "", ...layout.sourceRoots])];
+    const roots = [.../* @__PURE__ */ new Set([layout.rootOf(dir) ?? "", "", ...layout.sourceRoots])];
     const under = (root, names) => [...root ? [root] : [], ...names].join("/");
     if (!roots.some((root) => layout.shown.has(under(root, parts2.slice(0, 1))))) return [];
     const likely = (root, names) => {
@@ -6918,6 +7074,15 @@ export const WORKER_SCRIPT = `"use strict";
     return name2 >= 0 && EXPRESSION_MACROS.has(textOf(t, name2)) ? m2 : -1;
   };
   var opensCall = (t, n) => n >= 0 && t.type[n] === "token_tree" && t.text[t.start[n]] === "(";
+  var KEYWORDS2 = new Set("as async await break const continue dyn else enum extern fn for if impl in let loop match mod move mut pub ref return static struct trait type unsafe use where while yield box try macro".split(" "));
+  var endsOperand = (t, prev) => {
+    if (prev < 0) return false;
+    const ty = t.type[prev];
+    const before = previous(t, prev);
+    if (ty === "identifier") return !KEYWORDS2.has(textOf(t, prev)) && !(before >= 0 && t.type[before] === "'");
+    if (ty === "token_tree") return t.text[t.start[prev]] === "(" || t.text[t.start[prev]] === "[" && !(before >= 0 && t.type[before] === "#");
+    return ty === "?" || ty === "self" || ty === "super" || ty === "crate" || ty === "primitive_type" || ty.endsWith("_literal");
+  };
   var boundCache = /* @__PURE__ */ new WeakMap();
   var macroBound = (t, macro) => {
     let byMacro = boundCache.get(t);
@@ -6930,22 +7095,35 @@ export const WORKER_SCRIPT = `"use strict";
       let pipes = 0;
       let binding = false;
       let commas = 0;
+      let arm = mode === "arms";
+      let armBody = false;
+      let matchArms = false;
       for (let c = t.first[tree], prev = -1, prev2 = -1; c >= 0; prev2 = prev, prev = c, c = t.next[c]) {
         const ty = t.type[c];
-        const inPattern = mode === "pattern" || mode === "matches" && commas > 0;
+        const inPattern = mode === "pattern" || mode === "matches" && commas > 0 || pipes % 2 === 1 || binding || arm;
         if (ty === "token_tree") {
           const matches = prev >= 0 && t.type[prev] === "!" && prev2 >= 0 && t.type[prev2] === "identifier" && textOf(t, prev2) === "matches";
-          walk(c, inPattern ? "pattern" : matches ? "matches" : "expr");
+          const braces = t.text[t.start[c]] === "{";
+          if (inPattern) walk(c, "pattern");
+          else if (matchArms && braces) walk(c, "arms");
+          else walk(c, matches ? "matches" : "expr");
+          if (matchArms && braces) matchArms = false;
+          else if (armBody && braces && prev >= 0 && t.type[prev] === "=>") armBody = false, arm = true;
           continue;
         }
-        if (ty === "|") pipes++;
-        else if (ty === ",") commas++;
-        if (ty === "let") binding = true;
-        else if (ty === "=" || ty === ";") binding = false;
+        if (ty === "|" && (pipes % 2 === 1 || !endsOperand(t, prev))) pipes++;
+        else if (ty === ",") {
+          commas++;
+          if (mode === "arms" && armBody) armBody = false, arm = true;
+        }
+        if (ty === "let" || ty === "for") binding = true;
+        else if (ty === "=" || ty === ";" || ty === "identifier" && binding && textOf(t, c) === "in") binding = false;
+        if (ty === "match") matchArms = true;
+        if (ty === "=>" && mode === "arms") arm = false, armBody = true;
         if (ty !== "identifier") continue;
         const next = t.next[c];
         const named = next >= 0 && t.type[next] === "=" && !(t.next[next] >= 0 && t.type[t.next[next]] === "=");
-        if (pipes % 2 === 1 || binding || named || inPattern) bound.add(textOf(t, c));
+        if (inPattern || named) bound.add(textOf(t, c));
       }
     };
     const tokens = namedChildren(t, macro).find((c) => t.type[c] === "token_tree");
@@ -7274,9 +7452,38 @@ export const WORKER_SCRIPT = `"use strict";
   var PRELUDE = new Set(
     "Some None Ok Err Box Vec String Option Result drop Default Clone Copy Send Sync Sized ToString ToOwned Into From Iterator IntoIterator Fn FnMut FnOnce Drop PartialEq Eq PartialOrd Ord AsRef AsMut Debug std core alloc".split(" ")
   );
-  var STD_BY_VALUE = "into into_iter try_into map filter filter_map flat_map flatten take skip take_while skip_while map_while step_by chain zip enumerate peekable rev cloned copied cycle fuse inspect scan count last sum product fold reduce for_each collect partition unzip max min max_by max_by_key min_by min_by_key clamp add sub mul div rem neg not bitand bitor bitxor shl shr".split(" ");
-  var byValueNames = (files) => {
-    const out2 = new Set(STD_BY_VALUE);
+  var modeOf = (t, fn) => {
+    for (const p of namedChildren(t, child(t, fn, "parameters"))) {
+      if (t.type[p] === "self_parameter") {
+        let ref = false;
+        let mut = false;
+        for (let c = t.first[p]; c >= 0; c = t.next[c]) {
+          if (t.type[c] === "&") ref = true;
+          else if (t.type[c] === "mutable_specifier") mut = true;
+        }
+        return ref ? mut ? "mut" : "ref" : "value";
+      }
+      if (t.type[p] !== "parameter" || !namedChildren(t, p).some((c) => t.type[c] === "self")) continue;
+      const type = child(t, p, "type");
+      if (type >= 0 && textOf(t, type) === "Self") return "value";
+      if (type >= 0 && t.type[type] === "reference_type" && textOf(t, child(t, type, "type")) === "Self") return namedChildren(t, type).some((c) => t.type[c] === "mutable_specifier") ? "mut" : "ref";
+      return "other";
+    }
+    return null;
+  };
+  var STD_MODES = {
+    value: "into into_iter try_into into_future map filter filter_map flat_map flatten take skip take_while skip_while map_while step_by chain zip enumerate peekable rev cloned copied cycle fuse inspect scan count last sum product fold rfold reduce try_reduce for_each collect try_collect collect_into partition is_partitioned unzip max min max_by max_by_key min_by min_by_key clamp cmp partial_cmp eq ne lt le gt ge cmp_by partial_cmp_by eq_by is_sorted is_sorted_by is_sorted_by_key array_chunks map_windows intersperse intersperse_with bytes lines split add sub mul div rem neg not bitand bitor bitxor shl shr",
+    mut: "write write_all write_vectored write_all_vectored write_fmt flush by_ref read read_vectored read_to_end read_to_string read_exact read_buf read_buf_exact fill_buf consume read_until read_line skip_until has_data_left seek rewind stream_position stream_len seek_relative next nth all any find find_map position rposition try_fold try_for_each try_find advance_by next_chunk next_back nth_back rfind try_rfold advance_back_by write_u8 write_u16 write_u32 write_u64 write_u128 write_usize write_i8 write_i16 write_i32 write_i64 write_i128 write_isize write_length_prefix write_str write_char extend extend_one extend_reserve add_assign sub_assign mul_assign div_assign rem_assign bitand_assign bitor_assign bitxor_assign shl_assign shr_assign deref_mut as_mut borrow_mut index_mut clone_from call_mut",
+    ref: "clone to_string to_owned fmt eq ne partial_cmp lt le gt ge cmp hash deref as_ref borrow index size_hint len is_empty source description cause type_id finish build_hasher hash_one call provide"
+  };
+  var traitModes = (files) => {
+    const out2 = /* @__PURE__ */ new Map();
+    const add = (name2, mode) => {
+      const modes = out2.get(name2);
+      if (modes) modes.add(mode);
+      else out2.set(name2, /* @__PURE__ */ new Set([mode]));
+    };
+    for (const [mode, names] of Object.entries(STD_MODES)) for (const name2 of names.split(" ")) add(name2, mode);
     for (const f2 of files) {
       const t = f2.flat;
       for (let n = 0; n < t.count; n++) {
@@ -7284,15 +7491,44 @@ export const WORKER_SCRIPT = `"use strict";
         const list = t.parent[n];
         const owner = list >= 0 && t.type[list] === "declaration_list" ? t.parent[list] : -1;
         if (owner < 0 || !(t.type[owner] === "trait_item" || t.type[owner] === "impl_item" && child(t, owner, "trait") >= 0)) continue;
-        const self2 = namedChildren(t, child(t, n, "parameters")).find((c) => t.type[c] === "self_parameter");
-        if (self2 !== void 0 && !textOf(t, self2).startsWith("&")) out2.add(textOf(t, child(t, n, "name")));
+        const mode = modeOf(t, n);
+        if (mode) add(textOf(t, child(t, n, "name")), mode);
       }
     }
     return out2;
   };
-  var takesRef = (t, n) => {
-    const self2 = namedChildren(t, child(t, n, "parameters")).find((c) => t.type[c] === "self_parameter");
-    return self2 !== void 0 && textOf(t, self2).startsWith("&");
+  var ALL = ["value", "ref", "mut"];
+  var FIRST = {
+    value: { value: [], ref: ["value"], mut: ["value", "ref"] },
+    ref: { value: ["ref"], ref: [], mut: ["ref", "value"] },
+    mut: { value: ["mut"], ref: ["mut", "value"], mut: [] },
+    any: { value: ["ref", "mut"], ref: ["value", "mut"], mut: ["value", "ref"] },
+    other: { value: ALL, ref: ALL, mut: ALL }
+  };
+  var typeMode = (t, type) => {
+    switch (t.type[type]) {
+      case "reference_type": {
+        const inner = child(t, type, "type");
+        if (inner >= 0 && t.type[inner] === "reference_type") return "other";
+        return namedChildren(t, type).some((c) => t.type[c] === "mutable_specifier") ? "mut" : "ref";
+      }
+      case "type_identifier":
+      case "scoped_type_identifier":
+      case "generic_type":
+        return "value";
+      case "pointer_type":
+        return "other";
+      default:
+        return "any";
+    }
+  };
+  var receiverKind = (t, n, declared) => {
+    if (n >= 0 && (t.type[n] === "self" || t.type[n] === "identifier" && textOf(t, n) === "self")) {
+      let fn = t.parent[n];
+      while (fn >= 0 && t.type[fn] !== "function_item") fn = t.parent[fn];
+      return (fn >= 0 ? modeOf(t, fn) : null) ?? "any";
+    }
+    return declared >= 0 ? typeMode(t, declared) : "any";
   };
   var selfClass2 = (t, n) => {
     for (let x2 = t.parent[n]; x2 >= 0; x2 = t.parent[x2]) {
@@ -7322,15 +7558,14 @@ export const WORKER_SCRIPT = `"use strict";
     typeOnly: (t, n) => (t.type[t.parent[n]] === "scoped_identifier" || t.type[t.parent[n]] === "scoped_type_identifier") && t.field[n] === "path",
     builtins: PRELUDE,
     selfClass: selfClass2,
-    takesRef,
-    // \`self\` in a method that takes \`&self\` or \`&mut self\` is a reference.
-    receiverIsRef: (t, n) => {
-      if (n < 0 || t.type[n] !== "self") return false;
-      let fn = t.parent[n];
-      while (fn >= 0 && t.type[fn] !== "function_item") fn = t.parent[fn];
-      return fn >= 0 && takesRef(t, fn);
-    },
-    byValueNames
+    traitModes,
+    // A trait method of the name whose mode the probe tries first wins; one taking \`self\` as another type might.
+    shadowed: (call, receiver, declared, method, unitNode, modes) => {
+      const mode = modeOf(method, unitNode);
+      if (mode === null) return false;
+      if (mode === "other" || modes.has("other")) return modes.size > 0;
+      return FIRST[receiverKind(call, receiver, declared)][mode].some((m2) => modes.has(m2));
+    }
   };
   var RUST_RESOLVER = { typing: RUST_TYPING, moduleFiles: () => [] };
 
@@ -7360,7 +7595,7 @@ export const WORKER_SCRIPT = `"use strict";
     if (values) values.push(value);
     else map.set(key, [value]);
   };
-  var createProgram = (files, langOf2, text) => {
+  var createProgram = (files, langOf2, text, exists) => {
     const typing = (f2) => langOf2(f2).typing;
     const byPath = new Map(files.map((f2) => [f2.path, f2]));
     const pkgOf = new Map(files.map((f2) => [f2, typing(f2).packageKey?.(f2.path, f2.flat) ?? null]));
@@ -7452,6 +7687,7 @@ export const WORKER_SCRIPT = `"use strict";
       if (depth > MAX_DEPTH) return NONE("too deep");
       const found = [];
       for (const i2 of starsIn(f2.module)) {
+        if (i2.unproven) return NONE("sys.path may have moved");
         const mods = moduleOf(f2, i2.spec, i2.level);
         if (mods.length === 0) return NONE("star import not read");
         for (const m2 of mods) {
@@ -7505,7 +7741,7 @@ export const WORKER_SCRIPT = `"use strict";
       return NONE(uniq.length > 1 ? "several in package" : "not in package files read");
     };
     const modules = /* @__PURE__ */ new Map();
-    const lookupContext = { known: [...byPath.keys()], text };
+    const lookupContext = { known: [...byPath.keys()], text, ...exists ? { exists } : {} };
     const moduleOf = (from, spec, level) => {
       const key = \`\${from.path}
 \${spec}
@@ -7524,6 +7760,7 @@ export const WORKER_SCRIPT = `"use strict";
     const ownNamed = (mods, name2) => mods.length > 0 && mods.every((g) => typing(g).ownName?.(g.flat) === name2);
     const importVal = (f2, imp, depth) => {
       if (depth > MAX_DEPTH) return NONE("import chain too deep");
+      if (imp.unproven) return NONE("sys.path may have moved");
       const mods = moduleOf(f2, imp.spec, imp.level);
       if (imp.implicit && !ownNamed(mods, imp.local)) return NONE("the module's own name differs");
       if (imp.name === null) return mods.length > 0 ? { kind: "module", files: mods, spec: imp.spec } : NONE(\`module \${imp.spec} not read\`);
@@ -7539,6 +7776,21 @@ export const WORKER_SCRIPT = `"use strict";
       if (found.length === 1 && sub.length === 0) return found[0];
       if (found.length === 0 && sub.length > 0) return { kind: "module", files: sub, spec: \`\${imp.spec}.\${imp.name}\` };
       return NONE(found.length + sub.length === 0 ? \`import \${imp.spec}:\${imp.name} not read\` : "import ambiguous");
+    };
+    const nameVal = (f2, scope, name2, node, at2, depth) => {
+      const deferred = scope.kind === "class" ? typing(f2).deferredAnnotation?.(f2.flat, node) : null;
+      const later = deferred && scope.names.get(name2)?.some((b2) => b2.from !== void 0 && b2.from > at2);
+      if (later && deferred === "unknown") return NONE("an annotation the Python version reads");
+      return lookup2(f2, scope, name2, depth, later ? Number.MAX_SAFE_INTEGER : at2);
+    };
+    const bindingAt = (scope, name2, at2) => {
+      for (let s = scope; s; s = s.parent) {
+        if (s.kind === "class" && s !== scope) continue;
+        const named = s.names.get(name2);
+        const bs = named?.some((b2) => b2.from !== void 0) ? named.filter((b2) => b2.from === void 0 || b2.from <= at2) : named;
+        if (bs && bs.length > 0) return bs.length === 1 ? bs[0] : null;
+      }
+      return null;
     };
     const lookup2 = (f2, scope, name2, depth, at2) => {
       for (let s = scope; s; s = s.parent) {
@@ -7586,7 +7838,7 @@ export const WORKER_SCRIPT = `"use strict";
         return b2.kind === "self" ? { kind: "instance", key: selfKey(f2, cls) } : { kind: "class", key: selfKey(f2, cls) };
       }
       if (b2.typeNode !== void 0) {
-        const key = typeKey(f2, b2.typeNode, b2.scope, depth + 1);
+        const key = typeKey(f2, b2.typeNode, scopeAround(f2, b2.typeNode), depth + 1);
         return key ? { kind: "instance", key } : NONE("type not resolved");
       }
       if (b2.init !== void 0) {
@@ -7620,7 +7872,7 @@ export const WORKER_SCRIPT = `"use strict";
         const pk = q2.files.map((g) => pkgOf.get(g)).find((k2) => k2);
         return pk ? \`\${pk}#\${tn.name}\` : null;
       }
-      const v2 = tn.kind === "name" ? lookup2(f2, scope, textOf(f2.flat, tn.node), depth + 1, f2.flat.start[tn.node]) : memberVal(exprVal(f2, tn.qualifier, scope, depth + 1), tn.name, depth + 1);
+      const v2 = tn.kind === "name" ? nameVal(f2, scope, textOf(f2.flat, tn.node), tn.node, f2.flat.start[tn.node], depth + 1) : memberVal(exprVal(f2, tn.qualifier, scope, depth + 1), tn.name, depth + 1);
       if (v2.kind === "class") return v2.key;
       if (v2.kind === "units" && v2.units.length === 1 && CLASSY.has(v2.units[0].kind)) return keyOfTypeUnit(v2.units[0]);
       if (tn.kind === "name" && typing(f2).moduleNameKeys && v2.kind === "none") return moduleNameKey(f2, scope, textOf(f2.flat, tn.node));
@@ -7792,20 +8044,25 @@ export const WORKER_SCRIPT = `"use strict";
         if (!at2) importAt.set(f2, at2 = new Map(f2.imports.map((i2) => [i2.node, i2])));
         const imp = at2.get(s.node);
         v2 = imp ? importVal(f2, imp, 0) : NONE("import");
-      } else v2 = s.shape === "bare" ? lookup2(f2, s.scope, s.name, 0, s.start) : memberVal(exprVal(f2, s.receiver, s.scope, 0), s.name, 0);
+      } else v2 = s.shape === "bare" ? nameVal(f2, s.scope, s.name, s.node, s.start, 0) : memberVal(exprVal(f2, s.receiver, s.scope, 0), s.name, 0);
       if (v2.kind !== "units") return [];
       const ty = typing(f2);
       const units = ty.reaches ? v2.units.filter((u) => ty.reaches(f2, fileOfUnit.get(u.id))) : v2.units;
       if (s.shape === "member" && s.ref !== "call" && ty.memberIsField?.(f2.flat, s.node)) return units.filter((u) => u.kind !== "function" && u.kind !== "method");
       if (ty.typeOnly?.(f2.flat, s.node)) return units.filter((u) => CLASSY.has(u.kind) || u.kind === "namespace");
-      if (s.shape === "member" && byValue(f2).has(s.name) && !ty.receiverIsRef?.(f2.flat, s.receiver)) return units.filter((u) => !typing(fileOfUnit.get(u.id)).takesRef?.(fileOfUnit.get(u.id).flat, u.node));
+      const modes = s.shape === "member" && ty.shadowed ? traitModesOf(f2).get(s.name) : void 0;
+      if (modes) {
+        const r = s.receiver;
+        const declared = r >= 0 && f2.flat.type[r] === "identifier" ? bindingAt(s.scope, textOf(f2.flat, r), f2.flat.start[r])?.typeNode ?? -1 : -1;
+        return units.filter((u) => !ty.shadowed(f2.flat, r, declared, fileOfUnit.get(u.id).flat, u.node, modes));
+      }
       return units;
     };
-    const byValueSets = /* @__PURE__ */ new Map();
-    const byValue = (f2) => {
+    const modeMaps = /* @__PURE__ */ new Map();
+    const traitModesOf = (f2) => {
       const ty = typing(f2);
-      let hit = byValueSets.get(ty);
-      if (!hit) byValueSets.set(ty, hit = ty.byValueNames?.(files.filter((g) => typing(g) === ty)) ?? /* @__PURE__ */ new Set());
+      let hit = modeMaps.get(ty);
+      if (!hit) modeMaps.set(ty, hit = ty.traitModes?.(files.filter((g) => typing(g) === ty)) ?? /* @__PURE__ */ new Map());
       return hit;
     };
     const ownerKeys = /* @__PURE__ */ new Map();
@@ -7823,8 +8080,8 @@ export const WORKER_SCRIPT = `"use strict";
     };
     return { resolveSite, ownType };
   };
-  var resolveAny = (files, langOf2, text) => {
-    const program = createProgram(files, langOf2, text);
+  var resolveAny = (files, langOf2, text, exists) => {
+    const program = createProgram(files, langOf2, text, exists);
     const names = /* @__PURE__ */ new Set();
     for (const f2 of files) {
       for (const u of f2.units) names.add(u.name);
@@ -7928,7 +8185,7 @@ export const WORKER_SCRIPT = `"use strict";
   // src/lib/highlight.ts
   var words = (s) => new Set(s.split(" "));
   var C_LIKE = "if else for while do switch case break continue default return new delete throw try catch finally class extends this super static public private protected const let var void null true false import export from as typeof instanceof in of async await yield function interface enum type implements package";
-  var KEYWORDS2 = {
+  var KEYWORDS3 = {
     ts: words(\`\${C_LIKE} readonly declare namespace module keyof infer never unknown any satisfies abstract override get set undefined\`),
     js: words(\`\${C_LIKE} undefined get set\`),
     py: words("def class return if elif else for while in not and or is None True False import from as with try except finally raise yield lambda pass break continue global nonlocal async await assert del self"),
@@ -7966,7 +8223,7 @@ export const WORKER_SCRIPT = `"use strict";
   var escapeHtml = (s) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   var span = (cls, text) => \`<span class="\${cls}">\${escapeHtml(text)}</span>\`;
   var highlightLine = (text, lang, state) => {
-    const keywords = KEYWORDS2[lang];
+    const keywords = KEYWORDS3[lang];
     const lineComment = LINE_COMMENT[lang];
     const blocks = BLOCK_COMMENTS.has(lang);
     if (lang === "md" || lang === "text") return escapeHtml(text);
@@ -9365,8 +9622,78 @@ Please report this to https://github.com/markedjs/marked.\`, e) {
   var pn = x.lex;
 
   // src/lib/markdown.ts
-  var MAX_BODY = 2e4;
-  var lexMarkdown = (body2) => x.lex(body2.slice(0, MAX_BODY), { gfm: true }).filter((t) => t.type !== "space");
+  var INLINE = { short: 2e3, few: 200, dense: 8 * 2e3 ** 2 };
+  var delimiters = (src) => src.match(/[*_~]/g)?.length ?? 0;
+  var typed = (src) => ({ type: "text", raw: src, text: src });
+  var lexable = (src, budget) => {
+    if (delimiters(src) <= INLINE.few) return true;
+    if (src.length > INLINE.short || src.length ** 2 > budget.left) return false;
+    budget.left -= src.length ** 2;
+    return true;
+  };
+  var leads = /* @__PURE__ */ new WeakMap();
+  var dropMarker = (tokens, n) => {
+    const rest = [...tokens];
+    let left = n;
+    while (left > 0) {
+      const t = rest[0];
+      if (!t || t.type !== "text" && t.type !== "br" || t.type === "text" && t.text !== t.raw) return null;
+      const raw = t.raw ?? "";
+      if (raw.length <= left) {
+        left -= raw.length;
+        rest.shift();
+      } else if (t.type === "text") {
+        rest[0] = { ...t, raw: raw.slice(left), text: raw.slice(left) };
+        left = 0;
+      } else return null;
+    }
+    return rest;
+  };
+  var findLeads = (tokens, budget) => {
+    for (const t of tokens) {
+      if (t.type === "blockquote") {
+        const first = t.tokens?.[0];
+        const alert = first?.type === "paragraph" ? ALERT.exec(first.text ?? "") : null;
+        if (first && alert) {
+          const rest = (first.text ?? "").slice(alert[0].length);
+          leads.set(first, dropMarker(first.tokens ?? [], alert[0].length) ?? (lexable(rest, budget) ? x.lexInline(rest, { gfm: true }) : [typed(rest)]));
+        }
+        findLeads(t.tokens ?? [], budget);
+      } else if (t.type === "list") for (const item of t.items ?? []) findLeads(item.tokens ?? [], budget);
+    }
+  };
+  var lexBlocks = (body2) => {
+    const lexer = new x({ gfm: true });
+    lexer.blockTokens(body2.replace(/\\r\\n|\\r/g, "\\n"), lexer.tokens);
+    const budget = { left: INLINE.dense };
+    for (let i2 = 0; i2 < lexer.inlineQueue.length; i2++) {
+      const { src, tokens: tokens2 } = lexer.inlineQueue[i2];
+      if (lexable(src, budget)) lexer.inlineTokens(src, tokens2);
+      else tokens2.push(typed(src));
+    }
+    const tokens = lexer.tokens.filter((t) => t.type !== "space");
+    findLeads(tokens, budget);
+    return tokens;
+  };
+  var lexed = /* @__PURE__ */ new Map();
+  var KEPT = 4;
+  var lexMarkdown = (body2) => {
+    const kept = lexed.get(body2);
+    if (kept) {
+      lexed.delete(body2);
+      lexed.set(body2, kept);
+      return kept;
+    }
+    let tokens;
+    try {
+      tokens = lexBlocks(body2);
+    } catch {
+      tokens = body2.trim() ? [{ type: "paragraph", text: body2, tokens: [{ type: "text", text: body2 }] }] : [];
+    }
+    lexed.set(body2, tokens);
+    if (lexed.size > KEPT) lexed.delete(lexed.keys().next().value);
+    return tokens;
+  };
   var EMOJI = {
     tada: "\\u{1F389}",
     sparkles: "\\u2728",
@@ -9398,6 +9725,7 @@ Please report this to https://github.com/markedjs/marked.\`, e) {
   };
   var emojify = (text) => text.replace(/:([a-z0-9_+-]+):/g, (whole, name2) => EMOJI[name2] ?? whole);
   var segments = (title) => title.split("\`").map((text, i2) => ({ text: i2 % 2 === 1 ? text : emojify(text), code: i2 % 2 === 1 })).filter((s) => s.text.length > 0);
+  var ALERT = /^\\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\\][ \\t]*\\n?/i;
   var visible = (tokens) => {
     let chars = 0;
     let breaks = 0;
@@ -9449,21 +9777,13 @@ Please report this to https://github.com/markedjs/marked.\`, e) {
       }
     };
     const sum = (list, w) => list.reduce((n, t) => n + height(t, w, true), 0);
-    let depth = 0;
     let first = true;
     return tokens.map((t) => {
       if (t.type === "html") {
-        const text = t.text ?? "";
-        const opens = (text.match(/<details\\b/gi) ?? []).length;
-        const closes = (text.match(/<\\/details>/gi) ?? []).length;
-        const was = depth;
-        depth = Math.max(0, depth + opens - closes);
-        const shown = text.replace(/<!--[\\s\\S]*?(-->|$)|<[^>]*>/g, "");
-        const h2 = was > 0 ? 0 : opens > 0 ? M.line + M.gap : /[^\\s]/.test(shown) ? textHeight([{ type: "text", text: shown }], width) + M.gap : 0;
+        const h2 = (t.text ?? "").split(/<\\/summary\\s*>/i).map((part) => part.replace(/<!--[\\s\\S]*?(-->|$)|<[^>]*>/g, "")).reduce((n, shown) => n + (/[^\\s]/.test(shown) ? textHeight([{ type: "text", text: shown }], width) + M.gap : 0), 0);
         if (h2 > 0) first = false;
         return h2;
       }
-      if (depth > 0) return 0;
       const h = height(t, width, false);
       const above = t.type === "heading" || t.type === "hr" ? first ? 24 : M.gap : 0;
       if (h > 0) first = false;
@@ -9712,7 +10032,8 @@ Please report this to https://github.com/markedjs/marked.\`, e) {
   var pinCard = (pin, review) => {
     const built = pin.kind === "change" || pin.kind === "context" ? declRows(pin, review) : pin.kind === "test" ? testRows(pin, review) : fileRows(pin, review);
     const header = 220 + (pin.name.length + (pin.path ?? "").length) * 7;
-    const width = Math.round(clamp(Math.max(header, ...built.map(rowWidth)), CARD.minWidth, CARD.maxWidth));
+    const named = (pin.kind === "change" || pin.kind === "context") && TYPED_METHODS.has(languageOf(pin.path ?? "")) ? Math.ceil(pin.name.length * 9.2 / 0.52 + 28) + 1 : 0;
+    const width = Math.round(clamp(Math.max(header, named, ...built.map(rowWidth)), CARD.minWidth, CARD.maxWidth));
     const room = width - (pin.kind === "context" ? 68 : CARD.gutter) - 12;
     const cut = built.flatMap((r) => r.kind === "line" && rowChars(r) * CARD.charWidth > room ? [r.line.at] : []);
     const rows = cut.length === 0 || opensReadAll(built[built.length - 1]) ? built : [...built, { kind: "fold", count: cut.length, from: cut[0], to: cut[0], tail: true, more: false, cut: true }];
@@ -9757,6 +10078,7 @@ mark { color: inherit; border-radius: 3px; background: var(--add-mark); }
 body.context { border: 1.5px dashed var(--ink3); border-radius: 12px; }
 body.context header { background: transparent; color: var(--ink2); }
 \`;
+  var TYPED_METHODS = /* @__PURE__ */ new Set(["py", "go", "rs"]);
   var PR = {
     width: 640,
     pad: 16,
@@ -9767,48 +10089,24 @@ body.context header { background: transparent; color: var(--ink2); }
     meta: 24,
     unpinned: 20,
     /** 16 above the rule, the rule, 16 below. */
-    rule: 33,
-    /** The description area is never taller. */
-    maxDescription: 500,
-    fold: 32,
-    /** The fade over a first block cut inside. */
-    fade: 48,
-    /** How far over Chrome's layout the description's estimate runs at most, as a share of it. */
-    over: 0.1
+    rule: 33
   };
   var unpinnedText = ({ functions, files }) => {
     const parts2 = [functions > 0 ? plural(functions, "function") : "", files > 0 ? plural(files, "file") : ""].filter(Boolean);
     return parts2.length > 0 ? \`\${parts2.join(" and ")} not pinned\` : null;
   };
-  var fitBlocks = (tokens, blocks, max) => {
-    if (blocksHeight(blocks) <= max + PR.fold) return { count: tokens.length, height: blocksHeight(blocks), cut: false };
-    let count2 = 0;
-    while (count2 < tokens.length && blocksHeight(blocks.slice(0, count2 + 1)) <= max) count2++;
-    if (count2 === tokens.length) return { count: count2, height: blocksHeight(blocks), cut: false };
-    while (count2 > 0 && (tokens[count2 - 1].type === "heading" || blocks[count2 - 1] === 0)) count2--;
-    if (count2 === 0) return { count: tokens.length, height: max, cut: true };
-    return { count: count2, height: blocksHeight(blocks.slice(0, count2)), cut: false };
-  };
-  var prCard = (review) => {
-    const all2 = lexMarkdown(review.pr.body);
+  var measurePr = (review) => {
+    const tokens = lexMarkdown(review.pr.body);
     const inner = PR.width - 2 * PR.pad;
     const titleChars = segments(review.pr.title).reduce((n, s) => n + s.text.length * (s.code ? 1.15 : 1), 0);
     const titleLines = clamp(Math.ceil(titleChars * PR.titleChar / inner), 1, 3);
-    const blocks = markdownBlocks(all2, inner);
-    const estimate = blocksHeight(blocks);
-    const fit = fitBlocks(all2, blocks, PR.maxDescription);
-    const folded = fit.count < all2.length || fit.cut;
+    const estimate = blocksHeight(markdownBlocks(tokens, inner));
     const top = CARD.header + PR.pad + titleLines * PR.titleLine + PR.meta + (unpinnedText(review.unpinned) ? PR.unpinned : 0) + (estimate > 0 ? PR.rule : 0);
-    return {
-      width: PR.width,
-      height: top + fit.height + (folded ? PR.fold : 0) + PR.pad,
-      titleLines,
-      tokens: all2.slice(0, fit.count),
-      estimate,
-      description: fit.height,
-      cut: fit.cut,
-      fold: folded ? top + fit.height - (fit.cut ? 0 : Math.ceil(fit.height * PR.over)) : null
-    };
+    return { tokens, titleLines, estimate, height: top + estimate + PR.pad };
+  };
+  var prCard = (review) => {
+    const { titleLines, estimate, height } = measurePr(review);
+    return { width: PR.width, height, titleLines, estimate };
   };
   var PR_CSS = \`
 .prchip { flex: none; border: 1px solid var(--line); border-radius: 999px; padding: 2px 9px; font: 12px/16px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--ink2); }
@@ -10160,8 +10458,10 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
       const { width, height } = id === "pr" ? prSize : cards.get(id);
       return { width, height };
     };
+    const pr = review.pins.find((p) => p.kind === "pr");
+    const codeLeft = pr ? prSize.width + L2.columnGap : 0;
     const placed = /* @__PURE__ */ new Map();
-    const order = [];
+    const order = pr ? [pr.id] : [];
     const lowest = () => Math.max(0, ...[...placed.values()].map(bottom));
     const widest = () => Math.max(0, ...[...placed.values()].map(right));
     const place2 = (id, x2, y2, width = sizeOf(id).width) => placed.set(id, { x: Math.round(x2), y: Math.round(y2), width, height: sizeOf(id).height });
@@ -10235,7 +10535,7 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
       return back(l3, A2, B2);
     };
     review.bands.forEach((_2, b2) => {
-      const members = review.pins.filter((p) => p.lane === "flow" && p.band === b2 && (p.kind !== "pr" || b2 === 0)).map((p) => p.id);
+      const members = review.pins.filter((p) => p.lane === "flow" && p.band === b2 && p.kind !== "pr").map((p) => p.id);
       const floor = b2 === 0 ? 0 : lowest() + L2.bandGap;
       const columns = /* @__PURE__ */ new Map();
       for (const id of members) {
@@ -10245,7 +10545,7 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
       const keys = [...columns.keys()].sort((x2, y2) => x2 - y2);
       const width = new Map(keys.map((c) => [c, Math.max(...columns.get(c).map((id) => sizeOf(id).width))]));
       const left = /* @__PURE__ */ new Map();
-      let cursor = 0;
+      let cursor = codeLeft;
       for (const c of keys) {
         left.set(c, cursor);
         cursor += width.get(c) + gap;
@@ -10289,8 +10589,8 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
         ]);
         return lines.reduce((n, a, i2) => n + lines.slice(i2 + 1).reduce((m2, b3) => m2 + crossings(a, b3), 0), 0);
       };
-      const byPath = (ids) => sortBy(ids, (id) => id === "pr" ? 0 : 1, (id) => pinOf(id).path ?? "", (id) => pinOf(id).from);
-      const sorted = (ids, key, fallback) => sortBy(ids, (id) => id === "pr" ? 0 : 1, (id) => key(id) ?? fallback.get(id) ?? 0, (id) => fallback.get(id) ?? 0);
+      const byPath = (ids) => sortBy(ids, (id) => pinOf(id).path ?? "", (id) => pinOf(id).from);
+      const sorted = (ids, key, fallback) => sortBy(ids, (id) => key(id) ?? fallback.get(id) ?? 0, (id) => fallback.get(id) ?? 0);
       let orders = new Map(keys.map((c) => [c, byPath(columns.get(c))]));
       const first = /* @__PURE__ */ new Map();
       for (const c of keys) {
@@ -10326,7 +10626,7 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
       let edge = -Infinity;
       for (const p of sortBy(under, wantedX, (p2) => p2.path ?? "")) {
         const covered = coveredBy(p);
-        const spots = [wantedX(p), ...covered.map((r) => centredUnder(p, [r.x + r.width / 2]))].map((x3) => Math.max(0, x3, edge + L2.restSpacing));
+        const spots = [wantedX(p), ...covered.map((r) => centredUnder(p, [r.x + r.width / 2]))].map((x3) => Math.max(codeLeft, x3, edge + L2.restSpacing));
         const x2 = spots.find((x3) => {
           place2(p.id, x3, cardTop);
           return covered.some((r) => reaches2(p, r));
@@ -10336,10 +10636,6 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
         edge = x2 + sizeOf(p.id).width;
       }
     });
-    if (review.bands.length === 0) {
-      place2("pr", 0, 0);
-      order.push("pr");
-    }
     const rest = review.pins.filter((p) => p.lane === "rest");
     if (rest.length > 0) {
       const ranked = sortBy(
@@ -10354,16 +10650,16 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
         if (p.kind === "test" && covers(p)) continue;
         sequence.push(p, ...ranked.filter((t) => t.kind === "test" && covers(t) === p.id));
       }
-      const rowWidth2 = Math.max(L2.minRowWidth, widest());
-      let x2 = 0;
-      let rowTop = lowest() + L2.bandGap;
+      const rowRight = codeLeft + Math.max(L2.minRowWidth, widest() - codeLeft);
+      let x2 = codeLeft;
+      let rowTop = placed.size === 0 ? 0 : lowest() + L2.bandGap;
       let rowBottom = rowTop;
       sequence.forEach((p, i2) => {
         const size = sizeOf(p.id);
         const gap2 = i2 > 0 && p.kind === "test" && covers(p) === sequence[i2 - 1].id ? L2.restTestSpacing : L2.restSpacing;
-        if (i2 > 0 && x2 + gap2 + size.width > rowWidth2) {
+        if (i2 > 0 && x2 + gap2 + size.width > rowRight) {
           rowTop = rowBottom + L2.restSpacing;
-          x2 = 0;
+          x2 = codeLeft;
         } else if (i2 > 0) x2 += gap2;
         place2(p.id, x2, rowTop);
         rowBottom = Math.max(rowBottom, rowTop + size.height);
@@ -10371,6 +10667,7 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
         order.push(p.id);
       });
     }
+    if (pr) place2(pr.id, 0, 0);
     const rank = (id) => order.indexOf(id);
     const distance = (l3) => {
       const [A2, B2] = [placed.get(l3.from), placed.get(l3.to)];
@@ -10393,11 +10690,7 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
     const strings = [];
     const undrawn = [];
     const tangle = { curved: 0, straight: 0 };
-    for (const l3 of links) {
-      if (crowd.has(l3.id) || sideways(l3)) {
-        undrawn.push(l3.id);
-        continue;
-      }
+    const draw = (l3) => {
       const crossed = (c) => {
         const path = stringPath(c.start, c.bend, c.end);
         return strings.reduce((n, o) => n + stringCrossings({ ...c, path }, o), 0);
@@ -10405,16 +10698,22 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
       const straight = (c) => strings.reduce((n, o) => n + crossings([c.start, c.end], [o.start, o.end]), 0);
       const clearRoutes = routesOf(l3).filter(clear);
       const found = clearRoutes.length <= 1 ? clearRoutes[0] : sortBy(clearRoutes, crossed)[0];
-      if (!found || tangle.curved + crossed(found) > tangle.straight + straight(found)) {
-        undrawn.push(l3.id);
-        continue;
-      }
+      if (!found || tangle.curved + crossed(found) > tangle.straight + straight(found)) return false;
       const { lanes: taken = [], ...route } = found;
       taken.forEach((lane) => lanes.add(lane));
       tangle.curved += crossed(found);
       tangle.straight += straight(found);
       strings.push({ link: l3.id, kind: l3.kind, ...route, path: stringPath(found.start, found.bend, found.end), label: null, style: styleOf(l3, review) });
+      return true;
+    };
+    const held = [];
+    for (const l3 of links) {
+      if (crowd.has(l3.id)) undrawn.push(l3.id);
+      else if (sideways(l3)) held.push(l3);
+      else if (!draw(l3)) undrawn.push(l3.id);
     }
+    const tied = (id) => strings.some((s) => s.from.pin === id || s.to.pin === id);
+    for (const l3 of held) if (tied(l3.from) || !draw(l3)) undrawn.push(l3.id);
     const labels = [];
     for (const s of strings) {
       const text = wordOf(review.links.find((l3) => l3.id === s.link));
@@ -11296,9 +11595,17 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
   var readSources = async (files, read, parse2) => {
     const slot = limiter(READ.inFlight);
     const answers = /* @__PURE__ */ new Map();
+    const found = /* @__PURE__ */ new Map();
     const once = (path) => {
       let answer = answers.get(path);
-      if (!answer) answers.set(path, answer = slot(() => read(path)).catch(() => null));
+      if (!answer)
+        answers.set(
+          path,
+          answer = slot(() => read(path)).then(
+            (text) => (found.set(path, text !== null), text),
+            () => null
+          )
+        );
       return answer;
     };
     const usable = (text) => text !== null && text.length <= READ.chars;
@@ -11370,16 +11677,16 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
     }
     const beside = await Promise.all(
       parsedChanged.map(async (f2) => {
-        const found = [];
+        const found2 = [];
         for (const list of langOf(f2.path)?.configFiles?.(f2.path) ?? []) {
           for (const c of list) {
             const text = await once(c);
             if (text === null) continue;
-            found.push([c, text]);
+            found2.push([c, text]);
             break;
           }
         }
-        return found;
+        return found2;
       })
     );
     for (const [path, text] of beside.flat()) texts.set(path, text);
@@ -11431,22 +11738,23 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
       const out2 = [];
       for (const t of tries) {
         if (t.first && await firstExisting(t.first) === null) continue;
-        const found = await firstExisting(t.files);
-        if (found) out2.push(found);
+        const found2 = await firstExisting(t.files);
+        if (found2) out2.push(found2);
       }
       return out2;
     };
     const genericImports = async (f2) => {
       const lang = langOf(f2.path);
       await markers(f2.path);
-      const found = await Promise.all(
+      const found2 = await Promise.all(
         f2.imports.map(async (i2) => {
+          if (i2.unproven) return [];
           const mods = await moduleAnswers(f2.path, i2.spec, i2.level);
           if (i2.name === null || i2.name === "*" || !lang.isPackage || !mods.some((m2) => lang.isPackage(m2))) return mods;
           return [...mods, ...await moduleAnswers(f2.path, i2.spec ? \`\${i2.spec}.\${i2.name}\` : i2.name, i2.level)];
         })
       );
-      return found.flat();
+      return found2.flat();
     };
     const imports4 = parsedChanged.flatMap((c) => facts.get(c.path) ?? []).flatMap((f2) => isGeneric(f2) ? [genericImports(f2)] : f2.specifiers.map((s) => firstAnswer(moduleCandidates(f2.path, s.spec, paths(f2.path)).candidates)));
     let added = 0;
@@ -11470,14 +11778,16 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
       const lang = langOf(c.path);
       if (!f2 || !isGeneric(f2) || !lang) continue;
       for (const i2 of f2.imports) {
-        if (i2.name === null || i2.name === "*") continue;
+        if (i2.name === null || i2.name === "*" || i2.unproven) continue;
         const from = facts.get(lang.resolver.moduleFiles(f2.path, i2.spec, i2.level, context).find((p) => facts.has(p)) ?? "");
         if (!from || !isGeneric(from)) continue;
-        for (const j2 of from.imports) if (j2.local === i2.name) reexports.push(markers(from.path).then(() => moduleAnswers(from.path, j2.spec, j2.level)));
+        for (const j2 of from.imports) if (j2.local === i2.name && !j2.unproven) reexports.push(markers(from.path).then(() => moduleAnswers(from.path, j2.spec, j2.level)));
       }
     }
     await readAll(reexports);
-    return { texts, facts, paths };
+    const there = new Map(files.flatMap((f2) => [[f2.path, f2.status !== "removed"], ...f2.previousPath && f2.previousPath !== f2.path ? [[f2.previousPath, false]] : []]));
+    const existing = (path) => texts.has(path) || found.get(path) === true ? true : there.get(path) ?? found.get(path);
+    return { texts, facts, paths, exists: existing };
   };
 
   // src/lib/model.ts
@@ -11494,7 +11804,7 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
         changed,
         { paths: sources.paths, builtin: builtinRule(pr.ref, changed) }
       ),
-      ...resolveAny(generic, (f2) => langOf(f2.path).resolver, (path) => sources.texts.get(path))
+      ...resolveAny(generic, (f2) => langOf(f2.path).resolver, (path) => sources.texts.get(path), sources.exists)
     ];
     const labels = new Map(generic.flatMap((f2) => [...f2.labels]));
     return buildReview(pr, files, { texts: sources.texts, facts: sources.facts, refs, labels });
@@ -11652,7 +11962,7 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
     const carded = new Set(review.pins.map((p) => p.path));
     return { ...review, files: review.files.map((f2) => carded.has(f2.path) ? f2 : { ...f2, hunks: [], symbols: [], loose: [], cases: [] }) };
   };
-  var prPin = () => ({ id: "pr", kind: "pr", name: "The pull request", from: 0, to: 0, band: 0, lane: "flow", column: 0, status: "changed", add: 0, del: 0 });
+  var prPin = () => ({ id: "pr", kind: "pr", name: "The PR", from: 0, to: 0, band: 0, lane: "flow", column: 0, status: "changed", add: 0, del: 0 });
   var nests = (a, b2) => a.path === b2.path && (a.start <= b2.start && b2.end <= a.end || b2.start <= a.start && a.end <= b2.end);
   var innermost = (units, path, offset) => sortBy(
     units.filter((u) => u.path === path && u.start <= offset && offset < u.end),
