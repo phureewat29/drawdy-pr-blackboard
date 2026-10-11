@@ -3,7 +3,7 @@ import { reviewElements } from "../driver/elements.ts";
 import { excalidrawFixture, honoFixture, reviewOf } from "../test/fixture.ts";
 import { crowded, syntheticPr, twoThreads } from "../test/synthetic.ts";
 import { catmullRomSpline, distanceToPath, inflate, nearRun, pathHits } from "./curve.ts";
-import { LAYOUT, STRING_COLOURS, hooks, planBoard, shiftPlan, stepsOf, stringCrossings, textRect, throughBends, type BoardPlan, type PlannedString, type Point, type Rect } from "./layout.ts";
+import { LAYOUT, STRING_COLOURS, STRING_TEXT, hooks, planBoard, shiftPlan, stepsOf, stringCrossings, textRect, throughBends, type BoardPlan, type PlannedString, type Point, type Rect } from "./layout.ts";
 import type { Review } from "./model.ts";
 
 const overlaps = (a: Rect, b: Rect) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
@@ -104,7 +104,7 @@ describe.each(boards())("planBoard on %s", (_, make) => {
     });
 
     it("moves right, or down a column, within a band; left only at a line break", () => {
-        const flow = stepsOf(review).slice(1).map((id) => review.pins.find((p) => p.id === id)!).filter((p) => p.lane === "flow");
+        const flow = stepsOf(review).map((id) => review.pins.find((p) => p.id === id)!).filter((p) => p.lane === "flow");
         for (const [i, pin] of flow.entries()) {
             if (i === 0 || flow[i - 1].band !== pin.band) continue;
             const a = plan.pins.get(flow[i - 1].id)!;
@@ -177,10 +177,12 @@ describe("planBoard on hono#5513", () => {
     const at = (name: string) => plan.pins.get(review.pins.find((p) => p.name === name)!.id)!;
     const stringOf = (kind: string) => plan.strings.filter((s) => s.kind === kind);
 
-    it("draws nine of its ten links, each string labelled with one word: four calls, the unchanged caller, three tests, one imports", () => {
+    it("draws nine of its ten links, four calls, the unchanged caller, three tests and one imports, each labelled with one word where it clears", () => {
         expect(plan.strings.map((s) => `${s.kind}:${s.label?.text}`).sort()).toEqual(
-            ["calls:calls", "calls:calls", "calls:calls", "calls:calls", "context:calls", "tests:tests", "tests:tests", "tests:tests", "imports:imports"].sort()
+            ["calls:calls", "calls:calls", "calls:calls", "calls:calls", "context:calls", "tests:tests", "tests:tests", "tests:undefined", "imports:imports"].sort()
         );
+        // hono.test.ts's dashed string climbs to fetch() at the band's top, past the band's strings, where its word clears nowhere.
+        expect(plan.strings.find((s) => !s.label)!.link).toBe("tests:test:src/hono.test.ts>ctx:src/hono-base.ts:484");
         // The imports card's second link, up to compose(), finds no route clear of compose.test.ts: the panel lists it.
         expect(plan.undrawn).toEqual(["imports:file:src/hono-base.ts>src/compose.ts:18"]);
         expect(plan.strings.map((s) => s.route).sort()).toEqual(["R1", "R1", "R1", "R1", "R1", "R2", "R2", "R2", "R3"]);
@@ -200,25 +202,26 @@ describe("planBoard on hono#5513", () => {
     it("places every card where the spec says, within 8", () => {
         const rects = Object.fromEntries([...plan.pins].map(([id, r]) => [review.pins.find((p) => p.id === id)!.name, [r.x, r.y, r.width]]));
         const spec: Record<string, number[]> = {
-            "The pull request": [0, 0, 640],
-            "fetch()": [0, 723, 673],
-            "#dispatch()": [833, 0, 810],
-            "#handleError()": [1803, 218, 726],
-            "compose()": [1803, 514, 726],
-            "toError()": [2689, 356, 880],
-            "compose.test.ts": [1822, 983, 688],
-            "hono-base.ts imports": [2558, 983, 574],
-            "onError()": [0, 1307, 880],
-            "hono.test.ts": [1040, 1307, 863],
+            "The PR": [0, 0, 640],
+            "fetch()": [800, 0, 673],
+            "#dispatch()": [1633, 0, 810],
+            "#handleError()": [2603, 218, 726],
+            "compose()": [2603, 514, 726],
+            "toError()": [3489, 356, 880],
+            "compose.test.ts": [2622, 974, 688],
+            "hono-base.ts imports": [3358, 974, 574],
+            "onError()": [800, 1298, 880],
+            "hono.test.ts": [1840, 1298, 863],
         };
         for (const [name, want] of Object.entries(spec)) expect([name, rects[name]]).toEqual([name, rects[name].every((v, i) => Math.abs(v - want[i]) <= 8) ? rects[name] : want]);
-        expect(plan.bounds.width).toBeLessThanOrEqual(3600);
-        expect(plan.bounds.height).toBeLessThanOrEqual(1550);
+        expect(at("The PR").height).toBe(779);
+        expect([plan.bounds.width, plan.bounds.height]).toEqual([4369, 1526]);
     });
 
-    it("puts #dispatch() level with the PR card, stacks cards 48 apart and columns 160 apart, each column one width", () => {
-        expect(at("#dispatch()").y).toBe(at("The pull request").y);
-        expect(at("fetch()").y - (at("The pull request").y + at("The pull request").height)).toBe(LAYOUT.stack);
+    it("stands the PR card alone in the first column, the code 160 right of it, the unchanged caller at the band's top, stacks cards 48 apart and columns 160 apart", () => {
+        expect([at("The PR").x, at("The PR").y]).toEqual([0, 0]);
+        expect(at("fetch()").x).toBe(at("The PR").x + at("The PR").width + LAYOUT.columnGap);
+        expect([at("fetch()").y, at("#dispatch()").y]).toEqual([0, 0]);
         expect(at("compose()").y - (at("#handleError()").y + at("#handleError()").height)).toBe(LAYOUT.stack);
         expect(at("#dispatch()").x - (at("fetch()").x + at("fetch()").width)).toBe(LAYOUT.columnGap);
         expect(at("#handleError()").x - (at("#dispatch()").x + at("#dispatch()").width)).toBe(LAYOUT.columnGap);
@@ -245,12 +248,12 @@ describe("planBoard on hono#5513", () => {
         [0.75, 1, 0.75].forEach((hang, i) => expect(s.bend[i].y - (s.start.y + d.y * [0.25, 0.5, 0.75][i])).toBeCloseTo(sag * hang));
     });
 
-    it("lines column 0 up on the board's left edge, #handleError() above compose() by call row, and toError() with #handleError()", () => {
-        expect([at("The pull request").x, at("fetch()").x, at("onError()").x]).toEqual([0, 0, 0]);
+    it("lines the code's column 0 up 160 right of the PR card, #handleError() above compose() by call row, and toError() with #handleError()", () => {
+        expect([at("fetch()").x, at("onError()").x]).toEqual([800, 800]);
         expect(at("#handleError()").y).toBeLessThan(at("compose()").y);
         expect(at("toError()").y).toBe(at("#handleError()").y + 56 + 5 * 20 + 10 - 28);
         expect(at("compose.test.ts").y).toBeGreaterThan(at("compose()").y + at("compose()").height);
-        expect(plan.order).toEqual(["pr", "ctx:src/hono-base.ts:484", ...stepsOf(review).slice(1)]);
+        expect(plan.order).toEqual(["pr", "ctx:src/hono-base.ts:484", ...stepsOf(review)]);
     });
 
     it("dashes the strings into and out of the unchanged caller, and colours strings apart, not by kind", () => {
@@ -282,6 +285,45 @@ describe("planBoard on hono#5513", () => {
         expect(moved.pins.get("pr")!.x - moved.bounds.x).toBe(plan.pins.get("pr")!.x - plan.bounds.x);
         expect(moved.strings[0].bend[1].x - moved.bounds.x).toBe(plan.strings[0].bend[1].x - plan.bounds.x);
         expect(moved.strings[0].path[7].y - moved.bounds.y).toBeCloseTo(plan.strings[0].path[7].y - plan.bounds.y);
+    });
+});
+
+describe("planBoard around a tall PR card", () => {
+    it("moves no code card for a long description: the PR card grows down its own column", async () => {
+        const review = await reviewOf(honoFixture());
+        const body = Array.from({ length: 5 }, (_, i) => `## Part ${i + 1}\n\n${review.pr.body}`).join("\n\n");
+        const tall = planBoard({ ...review, pr: { ...review.pr, body } });
+        const plan = planBoard(review);
+        expect(tall.pins.get("pr")!.height).toBeGreaterThan(3000);
+        const code = (p: BoardPlan) => [...p.pins].filter(([id]) => id !== "pr");
+        expect(code(tall)).toEqual(code(plan));
+        expect(tall.strings.map((s) => s.path)).toEqual(plan.strings.map((s) => s.path));
+    });
+});
+
+describe("planBoard from the row under, a card with no other string", () => {
+    it("keeps the card's shortest sideways link that routes, so a card with links never stands alone", async () => {
+        const review = await reviewOf(
+            syntheticPr("feat: a chain tested twice", [
+                {
+                    path: "src/chain.ts",
+                    functions: [
+                        { name: "first", calls: ["second"], change: "changed" },
+                        { name: "second", calls: ["third"], change: "changed" },
+                        { name: "third", change: "changed" },
+                    ],
+                },
+                { path: "test/a.test.ts", tests: ["first"] },
+                { path: "test/b.test.ts", tests: ["first"] },
+            ])
+        );
+        const plan = planBoard(review);
+        const rect = (name: string) => plan.pins.get(review.pins.find((p) => p.name === name)!.id)!;
+        // b.test.ts stands right of a.test.ts, clear of first() in x: its one link runs sideways, and still gets its string.
+        expect(rect("b.test.ts").x).toBeGreaterThan(rect("first()").x + rect("first()").width);
+        const name = (id: string) => review.pins.find((p) => p.id === id)!.name;
+        expect(plan.strings.filter((s) => s.kind === "tests").map((s) => `${name(s.from.pin)} → ${name(s.to.pin)}`).sort()).toEqual(["a.test.ts → first()", "b.test.ts → first()"]);
+        expect(plan.undrawn).toEqual([]);
     });
 });
 
@@ -336,6 +378,29 @@ describe("planBoard on excalidraw#12237", () => {
     });
 });
 
+describe("string colours as panel text", () => {
+    /** WCAG 2's contrast ratio of two `#rrggbb` colours. */
+    const contrast = (a: string, b: string) => {
+        const luminance = (hex: string) => {
+            const [r, g, bl] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+            return 0.2126 * r + 0.7152 * g + 0.0722 * bl;
+        };
+        const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+        return (hi + 0.05) / (lo + 0.05);
+    };
+
+    it("read 4.6:1 or more on the panel in its theme, one for each string colour, in its order", () => {
+        const panel = { light: "#ffffff", dark: "#27272a" } as const;
+        for (const theme of ["light", "dark"] as const) {
+            expect(STRING_TEXT[theme]).toHaveLength(STRING_COLOURS.length);
+            for (const colour of STRING_TEXT[theme]) expect([theme, colour, contrast(colour, panel[theme]) >= 4.6]).toEqual([theme, colour, true]);
+        }
+        // Where the board's colour reads already, the panel uses it as drawn.
+        expect(STRING_TEXT.dark[4]).toBe(STRING_COLOURS[4].toLowerCase());
+        expect(STRING_TEXT.dark[5]).toBe(STRING_COLOURS[5]);
+    });
+});
+
 describe("throughBends", () => {
     it("runs level along each column's lane and eases between, with bends evenly spaced", () => {
         const bends = throughBends({ x: 0, y: 0 }, { x: 2000, y: 300 }, [{ lo: 400, hi: 1200, y: 500 }]);
@@ -387,7 +452,7 @@ describe("planBoard on a long chain of calls", () => {
 });
 
 describe("planBoard without functions", () => {
-    it("draws a files-mode board's strings, and a docs-only board as the PR card over one row", async () => {
+    it("draws a files-mode board's strings, and a docs-only board as the PR card beside one row", async () => {
         const files = syntheticPr("chore: docs", [
             { path: "README.md", text: ["One."] },
             { path: "docs/guide.md", text: ["Two."] },
@@ -397,7 +462,7 @@ describe("planBoard without functions", () => {
         expect(docs.mode).toBe("files");
         const pr = plan.pins.get("pr")!;
         const row = [...plan.pins].filter(([id]) => id !== "pr").map(([, r]) => r);
-        expect(row.every((r) => r.y === pr.y + pr.height + LAYOUT.bandGap)).toBe(true);
+        expect(row.every((r) => r.y === pr.y && r.x >= pr.x + pr.width + LAYOUT.columnGap)).toBe(true);
         const linked = await reviewOf({
             pr: { ...files.pr, changedFiles: 2 },
             files: [

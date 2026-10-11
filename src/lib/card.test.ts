@@ -91,6 +91,16 @@ describe("header names", () => {
         expect(cardHtml(narrow, p, "light")).toContain('<span class="name">async_step_user()</span>');
         expect(readAllOf(p, { ...review, files: [] }, "light", null).html).toContain('<span class="name">ModelContextServerProtocolConfigFlow.async_step_user()</span>');
     });
+
+    it("widen a Python, Go or Rust card to fit its whole name, up to 880, so a short type stays (design round 2)", () => {
+        const sized = (name: string, path: string) => pinCard({ ...pin("toError()"), name, path, head: [], from: 1, to: 1 }, { files: [], links: [] });
+        const rust = sized("Printer::print_semicolon_if_needed()", "src/js_printer/lib.rs");
+        expect(rust.width).toBe(Math.ceil((36 * 9.2) / 0.52 + 28) + 1);
+        expect(headerName({ kind: "change", name: "Printer::print_semicolon_if_needed()", path: "src/js_printer/lib.rs" }, rust.width)).toBe("Printer::print_semicolon_if_needed()");
+        expect(sized("ModelContextServerProtocolConfigFlow.async_get_options_flow()", "a/config_flow.py").width).toBe(880);
+        // JavaScript and TypeScript cards keep their widths.
+        expect(sized("averyveryveryverylongnamespace.handleEveryError()", "src/hono-base.ts").width).toBe(220 + (49 + "src/hono-base.ts".length) * 7);
+    });
 });
 
 describe("a class card", () => {
@@ -233,56 +243,42 @@ describe("PR card", () => {
         expect(html).not.toContain("<script");
     });
 
-    it("is 640 wide, cuts hono's long description after its last whole block that fits, never on a heading, and ends in ⋯ Read all", () => {
+    it("is 640 wide and shows hono's whole description, its height the whole estimate: no fold row, Read all or fade", () => {
         const m = prCard(review);
-        const all = lexMarkdown(review.pr.body);
-        expect([m.width, m.titleLines, m.cut]).toEqual([640, 1, false]);
-        expect(m.estimate).toBeGreaterThan(500);
-        expect(m.tokens.length).toBeLessThan(all.length);
-        expect(m.tokens.at(-1)!.type).not.toBe("heading");
-        expect(m.description).toBe(blocksHeight(markdownBlocks(all, 608).slice(0, m.tokens.length)));
-        expect(m.description).toBeLessThanOrEqual(500);
-        // The next block would not have fitted whole.
-        expect(blocksHeight(markdownBlocks(all, 608).slice(0, m.tokens.length + 2))).toBeGreaterThan(500);
-        // The fold row follows the text as Chrome lays it out, up to a tenth higher than estimated: a click from there opens Read all.
-        expect(m.fold).toBe(m.height - 32 - 16 - Math.ceil(m.description * 0.1));
-        expect(m.height).toBe(56 + 16 + 26 + 24 + 33 + m.description + 32 + 16);
+        expect([m.width, m.titleLines]).toEqual([640, 1]);
+        expect(m.estimate).toBe(blocksHeight(markdownBlocks(lexMarkdown(review.pr.body), 608)));
+        expect(m.height).toBe(56 + 16 + 26 + 24 + 33 + m.estimate + 16);
+        expect(m.height).toBe(779);
         const html = prCardHtml(review, "dark");
-        expect(html).toContain('<div class="more"><span class="dots">⋯</span> <span class="ra">Read all</span></div>');
-        expect(html).toContain(`.desc { position: relative; max-height: ${m.description}px; overflow: hidden; }`);
-        // Only the blocks it shows: nothing is cut halfway.
-        expect(html).toContain("A non-Error thrown from a handler");
-        expect(html).not.toContain("The author should do the following");
+        expect(html).toContain(`.desc { max-height: ${m.estimate}px; overflow: hidden; }`);
+        // The last block shows, and nothing folds or fades.
+        expect(html).toContain("The author should do the following");
+        for (const gone of ["Read all", "⋯", 'class="more"', "linear-gradient"]) expect(html).not.toContain(gone);
     });
 
     it("shows a short description whole, and none at all, with no rule, when the pull request has none", () => {
         const short = { ...review, pr: { ...review.pr, body: "Fixes the thing." } };
-        expect([prCard(short).fold, prCard(short).cut]).toEqual([null, false]);
-        expect(prCardHtml(short, "light")).not.toContain("Read all");
+        expect(prCardHtml(short, "light")).toContain('<div class="md"><p>Fixes the thing.</p></div>');
         const none = { ...review, pr: { ...review.pr, body: "" } };
-        expect(prCard(none).description).toBe(0);
+        expect([prCard(none).estimate, prCard(none).height]).toEqual([0, 56 + 16 + 26 + 24 + 16]);
         expect(prCardHtml(none, "light")).not.toContain('class="rule"');
     });
 
-    it("shows a description that fits in 500 whole, with no fold row: Read all would show nothing more", () => {
-        const body = Array.from({ length: 12 }, (_, i) => `Paragraph ${i} says one short thing.`).join("\n\n");
-        const m = prCard({ ...review, pr: { ...review.pr, body } });
-        expect(m.estimate).toBeGreaterThan(360);
-        expect(m.estimate).toBeLessThanOrEqual(500);
-        expect([m.description, m.cut, m.fold, m.tokens.length]).toEqual([m.estimate, false, null, 12]);
-        // A little past 500, by less than the fold row would take: still whole, as a fold row would hide no more than it takes.
-        const over = Array.from({ length: 14 }, (_, i) => `Paragraph ${i} says one short thing.`).join("\n\n");
-        const n = prCard({ ...review, pr: { ...review.pr, body: over } });
-        expect(n.estimate).toBeGreaterThan(500);
-        expect([n.description, n.fold, n.tokens.length]).toEqual([n.estimate, null, 14]);
+    it("grows with a long description, block by block, and shows a block taller than the old fold whole", () => {
+        const body = Array.from({ length: 60 }, (_, i) => `Paragraph ${i} says one short thing.`).join("\n\n") + "\n\n```\n" + Array.from({ length: 40 }, (_, i) => `line ${i}`).join("\n") + "\n```";
+        const long = { ...review, pr: { ...review.pr, body } };
+        const m = prCard(long);
+        expect(m.estimate).toBe(blocksHeight(markdownBlocks(lexMarkdown(body), 608)));
+        expect(m.estimate).toBeGreaterThan(2000);
+        expect(m.height).toBe(56 + 16 + 26 + 24 + 33 + m.estimate + 16);
+        const html = prCardHtml(long, "light");
+        expect([html.includes("Paragraph 59 says"), html.includes("line 39"), html.includes("linear-gradient")]).toEqual([true, true, false]);
     });
 
-    it("cuts inside a first block too long for the card, under a fade, the only one it draws", () => {
-        const body = "```\n" + Array.from({ length: 40 }, (_, i) => `line ${i}`).join("\n") + "\n```\n\nAfter.";
-        const m = prCard({ ...review, pr: { ...review.pr, body } });
-        expect([m.description, m.cut, m.fold]).toEqual([500, true, m.height - 32 - 16]);
-        expect(prCardHtml({ ...review, pr: { ...review.pr, body } }, "light")).toContain("height: 48px; background: linear-gradient");
-        expect(prCardHtml(review, "light")).not.toContain("linear-gradient");
+    it("shows a details block open, its summary a bold line over what it holds: nothing on a card opens", () => {
+        const html = prCardHtml({ ...review, pr: { ...review.pr, body: "<details><summary>More</summary>\n\nHidden text.\n\n</details>" } }, "light");
+        expect(html).toContain('<p class="md-details"><strong>More</strong></p><p>Hidden text.</p>');
+        expect(html).not.toMatch(/<(details|summary)\b/);
     });
 
     it("renders inline code in the title as code", () => {
@@ -350,15 +346,6 @@ describe("Read all", () => {
         expect(readAllOf(compose(), review, "light", null).html).not.toContain("focus ");
     });
 
-    it("shows the PR card's title, meta and whole description, details open to a click", () => {
-        const page = readAllOf(pin("The pull request"), review, "light", null).html;
-        expect(page).toContain('<span class="prchip">honojs/hono#5513</span>');
-        expect(page).toContain("<h3>Behavior change</h3>");
-        expect(page).not.toContain('class="desc"');
-        const details = readAllOf(pin("The pull request"), { ...review, pr: { ...review.pr, body: "<details><summary>More</summary>\n\nHidden text.\n\n</details>" } }, "light", null).html;
-        expect(details).toContain("<details><summary>More</summary><p>Hidden text.</p></details>");
-    });
-
     it("shows a test or file card's whole diff, gaps between hunks folded", () => {
         const tests = readAllOf(pin("hono.test.ts"), review, "light", null).html;
         expect(tests).toContain('<span class="where">src/hono.test.ts</span>');
@@ -366,13 +353,10 @@ describe("Read all", () => {
         expect(tests).not.toContain("lines 1–");
     });
 
-    it("is as tall as its page: a short function short, a long one past the overlay's 640, a long line counted per row it wraps to", () => {
+    it("is as tall as its page: a short function short, a long one past the pane's 640, a long line counted per row it wraps to", () => {
         const toError = readAllOf(pin("toError()"), review, "dark", null);
         expect(toError.height(720)).toBeLessThan(200);
         expect(toError.height(520)).toBeGreaterThan(toError.height(720) - 1);
         expect(readAllOf(compose(), review, "dark", null).height(720)).toBeGreaterThan(640);
-        const description = readAllOf(pin("The pull request"), review, "light", null);
-        expect(description.height(720)).toBeGreaterThan(prCard(review).height);
-        expect(readAllOf(pin("The pull request"), { ...review, pr: { ...review.pr, body: "<details><summary>More</summary>\n\nHidden.\n\n</details>" } }, "light", null).height(720)).toBe(Infinity);
     });
 });

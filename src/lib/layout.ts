@@ -2,10 +2,14 @@
  * Where everything goes on the investigation board. Coordinates are canvas
  * units relative to the review's top-left corner.
  *
- *   [PR card]          [entry] ─calls─▶ [callee] ─calls─▶ [callee]   one band per thread,
- *   [caller, unchanged]┄┄┘                                         callers left
- *                     [test card under what it covers] [imports]   the row under it
- *   [lone function] ◀─tests─ [test]   [README.md]                   the bottom row
+ *   [PR card]   [caller, unchanged]┄▶[entry] ─calls─▶ [callee]   one band per thread,
+ *   [its whole ]                                                  callers left
+ *   [description]      [test card under what it covers] [imports] the row under it
+ *   [          ]   [lone function] ◀─tests─ [test]   [README.md]  the bottom row
+ *
+ * The PR card stands alone in the first column, however long its
+ * description, and the code is laid out 160 to its right, so a tall PR card
+ * never pushes a card down.
  *
  * Cards are placed first, each column in the order its links pull it. Then
  * the links, shortest first, get strings: arrows bound to both cards through
@@ -17,7 +21,7 @@
  * curve passes through at an angle no drag changes.
  */
 
-import { CARD, pinCard, prCard, rowMiddle, wordOf, type CardModel } from "./card.ts";
+import { CARD, pinCard, prCard, rowMiddle, wordOf, type CardModel, type Theme } from "./card.ts";
 import { catmullRomSpline, crossings, inflate, nearRun, pathClears, pathHits, smoothstep } from "./curve.ts";
 import { sortBy, uniqBy } from "./fp.ts";
 import type { Link, LinkKind, Pin, Review, ReviewFile } from "./model.ts";
@@ -85,6 +89,19 @@ export const LAYOUT = {
  * readers too, first. None is the cards' diff green or red.
  */
 export const STRING_COLOURS = ["#9163d5", "#da7f00", "#009E73", "#0072B2", "#CC79A7", "#a79300", "#D55E00", "#29a1c1"] as const;
+
+/**
+ * Each string colour as the panel's 12 px text, in `STRING_COLOURS`' order,
+ * on the panel's background (`#ffffff` light, `#27272a` dark): the string's
+ * own colour where it reaches 4.6:1, else the nearest OKLCH lightness that
+ * does, its hue kept; then no two closer than the board's two closest
+ * strings (orange and vermillion, 0.075 in OKLab), so a name stays nearer
+ * its own string than another's. Every pair reads 4.6:1 or more.
+ */
+export const STRING_TEXT: Record<Theme, readonly string[]> = {
+    light: ["#8b5dcf", "#ad6300", "#038561", "#0267a1", "#aa5b88", "#867500", "#a14500", "#017f9c"],
+    dark: ["#a578ec", "#ea8e24", "#11a377", "#3a96d8", "#cc79a7", "#a79300", "#e56c1f", "#3dafd0"],
+};
 
 export type StringStyle = { color: string; width: number; dash: "solid" | "dashed" };
 
@@ -354,8 +371,12 @@ export const planBoard = (review: Plannable): BoardPlan => {
     return best;
 };
 
-/** The cards Next and Previous walk, in board order: every one but unchanged context. */
-export const stepsOf = (review: Pick<Review, "order" | "pins">): string[] => review.order.filter((id) => review.pins.find((p) => p.id === id)?.kind !== "context");
+/** The cards Next and Previous walk, in board order: the code, not the PR card, which the panel's Description shows, nor unchanged context. */
+export const stepsOf = (review: Pick<Review, "order" | "pins">): string[] =>
+    review.order.filter((id) => {
+        const kind = review.pins.find((p) => p.id === id)?.kind;
+        return kind !== "context" && kind !== "pr";
+    });
 
 const planWith = (review: Plannable, gap: number, stack: number): BoardPlan => {
     const L = LAYOUT;
@@ -366,9 +387,13 @@ const planWith = (review: Plannable, gap: number, stack: number): BoardPlan => {
         const { width, height } = id === "pr" ? prSize : cards.get(id)!;
         return { width, height };
     };
+    const pr = review.pins.find((p) => p.kind === "pr");
+    /** Where the code starts: 160 right of the PR card, which stands alone in the first column. */
+    const codeLeft = pr ? prSize.width + L.columnGap : 0;
 
+    // The code is placed first, without the PR card, so a tall description never pushes a card down.
     const placed = new Map<string, Rect>();
-    const order: string[] = [];
+    const order: string[] = pr ? [pr.id] : [];
     const lowest = () => Math.max(0, ...[...placed.values()].map(bottom));
     const widest = () => Math.max(0, ...[...placed.values()].map(right));
     const place = (id: string, x: number, y: number, width = sizeOf(id).width) => placed.set(id, { x: Math.round(x), y: Math.round(y), width, height: sizeOf(id).height });
@@ -464,7 +489,7 @@ const planWith = (review: Plannable, gap: number, stack: number): BoardPlan => {
 
     // Bands, top to bottom.
     review.bands.forEach((_, b) => {
-        const members = review.pins.filter((p) => p.lane === "flow" && p.band === b && (p.kind !== "pr" || b === 0)).map((p) => p.id);
+        const members = review.pins.filter((p) => p.lane === "flow" && p.band === b && p.kind !== "pr").map((p) => p.id);
         const floor = b === 0 ? 0 : lowest() + L.bandGap;
         const columns = new Map<number, string[]>();
         for (const id of members) {
@@ -474,7 +499,7 @@ const planWith = (review: Plannable, gap: number, stack: number): BoardPlan => {
         const keys = [...columns.keys()].sort((x, y) => x - y);
         const width = new Map(keys.map((c) => [c, Math.max(...columns.get(c)!.map((id) => sizeOf(id).width))]));
         const left = new Map<number, number>();
-        let cursor = 0;
+        let cursor = codeLeft;
         for (const c of keys) {
             left.set(c, cursor);
             cursor += width.get(c)! + gap;
@@ -537,10 +562,10 @@ const planWith = (review: Plannable, gap: number, stack: number): BoardPlan => {
             ]);
             return lines.reduce((n, a, i) => n + lines.slice(i + 1).reduce((m, b) => m + crossings(a, b), 0), 0);
         };
-        const byPath = (ids: readonly string[]) => sortBy(ids, (id) => (id === "pr" ? 0 : 1), (id) => pinOf(id).path ?? "", (id) => pinOf(id).from);
+        const byPath = (ids: readonly string[]) => sortBy(ids, (id) => pinOf(id).path ?? "", (id) => pinOf(id).from);
         /** A column sorted by where its cards' links pull them; a card nothing pulls keeps its place. */
         const sorted = (ids: readonly string[], key: (id: string) => number | null, fallback: ReadonlyMap<string, number>) =>
-            sortBy(ids, (id) => (id === "pr" ? 0 : 1), (id) => key(id) ?? fallback.get(id) ?? 0, (id) => fallback.get(id) ?? 0);
+            sortBy(ids, (id) => key(id) ?? fallback.get(id) ?? 0, (id) => fallback.get(id) ?? 0);
 
         // First by the rows that call each card, column by column; then a few sweeps by both sides, keeping the order whose strings cross least.
         let orders = new Map(keys.map((c) => [c, byPath(columns.get(c)!)] as const));
@@ -561,7 +586,7 @@ const planWith = (review: Plannable, gap: number, stack: number): BoardPlan => {
         top = best.top;
         const bandOrder = keys.flatMap((c) => best.orders.get(c)!);
         const dy = floor - Math.min(...bandOrder.map((id) => top.get(id)!));
-        // Column 0, the PR card and callers, keeps the board's left edge straight. Cards after it take their column's width,
+        // Column 0, the callers, keeps the code's left edge straight. Cards after it take their column's width,
         // so every string leaves a column from one edge, clear of wider cards above and below.
         for (const id of bandOrder) place(id, left.get(columnOf(id))!, top.get(id)! + dy, columnOf(id) === 0 ? sizeOf(id).width : width.get(columnOf(id))!);
         order.push(...bandOrder);
@@ -584,7 +609,7 @@ const planWith = (review: Plannable, gap: number, stack: number): BoardPlan => {
         for (const p of sortBy(under, wantedX, (p) => p.path ?? "")) {
             // Centred under its cards when a string can run from there; else under each of them in turn.
             const covered = coveredBy(p);
-            const spots = [wantedX(p), ...covered.map((r) => centredUnder(p, [r.x + r.width / 2]))].map((x) => Math.max(0, x, edge + L.restSpacing));
+            const spots = [wantedX(p), ...covered.map((r) => centredUnder(p, [r.x + r.width / 2]))].map((x) => Math.max(codeLeft, x, edge + L.restSpacing));
             const x =
                 spots.find((x) => {
                     place(p.id, x, cardTop);
@@ -595,12 +620,6 @@ const planWith = (review: Plannable, gap: number, stack: number): BoardPlan => {
             edge = x + sizeOf(p.id).width;
         }
     });
-
-    // With no thread, the PR card heads the bottom row on its own.
-    if (review.bands.length === 0) {
-        place("pr", 0, 0);
-        order.push("pr");
-    }
 
     const rest = review.pins.filter((p) => p.lane === "rest");
     if (rest.length > 0) {
@@ -617,16 +636,17 @@ const planWith = (review: Plannable, gap: number, stack: number): BoardPlan => {
             if (p.kind === "test" && covers(p)) continue;
             sequence.push(p, ...ranked.filter((t) => t.kind === "test" && covers(t) === p.id));
         }
-        const rowWidth = Math.max(L.minRowWidth, widest());
-        let x = 0;
-        let rowTop = lowest() + L.bandGap;
+        // The row wraps where the widest band ends, or 2800 past the code's left edge; with no thread, it starts level with the PR card.
+        const rowRight = codeLeft + Math.max(L.minRowWidth, widest() - codeLeft);
+        let x = codeLeft;
+        let rowTop = placed.size === 0 ? 0 : lowest() + L.bandGap;
         let rowBottom = rowTop;
         sequence.forEach((p, i) => {
             const size = sizeOf(p.id);
             const gap = i > 0 && p.kind === "test" && covers(p) === sequence[i - 1].id ? L.restTestSpacing : L.restSpacing;
-            if (i > 0 && x + gap + size.width > rowWidth) {
+            if (i > 0 && x + gap + size.width > rowRight) {
                 rowTop = rowBottom + L.restSpacing;
-                x = 0;
+                x = codeLeft;
             } else if (i > 0) x += gap;
             place(p.id, x, rowTop);
             rowBottom = Math.max(rowBottom, rowTop + size.height);
@@ -634,6 +654,9 @@ const planWith = (review: Plannable, gap: number, stack: number): BoardPlan => {
             order.push(p.id);
         });
     }
+
+    // The PR card at the board's top-left corner, placed before the strings so they clear it too.
+    if (pr) place(pr.id, 0, 0);
 
     // Strings: the first route that clears, for every link between two placed cards.
     const rank = (id: string) => order.indexOf(id);
@@ -652,7 +675,7 @@ const planWith = (review: Plannable, gap: number, stack: number): BoardPlan => {
     const groups = new Map<string, Link[]>();
     for (const l of links) groups.set(`${l.to} ${l.kind}`, [...(groups.get(`${l.to} ${l.kind}`) ?? []), l]);
     const crowd = new Set([...groups.values()].flatMap((group) => sortBy(group, distance).slice(L.fanIn).map((l) => l.id)));
-    // From the row under, a string rises only to a card above its own card, the two overlapping in x: one running sideways would cross the board, so the panel lists it.
+    // From the row under, a string rises to a card above its own card, the two overlapping in x: one running sideways would cross the board, so it waits, and the panel lists it unless its card would have no string at all.
     const sideways = (l: Link) => {
         if (pinOf(l.from).lane !== "under") return false;
         const [A, B] = [placed.get(l.from)!, placed.get(l.to)!];
@@ -661,11 +684,8 @@ const planWith = (review: Plannable, gap: number, stack: number): BoardPlan => {
     const strings: PlannedString[] = [];
     const undrawn: string[] = [];
     const tangle = { curved: 0, straight: 0 };
-    for (const l of links) {
-        if (crowd.has(l.id) || sideways(l)) {
-            undrawn.push(l.id);
-            continue;
-        }
+    /** Draws a link's string when one of its routes clears, within the crossing budget. */
+    const draw = (l: Link): boolean => {
         const crossed = (c: Candidate) => {
             const path = stringPath(c.start, c.bend, c.end);
             return strings.reduce((n, o) => n + stringCrossings({ ...c, path }, o), 0);
@@ -675,16 +695,23 @@ const planWith = (review: Plannable, gap: number, stack: number): BoardPlan => {
         const clearRoutes = routesOf(l).filter(clear);
         const found = clearRoutes.length <= 1 ? clearRoutes[0] : sortBy(clearRoutes, crossed)[0];
         // Strings may cross each other no more often, all told, than straight lines between the same ends would: past that, a link is listed in the panel.
-        if (!found || tangle.curved + crossed(found) > tangle.straight + straight(found)) {
-            undrawn.push(l.id);
-            continue;
-        }
+        if (!found || tangle.curved + crossed(found) > tangle.straight + straight(found)) return false;
         const { lanes: taken = [], ...route } = found;
         taken.forEach((lane) => lanes.add(lane));
         tangle.curved += crossed(found);
         tangle.straight += straight(found);
         strings.push({ link: l.id, kind: l.kind, ...route, path: stringPath(found.start, found.bend, found.end), label: null, style: styleOf(l, review) });
+        return true;
+    };
+    const held: Link[] = [];
+    for (const l of links) {
+        if (crowd.has(l.id)) undrawn.push(l.id);
+        else if (sideways(l)) held.push(l);
+        else if (!draw(l)) undrawn.push(l.id);
     }
+    // A row-under card left with no string keeps one, its shortest sideways link that routes: a card with links never stands alone.
+    const tied = (id: string) => strings.some((s) => s.from.pin === id || s.to.pin === id);
+    for (const l of held) if (tied(l.from) || !draw(l)) undrawn.push(l.id);
 
     // Labels: beside a middle bend of each string, clear of every card, label and other string by 8, else none.
     const labels: TextSpot[] = [];

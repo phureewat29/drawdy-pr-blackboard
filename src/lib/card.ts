@@ -18,7 +18,7 @@ import { clamp, count, plural, sortBy } from "./fp.ts";
 import { escapeHtml, highlightLine, type HighlightState } from "./highlight.ts";
 import { languageOf } from "./language.ts";
 import type { Link, Pin, Review, ReviewFile } from "./model.ts";
-import { MARKDOWN_CSS, blocksHeight, lexMarkdown, markdownBlocks, markdownHtml, segments, segmentsHtml, type MdToken } from "./markdown.ts";
+import { MARKDOWN_CSS, blocksHeight, lexMarkdown, markdownBlocks, markdownHtml, segments, segmentsHtml } from "./markdown.ts";
 import type { TestCase } from "./symbols.ts";
 
 export const CARD = {
@@ -398,7 +398,9 @@ const rowWidth = (r: Row): number => CARD.gutter + rowChars(r) * CARD.charWidth 
 export const pinCard = (pin: Pin, review: Pick<Review, "files" | "links"> & Partial<Pick<Review, "pins">>): CardModel => {
     const built = pin.kind === "change" || pin.kind === "context" ? declRows(pin, review) : pin.kind === "test" ? testRows(pin, review) : fileRows(pin, review);
     const header = 220 + (pin.name.length + (pin.path ?? "").length) * 7;
-    const width = Math.round(clamp(Math.max(header, ...built.map(rowWidth)), CARD.minWidth, CARD.maxWidth));
+    // A Python, Go or Rust declaration's card is wide enough for its whole name, as `headerName` measures it: 52 % of the header at 9.2 px a character.
+    const named = (pin.kind === "change" || pin.kind === "context") && TYPED_METHODS.has(languageOf(pin.path ?? "")) ? Math.ceil((pin.name.length * 9.2) / 0.52 + 28) + 1 : 0;
+    const width = Math.round(clamp(Math.max(header, named, ...built.map(rowWidth)), CARD.minWidth, CARD.maxWidth));
     // The code column starts after the gutter, 68 on a context card, and keeps 12 clear at its right.
     const room = width - (pin.kind === "context" ? 68 : CARD.gutter) - 12;
     const cut = built.flatMap((r) => (r.kind === "line" && rowChars(r) * CARD.charWidth > room ? [r.line.at] : []));
@@ -435,8 +437,8 @@ export const foldsOf = (card: CardModel): Fold[] =>
         return r.kind === "info" && r.readAll ? [[y, 0]] : [];
     });
 
-/** The fold row under card-local `y`, if any. Rows are 20 high; the PR card's zone runs to its foot. */
-export const foldAt = (folds: readonly Fold[], y: number, height: number = CARD.row): Fold | null => folds.find(([top]) => y >= top && y < top + height) ?? null;
+/** The fold row under card-local `y`, if any: rows are 20 high. */
+export const foldAt = (folds: readonly Fold[], y: number): Fold | null => folds.find(([top]) => y >= top && y < top + CARD.row) ?? null;
 
 export type Theme = "light" | "dark";
 
@@ -611,13 +613,6 @@ const PR = {
     unpinned: 20,
     /** 16 above the rule, the rule, 16 below. */
     rule: 33,
-    /** The description area is never taller. */
-    maxDescription: 500,
-    fold: 32,
-    /** The fade over a first block cut inside. */
-    fade: 48,
-    /** How far over Chrome's layout the description's estimate runs at most, as a share of it. */
-    over: 0.1,
 } as const;
 
 type PrCardInput = Pick<Review, "pr" | "files" | "unpinned">;
@@ -632,68 +627,31 @@ export type PrCard = {
     width: number;
     height: number;
     titleLines: number;
-    /** The description's blocks the card shows: all of them, or those that fit whole. */
-    tokens: MdToken[];
     /** The whole description estimated at the card's width; 0 when there is none. */
     estimate: number;
-    /** The most room the card gives the blocks it shows; the surplus of the estimate sits at the card's foot. */
-    description: number;
-    /** The first block is cut inside, under a fade. */
-    cut: boolean;
-    /**
-     * When the card hides some of the description, where a click opens Read
-     * all, card-local, down to the card's foot. The fold row follows the
-     * description as Chrome lays it out, up to `PR.over` above its
-     * estimated top, so the zone starts that far above.
-     */
-    fold: number | null;
 };
 
-/**
- * Which of the description's blocks fit in `max`: all of them when the
- * rest would take no more room than the fold row, else as many whole
- * blocks as fit, never ending on a heading, so the card stops between
- * blocks. When not even the first fits, it is cut inside.
- */
-const fitBlocks = (tokens: readonly MdToken[], blocks: readonly number[], max: number): { count: number; height: number; cut: boolean } => {
-    // What the fold row would hide fits in the fold row's own room: show it instead.
-    if (blocksHeight(blocks) <= max + PR.fold) return { count: tokens.length, height: blocksHeight(blocks), cut: false };
-    let count = 0;
-    while (count < tokens.length && blocksHeight(blocks.slice(0, count + 1)) <= max) count++;
-    if (count === tokens.length) return { count, height: blocksHeight(blocks), cut: false };
-    while (count > 0 && (tokens[count - 1].type === "heading" || blocks[count - 1] === 0)) count--;
-    if (count === 0) return { count: tokens.length, height: max, cut: true };
-    return { count, height: blocksHeight(blocks.slice(0, count)), cut: false };
-};
-
-/**
- * The PR card's size and parts. A component's height is fixed when it is
- * made, for every viewer, so the description is estimated block by block
- * (`markdownBlocks`), a little over what Chrome lays out. Up to 500 it shows
- * whole. Past that the card shows the blocks that fit whole and ends in
- * `⋯ Read all`, right under the last of them; what the estimate gave over
- * sits at the card's foot.
- */
-export const prCard = (review: PrCardInput): PrCard => {
-    const all = lexMarkdown(review.pr.body);
+/** The PR card's size, with the description's tokens to render. */
+const measurePr = (review: PrCardInput) => {
+    const tokens = lexMarkdown(review.pr.body);
     const inner = PR.width - 2 * PR.pad;
     const titleChars = segments(review.pr.title).reduce((n, s) => n + s.text.length * (s.code ? 1.15 : 1), 0);
     const titleLines = clamp(Math.ceil((titleChars * PR.titleChar) / inner), 1, 3);
-    const blocks = markdownBlocks(all, inner);
-    const estimate = blocksHeight(blocks);
-    const fit = fitBlocks(all, blocks, PR.maxDescription);
-    const folded = fit.count < all.length || fit.cut;
+    const estimate = blocksHeight(markdownBlocks(tokens, inner));
     const top = CARD.header + PR.pad + titleLines * PR.titleLine + PR.meta + (unpinnedText(review.unpinned) ? PR.unpinned : 0) + (estimate > 0 ? PR.rule : 0);
-    return {
-        width: PR.width,
-        height: top + fit.height + (folded ? PR.fold : 0) + PR.pad,
-        titleLines,
-        tokens: all.slice(0, fit.count),
-        estimate,
-        description: fit.height,
-        cut: fit.cut,
-        fold: folded ? top + fit.height - (fit.cut ? 0 : Math.ceil(fit.height * PR.over)) : null,
-    };
+    return { tokens, titleLines, estimate, height: top + estimate + PR.pad };
+};
+
+/**
+ * The PR card's size. It shows the whole description, however long: the
+ * board must read with the panel closed, and the layout gives the card a
+ * column of its own. A component's height is fixed when it is made, for
+ * every viewer, so the description is estimated block by block
+ * (`markdownBlocks`), a little over what Chrome lays out.
+ */
+export const prCard = (review: PrCardInput): PrCard => {
+    const { titleLines, estimate, height } = measurePr(review);
+    return { width: PR.width, height, titleLines, estimate };
 };
 
 const STATE_STYLE: Record<string, string> = {
@@ -722,29 +680,28 @@ const prHeader = (review: PrCardInput) => {
     return `<header><span class="prchip">${escapeHtml(`${pr.ref.owner}/${pr.ref.repo}#${pr.ref.number}`)}</span><span class="state" style="${STATE_STYLE[pr.state]}">${stateText(pr.state)}</span></header>`;
 };
 
-const prLead = (review: PrCardInput, titleLines: number | null) => {
+const prLead = (review: PrCardInput, titleLines: number) => {
     const { pr } = review;
     const unpinned = unpinnedText(review.unpinned);
-    const clampCss = titleLines === null ? "" : ` style="max-height:${titleLines * PR.titleLine}px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:${titleLines};-webkit-box-orient:vertical"`;
+    const clampCss = ` style="max-height:${titleLines * PR.titleLine}px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:${titleLines};-webkit-box-orient:vertical"`;
     return `<h1 class="title"${clampCss}>${segmentsHtml(segments(pr.title))}</h1>
 <div class="meta">${escapeHtml(pr.author)} · ${plural(pr.changedFiles, "file")} · <span class="a mono">+${count(pr.additions)}</span> <span class="d mono">−${count(pr.deletions)}</span></div>${unpinned ? `<div class="unpinned">${unpinned}</div>` : ""}`;
 };
 
 /**
  * The PR card: the header every card has (the pull request's chip and its
- * state), the title, author and counts, what the board leaves off,
- * then the description as GitHub shows it, cut to fit (`prCard`).
+ * state), the title, author and counts, what the board leaves off, then
+ * the whole description as GitHub shows it, a `<details>` open, since
+ * nothing on a card can be clicked open. The description keeps its
+ * estimated height at most, against a teammate's fonts.
  */
 export const prCardHtml = (review: PrCardInput, theme: Theme): string => {
-    const m = prCard(review);
-    const fade = m.cut ? `.desc::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: ${PR.fade}px; background: linear-gradient(transparent, var(--bg)); }` : "";
+    const m = measurePr(review);
     const css = `${CARD_CSS}${PR_CSS}${MARKDOWN_CSS}
-.desc { position: relative; max-height: ${m.description}px; overflow: hidden; } ${fade}
-.more { height: ${PR.fold}px; line-height: ${PR.fold}px; font: 12px/${PR.fold}px ui-monospace, Menlo, monospace; color: var(--ink3); }
+.desc { max-height: ${m.estimate}px; overflow: hidden; }
 `;
-    const description = m.description > 0 ? `<hr class="rule"><div class="desc"><div class="md">${markdownHtml(m.tokens, "card")}</div></div>` : "";
-    const more = m.fold !== null ? `<div class="more">${DOTS} <span class="ra">Read all</span></div>` : "";
-    return page(css, `${prHeader(review)}<main>${prLead(review, m.titleLines)}${description}${more}</main>`, theme);
+    const description = m.estimate > 0 ? `<hr class="rule"><div class="desc"><div class="md">${markdownHtml(m.tokens, "card")}</div></div>` : "";
+    return page(css, `${prHeader(review)}<main>${prLead(review, m.titleLines)}${description}</main>`, theme);
 };
 
 /** A file's whole diff, unchanged stretches between hunks counted. */
@@ -767,8 +724,8 @@ export const declarationRows = (pin: Pin, f: Pick<ReviewFile, "hunks" | "lang">,
 };
 
 /**
- * A page for Read all, and how tall it lays out at a width, estimated as a
- * card's description is, so the overlay is no taller than its page.
+ * A page for Read all, and how tall it lays out at a width, estimated from
+ * its rows, so the pane is no taller than its page.
  */
 export type ReadAllPage = { html: string; height: (width: number) => number };
 
@@ -786,7 +743,7 @@ const wrappedRows = (r: Row, room: number): number => {
     return 1 + Math.ceil((text.length - fits) / Math.max(8, fits - hang));
 };
 
-/** Room Read all's header keeps on its right for the overlay's `✕`. */
+/** Room Read all's header keeps on its right for the pane's `✕`. */
 const CLOSE_ROOM = 56;
 
 const READ_ALL_CSS = `
@@ -802,7 +759,7 @@ header { position: sticky; top: 0; z-index: 1; padding-right: ${CLOSE_ROOM}px; }
 /**
  * Scrolls Read all to the lines in focus, or the first change, a third of
  * the way down, with a whole row under the header. Runs inside its iframe.
- * Drawdy lays the overlay out after the page starts, which resets the
+ * Drawdy lays the pane out after the page starts, which resets the
  * scroll, so it scrolls again on each resize for two seconds, until the
  * reader scrolls, clicks or types. It sets its own scroller's `scrollTop`:
  * `scrollIntoView` would also scroll the pages around the iframe.
@@ -827,45 +784,13 @@ const readAllScript = () => {
 };
 
 /**
- * The PR page's height at `width`: what the card's estimate gives, with the
- * whole title and description. A `<details>` opens on the page but counts
- * as its summary in the estimate, so a description with one takes the
- * overlay's full height.
+ * Read all for a code card: the card's own header, then the whole
+ * declaration for a change or context card, the file's diff for a test or
+ * file card. Unified, wrapped, changed words marked, opened at `focus` or
+ * the first change, in the theme the cards were pinned in. The PR card has
+ * none: it shows its whole description itself.
  */
-const prPageHeight = (review: PrCardInput, tokens: readonly MdToken[], width: number): number => {
-    if (/<details/i.test(review.pr.body)) return Infinity;
-    const inner = width - 2 * PR.pad;
-    const titleChars = segments(review.pr.title).reduce((n, s) => n + s.text.length * (s.code ? 1.15 : 1), 0);
-    const description = blocksHeight(markdownBlocks(tokens, inner));
-    return (
-        CARD.header +
-        PR.pad +
-        Math.max(1, Math.ceil((titleChars * PR.titleChar) / inner)) * PR.titleLine +
-        PR.meta +
-        (unpinnedText(review.unpinned) ? PR.unpinned : 0) +
-        (description > 0 ? PR.rule + description : 0) +
-        24
-    );
-};
-
-const PR_READ_ALL_CSS = `
-.md pre { overflow: auto; }
-main { padding-bottom: 24px; }
-`;
-
-/**
- * Read all for a card: the card's own header, then the whole declaration
- * for a change or context card, the file's diff for a test or file card,
- * or the PR card's title, meta and whole description. Unified, wrapped,
- * changed words marked, opened at `focus` or the first change, in the
- * theme the cards were pinned in.
- */
-export const readAllOf = (pin: Pin, review: Pick<Review, "pr" | "files" | "links" | "unpinned">, theme: Theme, focus: number | null): ReadAllPage => {
-    if (pin.kind === "pr") {
-        const tokens = lexMarkdown(review.pr.body);
-        const body = `${prHeader(review)}<main>${prLead(review, null)}${review.pr.body.trim() ? `<hr class="rule"><div class="md">${markdownHtml(tokens, "page")}</div>` : ""}</main>`;
-        return { html: page(CARD_CSS + READ_ALL_CSS + PR_CSS + MARKDOWN_CSS + PR_READ_ALL_CSS, body, theme), height: (width) => prPageHeight(review, tokens, width) };
-    }
+export const readAllOf = (pin: Pin, review: Pick<Review, "files" | "links">, theme: Theme, focus: number | null): ReadAllPage => {
     const file = review.files.find((f) => f.path === pin.path);
     const declFile = declFileOf(pin, review);
     const rows = pin.kind === "change" || pin.kind === "context" ? (declFile ? declarationRows(pin, declFile, review) : []) : file ? fileDiffRows(file) : [];
