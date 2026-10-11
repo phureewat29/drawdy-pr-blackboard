@@ -5,8 +5,9 @@
  * description is untrusted: raw HTML is dropped but for `<br>`, `<img>`
  * (a chip, nothing is fetched) and `<details>`, and links are inert.
  *
- * Two modes: `card` folds a `<details>` to its summary, since a card can't
- * be opened; `page` (Read all) keeps a real `<details>`.
+ * Two modes: `card` shows a `<details>` open, its summary a bold line,
+ * since nothing on a card can be clicked open; `page` (the panel) keeps a
+ * real `<details>`, which the reader opens.
  */
 
 import { Lexer } from "../vendor/marked.ts";
@@ -34,10 +35,124 @@ export type MdToken = {
 
 export type MarkdownMode = "card" | "page";
 
-/** A description is cut here before lexing, so a huge body can't stall the driver. */
-export const MAX_BODY = 20_000;
+/**
+ * How much inline Markdown a description may lex. A run is a paragraph's,
+ * a list item's, a cell's or a heading's text, and `marked`'s emphasis scan
+ * grows with the square of a run's `*`, `_` and `~`: a 64 KB paragraph of
+ * `*a _b` takes 12 s. Backticks and brackets cost nothing like it (64 KB of
+ * them, 23 ms or less), so only those three count. A run with `few` of them
+ * lexes fast at any length (200 `*` before 64 KB of words, 12 ms). A
+ * denser run lexes only when `short` (2,000 characters of them take 12 ms),
+ * and a description spends at most `dense` on such runs, in characters
+ * squared: 8 of 2,000, about 100 ms. Any other run shows as typed.
+ */
+export const INLINE = { short: 2000, few: 200, dense: 8 * 2000 ** 2 } as const;
+const delimiters = (src: string): number => src.match(/[*_~]/g)?.length ?? 0;
+const typed = (src: string): MdToken => ({ type: "text", raw: src, text: src });
 
-export const lexMarkdown = (body: string): MdToken[] => (Lexer.lex(body.slice(0, MAX_BODY), { gfm: true }) as MdToken[]).filter((t) => t.type !== "space");
+/** What is left of a description's `INLINE.dense`, spent as its dense runs are lexed. */
+type Budget = { left: number };
+
+/** Whether to lex `src`, spending from `budget` when it is dense. */
+const lexable = (src: string, budget: Budget): boolean => {
+    if (delimiters(src) <= INLINE.few) return true;
+    if (src.length > INLINE.short || src.length ** 2 > budget.left) return false;
+    budget.left -= src.length ** 2;
+    return true;
+};
+
+/** The part of `marked`'s Lexer that `lexBlocks` drives: block lexing queues each block's inline run, with the array its tokens go in. */
+type MarkedLexer = {
+    tokens: MdToken[];
+    inlineQueue: { src: string; tokens: MdToken[] }[];
+    blockTokens: (src: string, tokens: MdToken[]) => MdToken[];
+    inlineTokens: (src: string, tokens: MdToken[]) => MdToken[];
+};
+
+/** Each alert's lead (its first paragraph after `[!NOTE]`) by that paragraph, found at lexing: rendering lexes nothing. */
+const leads = new WeakMap<MdToken, MdToken[]>();
+
+/**
+ * `tokens` without their first `n` characters: an alert's marker, which
+ * `marked` keeps as plain text, and a line break after it. Null when the
+ * marker is anything else, such as a link.
+ */
+const dropMarker = (tokens: readonly MdToken[], n: number): MdToken[] | null => {
+    const rest = [...tokens];
+    let left = n;
+    while (left > 0) {
+        const t = rest[0];
+        if (!t || (t.type !== "text" && t.type !== "br") || (t.type === "text" && t.text !== t.raw)) return null;
+        const raw = t.raw ?? "";
+        if (raw.length <= left) {
+            left -= raw.length;
+            rest.shift();
+        } else if (t.type === "text") {
+            rest[0] = { ...t, raw: raw.slice(left), text: raw.slice(left) };
+            left = 0;
+        } else return null;
+    }
+    return rest;
+};
+
+/** Finds every alert in `tokens`, at any depth, and keeps its lead: the paragraph's own tokens less the marker, else its rest lexed against `budget`. */
+const findLeads = (tokens: readonly MdToken[], budget: Budget): void => {
+    for (const t of tokens) {
+        if (t.type === "blockquote") {
+            const first = t.tokens?.[0];
+            const alert = first?.type === "paragraph" ? ALERT.exec(first.text ?? "") : null;
+            if (first && alert) {
+                const rest = (first.text ?? "").slice(alert[0].length);
+                leads.set(first, dropMarker(first.tokens ?? [], alert[0].length) ?? (lexable(rest, budget) ? (Lexer.lexInline(rest, { gfm: true }) as MdToken[]) : [typed(rest)]));
+            }
+            findLeads(t.tokens ?? [], budget);
+        } else if (t.type === "list") for (const item of t.items ?? []) findLeads(item.tokens ?? [], budget);
+    }
+};
+
+/** `marked`'s own `lex`: the blocks first, then each block's inline runs, but a run `lexable` refuses stays as typed. */
+const lexBlocks = (body: string): MdToken[] => {
+    const lexer = new Lexer({ gfm: true }) as unknown as MarkedLexer;
+    lexer.blockTokens(body.replace(/\r\n|\r/g, "\n"), lexer.tokens);
+    const budget = { left: INLINE.dense };
+    for (let i = 0; i < lexer.inlineQueue.length; i++) {
+        const { src, tokens } = lexer.inlineQueue[i];
+        if (lexable(src, budget)) lexer.inlineTokens(src, tokens);
+        else tokens.push(typed(src));
+    }
+    const tokens = lexer.tokens.filter((t) => t.type !== "space");
+    findLeads(tokens, budget);
+    return tokens;
+};
+
+/** The last few descriptions lexed, by their exact text: the layout, the board and the panel each ask for the same one. */
+const lexed = new Map<string, MdToken[]>();
+const KEPT = 4;
+
+/**
+ * The description's blocks, all of it: GitHub keeps a description to
+ * 65,536 characters, and the board shows it whole. `marked` recurses once
+ * per nested quote, so thousands of `>` overflow the stack; such a
+ * description shows as plain text. The tokens are shared between callers,
+ * who only read them.
+ */
+export const lexMarkdown = (body: string): MdToken[] => {
+    const kept = lexed.get(body);
+    if (kept) {
+        lexed.delete(body);
+        lexed.set(body, kept);
+        return kept;
+    }
+    let tokens: MdToken[];
+    try {
+        tokens = lexBlocks(body);
+    } catch {
+        tokens = body.trim() ? [{ type: "paragraph", text: body, tokens: [{ type: "text", text: body }] }] : [];
+    }
+    lexed.set(body, tokens);
+    if (lexed.size > KEPT) lexed.delete(lexed.keys().next().value!);
+    return tokens;
+};
 
 /** Text into HTML the way `marked`'s own `escape(text, false)` does: an entity such as `&amp;` stays one. */
 export const escapeText = (text: string): string =>
@@ -75,16 +190,16 @@ const RAW = new Set(["script", "style", "textarea", "title", "noscript", "iframe
 
 type Ctx = {
     mode: MarkdownMode;
-    /** Inside a `<details>` the card folds: how deep. */
-    skip: number;
-    /** On the card, the summary of the `<details>` being folded, while its `<summary>` is open. */
-    summary: string | null;
-    shownSummary: boolean;
-    /** In Read all, `<details>` left open, closed at the end. */
+    /** In the panel, `<details>` left open, closed at the end. */
     open: number;
+    /** On the card, a summary's bold line not closed yet: its `</summary>`, or its details' end, closes it. */
+    summary: boolean;
     /** Inside a raw-text element (`<script>`, `<style>`), whose content is dropped. */
     drop: string | null;
 };
+
+/** A summary on the card: a bold line over what its `<details>` holds. */
+const SUMMARY = ['<p class="md-details"><strong>', "</strong></p>"] as const;
 
 const chip = (text: string) => `<span class="md-chip">${escapeText(text)}</span>`;
 
@@ -119,32 +234,18 @@ const html = (text: string, ctx: Ctx): string => {
                     ctx.open--;
                     out += "</details>";
                 }
-                continue;
-            }
-            if (!close) {
-                if (ctx.skip === 0) {
-                    ctx.summary = null;
-                    ctx.shownSummary = false;
-                }
-                ctx.skip++;
-            } else if (ctx.skip > 0) {
-                ctx.skip--;
-                if (ctx.skip === 0 && !ctx.shownSummary) out += summaryLine("Details");
+            } else if (close && ctx.summary) {
+                out += SUMMARY[1];
+                ctx.summary = false;
             }
             continue;
         }
         if (name === "summary") {
             if (ctx.mode === "page") out += close ? "</summary>" : "<summary>";
-            else if (ctx.skip === 1 && !close && !ctx.shownSummary) ctx.summary = "";
-            else if (ctx.skip === 1 && close && ctx.summary !== null) {
-                out += summaryLine(ctx.summary.trim() || "Details");
-                ctx.summary = null;
-                ctx.shownSummary = true;
+            else if (Boolean(close) === ctx.summary) {
+                out += SUMMARY[close ? 1 : 0];
+                ctx.summary = !close;
             }
-            continue;
-        }
-        if (ctx.skip > 0) {
-            if (ctx.summary !== null && !name) ctx.summary += piece.replace(/\s+/g, " ");
             continue;
         }
         if (name === "br") out += "<br>";
@@ -156,9 +257,6 @@ const html = (text: string, ctx: Ctx): string => {
     return out;
 };
 
-/** A folded `<details>` on the card: its summary, bold, after `▸`. Escaped from text the description wrote. */
-const summaryLine = (summary: string) => `<p class="md-details">▸ <strong>${escapeText(summary)}</strong></p>`;
-
 const inline = (tokens: readonly MdToken[] | undefined, ctx: Ctx): string => {
     let out = "";
     for (const t of tokens ?? []) {
@@ -166,10 +264,7 @@ const inline = (tokens: readonly MdToken[] | undefined, ctx: Ctx): string => {
             out += html(t.text ?? "", ctx);
             continue;
         }
-        if (ctx.skip > 0 || ctx.drop) {
-            if (ctx.summary !== null && (t.type === "text" || t.type === "codespan")) ctx.summary += t.text ?? "";
-            continue;
-        }
+        if (ctx.drop) continue;
         switch (t.type) {
             case "text":
                 out += t.tokens ? inline(t.tokens, ctx) : escapeText(emojify(t.text ?? ""));
@@ -234,10 +329,7 @@ const blocks = (tokens: readonly MdToken[] | undefined, ctx: Ctx): string => {
             out += /^\s*$/.test(body) || /^<(p|details|\/details|summary)/.test(body.trim()) ? body : `<p>${body.trim()}</p>`;
             continue;
         }
-        if (ctx.skip > 0 || ctx.drop) {
-            if (ctx.summary !== null) inline(t.tokens, ctx);
-            continue;
-        }
+        if (ctx.drop) continue;
         out += block(t, ctx);
     }
     return out;
@@ -263,7 +355,7 @@ const block = (t: MdToken, ctx: Ctx): string => {
             if (!alert) return `<blockquote>${blocks(t.tokens, ctx)}</blockquote>`;
             const kind = alert[1].toUpperCase();
             const remaining = (first.text ?? "").slice(alert[0].length);
-            const lead = remaining.trim() ? `<p>${inline(Lexer.lexInline(remaining, { gfm: true }) as MdToken[], ctx)}</p>` : "";
+            const lead = remaining.trim() ? `<p>${inline(leads.get(first) ?? [typed(remaining)], ctx)}</p>` : "";
             return `<blockquote class="md-alert ${kind.toLowerCase()}"><p><strong>${ALERTS[kind]}</strong></p>${lead}${blocks(rest, ctx)}</blockquote>`;
         }
         case "list": {
@@ -291,9 +383,9 @@ const block = (t: MdToken, ctx: Ctx): string => {
 
 /** The description as HTML for a `markdown-body` element (`MARKDOWN_CSS`). */
 export const markdownHtml = (tokens: readonly MdToken[], mode: MarkdownMode): string => {
-    const ctx: Ctx = { mode, skip: 0, summary: null, shownSummary: false, open: 0, drop: null };
+    const ctx: Ctx = { mode, open: 0, summary: false, drop: null };
     const out = blocks(tokens, ctx);
-    return out + "</details>".repeat(ctx.open) + (ctx.skip > 0 && !ctx.shownSummary ? summaryLine(ctx.summary?.trim() || "Details") : "");
+    return out + (ctx.summary ? SUMMARY[1] : "") + "</details>".repeat(ctx.open);
 };
 
 /** Characters a run of inline tokens shows, about. */
@@ -329,8 +421,8 @@ const MARGIN = 1.03;
 /**
  * How tall each top-level block of the description renders at `width`,
  * with the gap below it, estimated, since the driver can't measure HTML
- * and a card's height is fixed when it is made. Card mode: a `<details>`
- * counts as its summary line, and the blocks inside it as nothing.
+ * and a card's height is fixed when it is made. A `<details>` counts as
+ * the card shows it, open: its summary a line, then what it holds.
  */
 export const markdownBlocks = (tokens: readonly MdToken[], width: number): number[] => {
     const height = (t: MdToken, w: number, nested: boolean): number => {
@@ -362,21 +454,17 @@ export const markdownBlocks = (tokens: readonly MdToken[], width: number): numbe
         }
     };
     const sum = (list: readonly MdToken[], w: number) => list.reduce((n, t) => n + height(t, w, true), 0);
-    let depth = 0;
     let first = true;
     return tokens.map((t) => {
         if (t.type === "html") {
-            const text = t.text ?? "";
-            const opens = (text.match(/<details\b/gi) ?? []).length;
-            const closes = (text.match(/<\/details>/gi) ?? []).length;
-            const was = depth;
-            depth = Math.max(0, depth + opens - closes);
-            const shown = text.replace(/<!--[\s\S]*?(-->|$)|<[^>]*>/g, "");
-            const h = was > 0 ? 0 : opens > 0 ? M.line + M.gap : /[^\s]/.test(shown) ? textHeight([{ type: "text", text: shown }], width) + M.gap : 0;
+            // A summary is a line of its own; what follows it in the same piece of HTML, another.
+            const h = (t.text ?? "")
+                .split(/<\/summary\s*>/i)
+                .map((part) => part.replace(/<!--[\s\S]*?(-->|$)|<[^>]*>/g, ""))
+                .reduce((n, shown) => n + (/[^\s]/.test(shown) ? textHeight([{ type: "text", text: shown }], width) + M.gap : 0), 0);
             if (h > 0) first = false;
             return h;
         }
-        if (depth > 0) return 0;
         const h = height(t, width, false);
         // A heading's or rule's 24 above collapses into the 16 below the block before it; the first block has none above.
         const above = t.type === "heading" || t.type === "hr" ? (first ? 24 : M.gap) : 0;
