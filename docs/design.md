@@ -87,8 +87,8 @@ description is fetched or run.
 
 **One control per job.** Next moves on, and the camera shows where; Read
 all is offered for every card that hides something, and only those; one
-paste field opens a pull request, and `Open another` goes back to it,
-keeping the board being read. No list of opened pull requests: the
+paste field opens a pull request, and Home goes back to it, keeping
+the board being read. No list of opened pull requests: the
 stored copy of each is enough.
 
 **Colour tells strings apart.** The label says what a string means, so its

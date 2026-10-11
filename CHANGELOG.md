@@ -2,6 +2,153 @@
 
 ## Unreleased
 
+### One toolbar, the whole description, Read all on the board
+
+- **One toolbar holds every control.** The panel reads top to bottom: the
+  pull request, the current card's explanation, which scrolls, then a
+  toolbar at its foot: Home, Rebuild, Overview and Description as Lucide
+  icons with tooltips, then Previous, where you are, and Next. The nav row
+  under the header and `Open another` are gone.
+- **Home** replaces `Open another`: the start view comes back with the
+  field focused, and the board stays.
+- **Rebuild** reads the pull request from GitHub again, new commits
+  included, and puts the new board where the old one stood, your own
+  notes kept; two undos bring the old board back. When it would cost more
+  than 2 GitHub requests, the first press says what it costs and the
+  second starts it. Its progress and any error show on the toolbar's
+  line; so does any other action's error in the reading view, which no
+  longer jumps to the start view. One rebuild runs at a time, and Rebuild
+  turns off the moment you press it. While it runs you can go Home, open
+  another pull request (it no longer waits) or read another board: the
+  rebuilt board then lands where it was, without moving your camera or
+  the panel; if it fails meanwhile, the board you're reading says so.
+- **The steps walk the code.** The PR card is no longer step 1: hono#5513
+  has eight steps, `#dispatch()` first. A new board lands with the PR card
+  current, its whole description in the panel, and the board at the
+  overview; **Description** brings the PR card back.
+- **The description, whole.** The PR card shows all of it, a `<details>`
+  open, with no fold row, `⋯ Read all` or fade, and stands alone in the
+  board's first column, so a long description never pushes a card down;
+  the overview frames the code and the PR card down to the lowest card.
+  The panel shows it too, scrolling, a `<details>` there to open. The
+  20,000-character cut is gone: GitHub keeps a description to 65,536. A
+  long code line or URL in it no longer widens the panel and pushes Next
+  off screen: code blocks and tables scroll sideways, and URLs wrap. With
+  focus in the description, ← and → scroll a wide code block instead of
+  stepping. A description built to stall the lexer (a 64 KB paragraph of
+  `*a _b`) no longer freezes Drawdy for seconds: such a run shows as
+  typed, and each description is lexed once.
+- **Names in their strings' colours.** Each link name in the panel takes
+  the colour of its string on the board, as its 12 px text can read it on
+  the panel in either theme (4.6:1 or more); a link with no string keeps
+  the text colour.
+- **Read all on the board.** It sits beside its card on the board and
+  pans and zooms with it, so zooming out shrinks it with the cards; drag
+  it by its header to move it. Opened from far out, the camera first
+  comes close enough to read. It slides under Drawdy's toolbar and the
+  panel, never over them. Its frame is darker than a card's, so a card
+  under it doesn't read as part of it.
+- **"PR" in everything you read** (request 60): `Paste a GitHub PR link`,
+  `Reading the PR`, and the errors.
+- **A card in the row under keeps one string.** One whose links all run
+  sideways keeps its shortest that routes, so a test file with links no
+  longer looks unlinked: on the 135 Python and Go gate boards, bare cards
+  in the row under fall from 71 to 51.
+
+### Python, Go and Rust strings that are facts
+
+- **One linker for Python, Go and Rust.** Each is parsed with
+  tree-sitter, and one resolver follows each name to the declaration it
+  means: through scopes, imports, a Go package's files and its `go.mod`,
+  Python's method order and `super()`, and the members of a value whose
+  type is written or built. A string is drawn only when exactly one
+  declaration is proven. Each language adds a table of its rules, and its
+  cards come from the grammar's own `tags.scm`. JavaScript and TypeScript
+  keep their own linker, and their boards are the same to the byte.
+- **No string by name, in any language.** The old finder drew a call
+  wherever a name was followed by `(`: on request 56's Go pull requests
+  137 of its strings were wrong to 932 right, and on 8 messy Python ones
+  125 to 59, joining `super().__init__()` to another class's `__init__`
+  and every model's `Forward()` to every other. That finder, `rust.ts`
+  and the links from import lines are gone. A language without a table
+  (Ruby, Java, C# and the rest) keeps its cards and draws no string until
+  its table ships with a gate.
+- **Fewer ways to be wrong** (the link review, round 1). No link from a
+  declaration's own name (a Rust associated item, an enum variant, a Go
+  parameter in a function type), a name a Rust macro binds, or a type
+  parameter. `self`, `super()` and `Self` in a class or impl inside a
+  function mean that class. A Python import is looked for only where
+  Python looks: never a standard-library name, never a folder elsewhere,
+  and no module two roots hold. A Go file another build holds
+  (`_windows.go`, `//go:build`) is reached only from a file whose build
+  implies it, and an imported folder only by its package clause, never
+  `package main` or `//go:build ignore`. A Rust `&self` method is linked
+  only when no by-value trait method can come first. A local rebound
+  through `nonlocal` has no known type, a star import honours `__all__`,
+  writing an attribute is no use, and a Go conversion `T(v)` reads
+  `uses`.
+- **And five narrower ones** (round 2). Go's build answers no longer
+  carry from one PR to the next in the same worker, and `types_linux.pb.go`
+  is linux's, as go/build reads it. A Rust method call follows rustc's
+  probe: through `&mut self`, a trait's `flush(&mut self)` or `shift(self)`
+  comes before an inherent `flush(&self)`, and the standard library's
+  Write, Read and Iterator methods count. A receiver bound inside a
+  macro's nested tokens (`|(_, v)| v.check()`, `if let`, `match` arms)
+  names nothing. A Python module is unique only when every root is known
+  not to hold it, a file too long to read counting as there; an import
+  that may run after its file changes `sys.path`, under any name it has,
+  links nothing; and a deferred class-body annotation names the nested
+  class it means, or nothing. Round 3: a `self: Box<Self>` or `&&T`
+  receiver lets any trait method of the name come first, a typed
+  parameter (`t: &Table`) gets its receiver's mode so `t.find()` links
+  again, and a bitwise `a | b` in a macro no longer hides the call after
+  it. Round 4: a `|` in a macro is a bitwise or only right after an
+  operand, so `async |v|`, `&mut |v|` and `break |v|` bind `v`; and a
+  `sys.path` change counts through `os.sys.path`, any method on the list,
+  or the list handed to any call but a builtin that only reads it. Round
+  5: a label (`break 'outer |v|`) or an attribute (`#[...] |v|`) before
+  a `|` no longer reads as an operand, and a cast (`x as u32 | 1`) does.
+- **Measured.** No wrong link on 50 Python pull requests checked against
+  pyright, 85 Go ones checked against Go's type checker, or Bun's Rust
+  rewrite, read by hand, every link of each review judged, not only the
+  board's. It finds 98 % of the true links on the 42 Python candidates
+  and 95 % on the 8 messy ones, 93 % of the true calls on the 76 Go pull
+  requests, and all 41 hand-checked links in Bun's Rust.
+- **Cards named with their type:** `Store.delete()` in Python,
+  `Server.Start()` in Go, `Request::new()` in Rust. A Python `@overload`
+  group, and a property with its setter, are one card; `def new` and
+  `def delete` get cards; a Go label at column 0 no longer cuts a
+  function's card short. No string runs from a method to its own type.
+- **Names that fit** (the design review, round 1). A method's name too
+  long for its card loses its type from the left, never the method:
+  `…ntextServerProtocolConfigFlow.async_step_user()`, or the method alone;
+  Read all and the panel show it whole. A Python, Go or Rust card is
+  made wide enough for its name, up to 880, so a short type stays:
+  `Printer::print_semicolon_if_needed()`. A Python property's card drops
+  the `()`: `Dependant.is_gen_callable`.
+- **A class card shows only its own lines.** The lines of the method
+  cards nested in it fold, since those cards show them: 94 repeated
+  pairs on 18 of the 50 Python gate boards are gone.
+- **No string across the board from the row under.** A string from a
+  test or file card under a band rises only to a card above it; the
+  panel lists the rest. On the 135 Python and Go gate boards 62 strings
+  go to the panel, and home-assistant/core#161330's crossings drop from
+  24 to 8. hono#5513 and excalidraw#12237 stay the same to the byte.
+- **Calls first on a full board.** When a board overflows, it keeps the
+  cards with more calls between them, then more links, so uses of a
+  file's types no longer crowd out its call chains: Bun's rewrite draws 33
+  strings in chains through all 4 of its bands.
+- **Parsers.** The Python, Go and Rust grammars are pinned with their
+  SHA-256 and download once, 0.12 to 0.2 MB with the runtime. Every
+  changed file read is parsed, however much there is: Bun's rewrite parses
+  its 37 Rust files read, 7.9 MB, and opens in 3.2 s of work, 1.4 s more
+  than before; the shared worker's longest stall is 74 ms, and the
+  parser's memory stays at its first 32 MB.
+- **Fixed**: an unchanged caller's card from a file the pull request
+  leaves alone could say "PR Blackboard couldn't read this file"; it
+  shows the code.
+- Reviews stored on the device are fetched again (`REVIEW_VERSION` 10).
+
 ### Faster, and off the shared worker
 
 - **Reading and parsing in a worker of its own.** Drawdy runs every
@@ -32,8 +179,9 @@
   takes the old one's place and only then does the old one go, the
   reader's own notes kept. Two undo steps bring the old board back. The
   toolbar's button comes with its design.
-- **The icon** is the chalkboard: three pinned diff cards joined by
-  strings. `npm run icon` wires in a new one, for the listing and the
+- **The icon** is a stack of diff cards tied with a red string: one
+  clear shape at 20 px, where the chalkboard before it read as a face.
+  `npm run icon` wires in a new one, for the listing and the
   button alike.
 - **Removed**: the Lucide `presentation` artwork and `rsvg-convert`; the
   parser's runtime download for a pull request with no TypeScript or
@@ -78,10 +226,11 @@
   an unchanged card is dashed.
 - **The PR card in the panel** always shows `Description` and `Read all`,
   or `No description provided.`, so the card area is never empty.
-- **13 examples**, in the operator's order: Hono, Prettier, Zod, Vite,
+- **15 examples**, in the operator's order: Hono, Prettier, Zod, Vite,
   Node.js, TanStack Router, Astro, Svelte, Elysia, Bun, ky, Excalidraw,
-  and last Bun's rewrite in Rust, whose row says it costs 23 of the 60
-  GitHub requests an hour. Matt Pocock's skills row is gone.
+  Prometheus in Go and CPython in Python, and last Bun's rewrite in Rust,
+  whose row says it costs 23 of the 60 GitHub requests an hour. Matt
+  Pocock's skills row is gone.
 - **Big pull requests.** On more than 40 code files, the board reads the
   largest changes in the main languages, spread across top folders, and
   `.github/`, `.claude/` and other tooling folders are not code: Bun's
