@@ -1,0 +1,49 @@
+/**
+ * The languages the generic linker reads, by grammar, each a rule table:
+ * what the file index (`anyfacts.ts`) and the resolver (`anylink.ts`) read,
+ * how a module names repository files, and what the read tier fetches beside
+ * a changed file. JavaScript and TypeScript have no table: `facts.ts` and
+ * `linker.ts` read them. A language with no table here keeps its cards from
+ * line patterns (`symbols.ts`) and draws no strings.
+ */
+
+import { indexFile, type GFile, type LangRules } from "../anyfacts.ts";
+import type { Resolver } from "../anylink.ts";
+import { parseFacts, type FileFacts } from "../facts.ts";
+import { grammarOf, type Grammar, type Syntax } from "../syntax.ts";
+import { GO, GO_RESOLVER, goModsAbove } from "./go.ts";
+import { packageMarkers, PYTHON, PYTHON_RESOLVER } from "./python.ts";
+import { RUST, RUST_RESOLVER } from "./rust.ts";
+
+export type Lang = {
+    rules: LangRules;
+    resolver: Resolver;
+    /** Files read beside a changed file, the first that answers in each list: `go.mod` above a Go file. */
+    configFiles?: (path: string) => string[][];
+    /** Whether a module's file is a package, whose imported names may be its submodules: Python's `__init__.py`. */
+    isPackage?: (path: string) => boolean;
+    /** Files that make a folder a package, nearest first, read until one is missing: the `__init__.py` above a Python file. */
+    packageMarkers?: (path: string) => string[];
+    /** Names resolve only inside their own file (Rust, whose crate `mod` tree isn't read): a test file of its own links nothing, so isn't read. */
+    local?: true;
+};
+
+const LANGS: Partial<Record<Grammar, Lang>> = {
+    python: { rules: PYTHON, resolver: PYTHON_RESOLVER, isPackage: (path) => /(^|\/)__init__\.py$/.test(path), packageMarkers },
+    go: { rules: GO, resolver: GO_RESOLVER, configFiles: (path) => [goModsAbove(path)] },
+    rust: { rules: RUST, resolver: RUST_RESOLVER, local: true },
+};
+
+/** The rule table that reads a file, or undefined for JavaScript, TypeScript and the languages without one. */
+export const langOf = (path: string): Lang | undefined => {
+    const g = grammarOf(path);
+    return g ? LANGS[g] : undefined;
+};
+
+/** A file's facts: from its rule table, else from `facts.ts`; null when no parser reads it (`readable`). */
+export const parseFile = (syntax: Syntax, path: string, text: string): FileFacts | GFile | null => {
+    const lang = langOf(path);
+    if (!lang) return parseFacts(syntax, path, text);
+    const flat = syntax.parse(path, text);
+    return flat ? indexFile(path, flat, lang.rules) : null;
+};
