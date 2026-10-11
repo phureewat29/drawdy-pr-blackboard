@@ -11,6 +11,7 @@
  */
 
 import type { FileFacts } from "./facts.ts";
+import { limiter } from "./fp.ts";
 import type { PrFile } from "./github.ts";
 import { languageOf, roleOf, type Language } from "./language.ts";
 import { dirOf, joinPath, moduleCandidates, type PathMapping } from "./linker.ts";
@@ -32,7 +33,7 @@ export type Sources = {
 };
 
 /** How much is read: changed code and test files, each file's length, imported files, and requests in flight. */
-export const READ = { code: 40, tests: 40, chars: 400_000, imports: 300, inFlight: 8 } as const;
+export const READ = { code: 40, tests: 40, chars: 400_000, imports: 300, inFlight: 16 } as const;
 
 /** The parts of a path above its file: `src/js/node` gives `src`. */
 const topDir = (path: string) => (path.includes("/") ? path.split("/")[0] : "");
@@ -51,17 +52,25 @@ export const pickFiles = (files: readonly PrFile[], max: number): PrFile[] => {
     for (const f of files) byLanguage.set(languageOf(f.path), (byLanguage.get(languageOf(f.path)) ?? 0) + size(f));
     const main = new Set([...byLanguage].filter(([, n]) => n >= total / 10).map(([lang]) => lang));
     const groups = new Map<string, PrFile[]>();
-    for (const f of files.filter((f) => main.has(languageOf(f.path)))) groups.set(topDir(f.path), [...(groups.get(topDir(f.path)) ?? []), f]);
+    for (const f of files.filter((f) => main.has(languageOf(f.path)))) {
+        const group = groups.get(topDir(f.path));
+        if (group) group.push(f);
+        else groups.set(topDir(f.path), [f]);
+    }
     const queues = [...groups.values()].map((g) => [...g].sort((a, b) => size(b) - size(a))).sort((a, b) => b.reduce((n, f) => n + size(f), 0) - a.reduce((n, f) => n + size(f), 0));
     const picked = new Set<PrFile>();
     while (picked.size < max && queues.some((q) => q.length > 0)) for (const q of queues) if (q.length > 0 && picked.size < max) picked.add(q.shift()!);
     return files.filter((f) => picked.has(f));
 };
 
-/** The changed files read whole: code in any language, and tests the parser reads. */
+/**
+ * The changed files read whole: code in any language, and tests the parser
+ * reads. Code the parser doesn't read is read for its diff's sake, so a file
+ * with no patch is left out, but for one added whole: every line of it is new.
+ */
 export const changedSources = (files: readonly PrFile[]): PrFile[] => {
     const live = files.filter((f) => f.status !== "removed");
-    const code = live.filter((f) => roleOf(f.path) === "code" && languageOf(f.path) !== "text" && (grammarOf(f.path) !== null || f.patch !== undefined));
+    const code = live.filter((f) => roleOf(f.path) === "code" && languageOf(f.path) !== "text" && (grammarOf(f.path) !== null || f.patch !== undefined || f.status === "added"));
     const tests = live.filter((f) => roleOf(f.path) === "test" && grammarOf(f.path) !== null);
     return [...pickFiles(code, READ.code), ...pickFiles(tests, READ.tests)];
 };
@@ -94,22 +103,6 @@ const parseJsonc = (text: string): unknown => {
 };
 
 type Config = { dir: string; baseUrl?: string; paths?: Record<string, string[]>; pathsDir?: string };
-
-/** A pool of `size` slots: at most that many jobs run at once. */
-const limiter = (size: number) => {
-    let running = 0;
-    const waiting: (() => void)[] = [];
-    return async <T>(job: () => Promise<T>): Promise<T> => {
-        if (running >= size) await new Promise<void>((resolve) => waiting.push(resolve));
-        running++;
-        try {
-            return await job();
-        } finally {
-            running--;
-            waiting.shift()?.();
-        }
-    };
-};
 
 /** Lets the worker answer other extensions between files. */
 const breathe = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
@@ -189,7 +182,8 @@ export const readSources = async (files: readonly PrFile[], read: Read, parse: P
         if (usable(text)) await take(f.path, text);
     }
     await mappings;
-    for (const path of typings) {
+    // In path order: configs answer in whatever order the network gives.
+    for (const path of [...typings].sort()) {
         if (texts.has(path)) continue;
         const text = await once(path);
         if (usable(text)) await take(path, text);

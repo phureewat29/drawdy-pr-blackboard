@@ -7,6 +7,7 @@
  * CORS headers, so the diff comes from the files endpoint instead.
  */
 
+import { limiter } from "./fp.ts";
 import * as g from "./guard.ts";
 
 export type PrRef = { owner: string; repo: string; number: number };
@@ -53,7 +54,7 @@ const RAW = "https://raw.githubusercontent.com";
 /** GitHub's files endpoint stops at 3000 files. */
 const MAX_FILES = 3000;
 const PAGE = 100;
-/** File list pages fetched at once: a 2,188-file pull request takes 22. */
+/** File list pages in flight at once: a 2,188-file pull request takes 22. */
 const PAGES_AT_ONCE = 4;
 
 /** How many requests a pull request's file list takes. */
@@ -204,12 +205,18 @@ export const createGithub = (fetch: Fetch): Github => {
     };
 
     const files = async (ref: PrRef, count: number): Promise<PrFile[]> => {
-        const pages: PrFile[][] = [];
-        const total = pageCount(count);
-        for (let first = 1; first <= total; first += PAGES_AT_ONCE) {
-            const batch = Array.from({ length: Math.min(PAGES_AT_ONCE, total - first + 1) }, (_, i) => page(ref, first + i));
-            pages.push(...(await Promise.all(batch)));
-        }
+        const slot = limiter(PAGES_AT_ONCE);
+        // After a failure no other page is asked for: each would cost a request.
+        let failure: unknown = null;
+        const pageOf = (n: number) =>
+            slot(async () => {
+                if (failure) throw failure;
+                return page(ref, n).catch((err: unknown) => {
+                    failure ??= err;
+                    throw err;
+                });
+            });
+        const pages = await Promise.all(Array.from({ length: pageCount(count) }, (_, i) => pageOf(i + 1)));
         return pages.flat();
     };
 

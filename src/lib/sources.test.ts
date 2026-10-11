@@ -38,6 +38,12 @@ describe("the files read", () => {
         expect(changedSources(files).map((f) => f.path)).toEqual(["src/a.ts", "app/a.py", "src/a.test.ts"]);
     });
 
+    it("take a code file the parser doesn't read only with its patch, but for one added whole, whose every line is new", () => {
+        const added: PrFile = { path: "src/new.rs", status: "added", additions: 300, deletions: 0 };
+        const big: PrFile = { path: "src/big.rs", status: "modified", additions: 3000, deletions: 10 };
+        expect(changedSources([added, big, changed("src/small.rs")]).map((f) => f.path)).toEqual(["src/new.rs", "src/small.rs"]);
+    });
+
     it("on a big pull request, are the largest changes in its main languages, spread across top-level directories, tooling folders aside", () => {
         const files = [
             ...Array.from({ length: 30 }, (_, i) => changed(`src/core/f${i}.rs`, 100 + i)),

@@ -59,6 +59,35 @@ describe("createGithub", () => {
         expect(files[0]).not.toHaveProperty("patch");
     });
 
+    it("keeps four pages in flight, the files in page order, and asks for no other page after a failure", async () => {
+        let inFlight = 0;
+        let most = 0;
+        const asked: number[] = [];
+        const github = createGithub(async (url) => {
+            const page = Number(new URL(url).searchParams.get("page"));
+            asked.push(page);
+            inFlight++;
+            most = Math.max(most, inFlight);
+            // Later pages answer first.
+            await new Promise((resolve) => setTimeout(resolve, 30 - page));
+            inFlight--;
+            return new Response(JSON.stringify([{ filename: `f${page}.ts`, status: "modified", additions: 1, deletions: 0 }]));
+        });
+        const files = await github.files({ owner: "a", repo: "b", number: 9 }, 2188);
+        expect(files.map((f) => f.path)).toEqual(Array.from({ length: 22 }, (_, i) => `f${i + 1}.ts`));
+        expect(most).toBe(4);
+        asked.length = 0;
+        const failing = createGithub(async (url) => {
+            const page = Number(new URL(url).searchParams.get("page"));
+            asked.push(page);
+            await new Promise((resolve) => setTimeout(resolve, 5));
+            return page === 3 ? new Response("{}", { status: 500 }) : new Response("[]");
+        });
+        await expect(failing.files({ owner: "a", repo: "b", number: 9 }, 2188)).rejects.toThrow("500");
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        expect(asked.length).toBeLessThan(8);
+    });
+
     it("says when the hourly quota is spent, and when it comes back", async () => {
         const resetAt = Date.now() + 12 * 60_000;
         const github = createGithub(async () =>
