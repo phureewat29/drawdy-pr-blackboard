@@ -27,6 +27,8 @@ export const SUGGESTIONS = (
         ["oven-sh/bun#34519", "node:events: single listeners stored bare like node; copy-on-write arrays", "#A67F38", 7],
         ["sindresorhus/ky#823", "Add `data` property to `HTTPError` with pre-parsed response body", "#288DD4", 6],
         ["excalidraw/excalidraw#12237", "feat(editor): alt-click to cycle the selection through overlapping elements", "#6965DB", 11],
+        ["prometheus/prometheus#18564", "promql: support native histograms with smoothed/anchored rate", "#D64B5A", 4],
+        ["python/cpython#152451", "gh-133031: Support non-ASCII characters in curses.textpad.Textbox", "#3A7AB0", 3],
         ["oven-sh/bun#30412", "Rewrite Bun in Rust", "#A67F38", 2188],
     ] as const
 ).map(([label, title, colour, files]) => {

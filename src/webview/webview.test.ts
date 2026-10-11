@@ -84,7 +84,7 @@ describe("panel", () => {
         expect(document.querySelector("form, header, label")).toBeNull();
     });
 
-    it("lists the 13 vetted pull requests in the operator's order, each its tag in its project's colour on a line of its own, then its title, and only Bun's rewrite its cost", () => {
+    it("lists the 15 vetted pull requests in the operator's order, each its tag in its project's colour on a line of its own, then its title, and only Bun's rewrite its cost", () => {
         panel.show(startView);
         const rows = [...document.querySelectorAll<HTMLButtonElement>("#try button")];
         expect(rows.map((b) => b.querySelector(".tag")!.textContent)).toEqual([
@@ -100,15 +100,17 @@ describe("panel", () => {
             "oven-sh/bun#34519",
             "sindresorhus/ky#823",
             "excalidraw/excalidraw#12237",
+            "prometheus/prometheus#18564",
+            "python/cpython#152451",
             "oven-sh/bun#30412",
         ]);
         expect(rows.map((b) => b.querySelector<HTMLElement>(".tag")!.style.getPropertyValue("--c"))).toEqual([
-            "#E36002", "#41A0A1", "#3A6AFF", "#BD34FE", "#5FA04E", "#0891B2", "#F041FF", "#FF3E00", "#F06292", "#A67F38", "#288DD4", "#6965DB", "#A67F38",
+            "#E36002", "#41A0A1", "#3A6AFF", "#BD34FE", "#5FA04E", "#0891B2", "#F041FF", "#FF3E00", "#F06292", "#A67F38", "#288DD4", "#6965DB", "#D64B5A", "#3A7AB0", "#A67F38",
         ]);
-        expect(rows.slice(0, 12).every((b) => b.firstElementChild!.className === "tag hue")).toBe(true);
+        expect(rows.slice(0, 14).every((b) => b.firstElementChild!.className === "tag hue")).toBe(true);
         expect([...rows[0].children].map((c) => c.textContent)).toEqual(["honojs/hono#5513", "fix(hono): handle non-Error throws with onError"]);
-        expect(rows.map((b) => b.querySelector(".cost")?.textContent ?? null)).toEqual([...Array(12).fill(null), "23 of 60 GitHub requests"]);
-        expect([...rows[12].children].map((c) => c.textContent)).toEqual(["oven-sh/bun#3041223 of 60 GitHub requests", "Rewrite Bun in Rust"]);
+        expect(rows.map((b) => b.querySelector(".cost")?.textContent ?? null)).toEqual([...Array(14).fill(null), "23 of 60 GitHub requests"]);
+        expect([...rows[14].children].map((c) => c.textContent)).toEqual(["oven-sh/bun#3041223 of 60 GitHub requests", "Rewrite Bun in Rust"]);
         // GitHub shows :tada: as the emoji, and a colon pair that names no emoji stays.
         expect(rows[8].children[1].textContent).toBe("🎉 feat: graceful cookie transition");
         expect(rows[9].children[1].textContent).toContain("node:events: single listeners");
