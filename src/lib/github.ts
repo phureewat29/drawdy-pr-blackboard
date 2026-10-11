@@ -95,7 +95,7 @@ const fail = (failure: GithubFailure, message: string): never => {
 export const explainGithub = (failure: GithubFailure, now = Date.now()): string => {
     switch (failure.kind) {
         case "not-found":
-            return "GitHub can't find this pull request. Check the link: PR Blackboard opens public pull requests only.";
+            return "GitHub can't find this PR. Check the link: PR Blackboard opens public PRs only.";
         case "rate-limited": {
             if (failure.resetAt === null) return "GitHub is limiting requests from this network. Try again in a few minutes.";
             const minutes = Math.max(1, Math.ceil((failure.resetAt - now) / 60_000));
@@ -169,7 +169,7 @@ export const createGithub = (fetch: Fetch): Github => {
     const pr = async (ref: PrRef): Promise<PrInfo> => {
         const raw = await getJson(repoPath(ref));
         const p = g.parse(pullShape, raw);
-        if (!p) return fail({ kind: "http", status: 200 }, "GitHub returned a pull request PR Blackboard can't read");
+        if (!p) return fail({ kind: "http", status: 200 }, "PR Blackboard can't read the PR GitHub returned");
         const state: PrState = p.merged || p.merged_at ? "merged" : p.state === "closed" ? "closed" : p.draft ? "draft" : "open";
         return {
             ref,

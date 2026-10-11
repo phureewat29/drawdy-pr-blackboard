@@ -146,7 +146,7 @@ export const createParser = (deps: { ddp: Ddp; fetch: Fetch; connect?: Connect }
             case "failed":
                 if (message.id !== j.request.id) return;
                 if (j.failure) j.fail(j.failure);
-                else if (message.parser) j.fail(inWords(`Couldn't parse this pull request's ${languagesOf(j.grammars).code}.`));
+                else if (message.parser) j.fail(inWords(`Couldn't parse this PR's ${languagesOf(j.grammars).code}.`));
                 else j.fail(new Error(message.message));
                 return;
         }

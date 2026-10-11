@@ -62,7 +62,7 @@ describe("the parser", () => {
             "Couldn't download the TypeScript parser from cdn.jsdelivr.net. Try again."
         );
         const wontRun = onThisThread((scope) => serve(scope, async () => Promise.reject(new Error("CompileError"))));
-        await expect(createParser({ ddp: storage().ddp, fetch: net.fetch, connect: wontRun }).analyse(pr, files, () => undefined)).rejects.toThrow("Couldn't parse this pull request's TypeScript.");
+        await expect(createParser({ ddp: storage().ddp, fetch: net.fetch, connect: wontRun }).analyse(pr, files, () => undefined)).rejects.toThrow("Couldn't parse this PR's TypeScript.");
     }, SLOW);
 
     it("runs its script on this thread when the worker breaks, and builds the same board", async () => {

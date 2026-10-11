@@ -102,7 +102,7 @@ describe("createGithub", () => {
     it("treats a missing pull request as possibly private", async () => {
         const github = createGithub(async () => new Response("{}", { status: 404 }));
         const failure = githubFailure(await github.pr({ owner: "a", repo: "b", number: 9 }).catch((e: unknown) => e));
-        expect(explainGithub(failure!)).toBe("GitHub can't find this pull request. Check the link: PR Blackboard opens public pull requests only.");
+        expect(explainGithub(failure!)).toBe("GitHub can't find this PR. Check the link: PR Blackboard opens public PRs only.");
     });
 
     it("reports a network failure, and reads raw files without throwing", async () => {
