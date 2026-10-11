@@ -152,7 +152,11 @@ export const rustFile = (lines: readonly string[], decls: readonly Decl[]): Anal
         .filter((b) => b.type !== "" && scopeAt(b.start).items === indentOf(lines[b.start - 1]));
     const implAt = (line: number): Impl | undefined => impls.filter((b) => b.start < line && line <= b.end).sort((a, b) => b.start - a.start)[0];
 
-    const add = <K, V>(map: Map<K, V[]>, key: K, value: V) => map.set(key, [...(map.get(key) ?? []), value]);
+    const add = <K, V>(map: Map<K, V[]>, key: K, value: V) => {
+        const values = map.get(key);
+        if (values) values.push(value);
+        else map.set(key, [value]);
+    };
     // Module-level functions, and inherent methods by module, type and name.
     const functions = new Map<string, Decl[]>();
     const inherent = new Map<string, Decl[]>();
@@ -167,11 +171,34 @@ export const rustFile = (lines: readonly string[], decls: readonly Decl[]): Anal
     for (const b of impls) if (b.inherent) types.add(`${b.scope}|${b.type}`);
     const one = (ds: Decl[] | undefined) => (ds && ds.length === 1 ? ds[0] : undefined);
 
-    const calls = (caller: Pick<Decl, "start" | "end" | "kind">): RustCall[] => {
+    const callsOf = (caller: Pick<Decl, "start" | "end" | "kind">): RustCall[] => {
         if (caller.kind !== "function" && caller.kind !== "method") return [];
         const scope = scopeAt(caller.start);
         const impl = implAt(caller.start);
         const body = code.slice(caller.start - 1, caller.end).join("\n");
+        // Any other mention of a name in the caller may bind it: a local, a parameter, a closure, a `use`, a nested `fn`.
+        const bound = new Map<string, boolean>();
+        const binds = (name: string): boolean => {
+            let hit = bound.get(name);
+            if (hit === undefined) {
+                const mentions = [...body.matchAll(new RegExp(`(^|[^\\w.:])${name}\\b(\\s*(?:::\\s*<[^()]*?>\\s*)?\\()?`, "g"))];
+                hit = mentions.some((x) => !x[2]) || new RegExp(`\\bfn\\s+${name}\\b`).test(body.slice(body.indexOf("\n") + 1));
+                bound.set(name, hit);
+            }
+            return hit;
+        };
+        // Not when `T` is a generic parameter in scope, or the caller brings in or declares its own `T`.
+        const shadowed = new Map<string, boolean>();
+        const shadows = (type: string): boolean => {
+            let hit = shadowed.get(type);
+            if (hit === undefined) {
+                const generic = new RegExp(`[<,]\\s*${type}\\b`);
+                const local = new RegExp(`\\buse\\b[^;]*\\b${type}\\b|\\b(?:struct|enum|union|type|trait)\\s+${type}\\b`);
+                hit = generic.test(code[caller.start - 1]) || (impl !== undefined && generic.test(impl.header)) || local.test(body);
+                shadowed.set(type, hit);
+            }
+            return hit;
+        };
         // An impl inside the body, such as a guard's `impl Drop`, has its own `self`: its lines prove no self-call.
         const nested: { from: number; to: number }[] = [];
         for (let n = caller.start + 1; n <= caller.end; n++) {
@@ -191,16 +218,11 @@ export const rustFile = (lines: readonly string[], decls: readonly Decl[]): Anal
                 let to: Decl | undefined;
                 if (s.via === "bare") {
                     to = one(functions.get(`${scope.id}|${s.name}`));
-                    // Any other mention of the name in the caller may bind it: a local, a parameter, a closure, a `use`, a nested `fn`.
-                    const mentions = [...body.matchAll(new RegExp(`(^|[^\\w.:])${s.name}\\b(\\s*(?:::\\s*<[^()]*?>\\s*)?\\()?`, "g"))];
-                    if (mentions.some((x) => !x[2]) || new RegExp(`\\bfn\\s+${s.name}\\b`).test(body.slice(body.indexOf("\n") + 1))) to = undefined;
+                    if (to && binds(s.name)) to = undefined;
                 } else if ((s.via === "self" || s.via === "Self") && impl && impl.scope === scope.id && ownSelf(s.line)) {
                     to = one(inherent.get(`${impl.scope}|${impl.type}|${s.name}`));
-                } else if (s.via === "type" && types.has(`${scope.id}|${s.type}`)) {
-                    // Not when `T` is a generic parameter in scope, or the caller brings in or declares its own `T`.
-                    const generic = new RegExp(`[<,]\\s*${s.type}\\b`);
-                    const local = new RegExp(`\\buse\\b[^;]*\\b${s.type}\\b|\\b(?:struct|enum|union|type|trait)\\s+${s.type}\\b`);
-                    if (!generic.test(code[caller.start - 1]) && !(impl && generic.test(impl.header)) && !local.test(body)) to = one(inherent.get(`${scope.id}|${s.type}|${s.name}`));
+                } else if (s.via === "type" && types.has(`${scope.id}|${s.type}`) && !shadows(s.type!)) {
+                    to = one(inherent.get(`${scope.id}|${s.type}|${s.name}`));
                 }
                 if (!to || to.start === caller.start) continue;
                 // A call into a declaration around the caller, or inside it, links nothing.
@@ -209,6 +231,14 @@ export const rustFile = (lines: readonly string[], decls: readonly Decl[]): Anal
             }
         }
         return out;
+    };
+    // The calls out of each declaration, worked out once: the board asks again for context cards.
+    const known = new Map<string, RustCall[]>();
+    const calls = (caller: Pick<Decl, "start" | "end" | "kind">): RustCall[] => {
+        const key = `${caller.start}:${caller.end}:${caller.kind}`;
+        let hit = known.get(key);
+        if (!hit) known.set(key, (hit = callsOf(caller)));
+        return hit;
     };
     const analysis = { calls };
     cache.set(lines, analysis);

@@ -53,16 +53,27 @@ export const parsePatch = (patch: string): Hunk[] => {
         const bases = h.lines.filter((l) => l.o !== undefined);
         const newEnd = heads.length > 0 ? heads[heads.length - 1].n! : h.newStart - 1;
         const oldEnd = bases.length > 0 ? bases[bases.length - 1].o! : h.oldStart - 1;
-        // A deleted line sits where the next head line is.
+        // A deleted line sits where the next head line is, so the lines are read back to front.
         let next = newEnd + 1;
         const lines: DiffLine[] = [];
         for (let i = h.lines.length - 1; i >= 0; i--) {
             const l = h.lines[i];
             if (l.n !== undefined) next = l.n;
-            lines.unshift({ ...l, at: l.n ?? next });
+            lines.push({ ...l, at: l.n ?? next });
         }
-        return { oldStart: h.oldStart, newStart: h.newStart, newEnd, oldEnd, lines };
+        return { oldStart: h.oldStart, newStart: h.newStart, newEnd, oldEnd, lines: lines.reverse() };
     });
+};
+
+/**
+ * The hunk of a file added whole, from its text: what its patch holds, for
+ * when GitHub leaves the patch out. A last line break ends the last line.
+ */
+export const addedHunks = (text: string): Hunk[] => {
+    const lines = text.split("\n");
+    if (lines[lines.length - 1] === "") lines.pop();
+    if (lines.length === 0) return [];
+    return [{ oldStart: 0, newStart: 1, newEnd: lines.length, oldEnd: -1, lines: lines.map((line, i) => ({ t: "add", n: i + 1, text: line, at: i + 1 })) }];
 };
 
 /** Every line of the patch, in order. */
