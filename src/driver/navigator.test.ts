@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it, jest } from "@jest/globals";
-import { foldsOf, rowMiddle } from "../lib/card.ts";
+import { PALETTES, foldsOf, rowMiddle } from "../lib/card.ts";
 import { prKey } from "../lib/github.ts";
 import { planBoard, shiftPlan } from "../lib/layout.ts";
 import type { Review } from "../lib/model.ts";
@@ -8,7 +8,7 @@ import { fakeHost } from "../test/fake-host.ts";
 import { honoFixture, reviewOf } from "../test/fixture.ts";
 import { MARK, markOf, reviewElements } from "./elements.ts";
 import { createNavigator, indexOf } from "./navigator.ts";
-import { createPopover } from "./read-all.ts";
+import { CLOSE_BUTTON, DRAG_HANDLE, createPopover } from "./read-all.ts";
 
 let hono: Review;
 beforeAll(async () => {
@@ -39,21 +39,44 @@ const setup = (options: { panel?: boolean; extra?: Record<string, (req: any) => 
     const since = (from: number) => host.calls.slice(from).map((c) => c.type);
     const nameNow = () => review.pins.find((p) => p.id === navigator.currentPin())?.name;
     const labelOf = (prefix: string) => [...host.elements].find(([, e]) => e.schema.meta?.[MARK]?.part === "label" && e.schema.meta[MARK].link.startsWith(prefix))![0];
-    const shown = () => host.calls.filter((c) => c.type === "command:dom:upsert-floating-element").pop()?.req;
+    const shown = () => host.calls.filter((c) => c.type === "command:dom:upsert-floating-element" || c.type === "command:dom:update-floating-element").pop()?.req;
     return { review, plan, host, navigator, popover, pinIds, linkIds, index, pinNamed, card, since, nameNow, labelOf, shown, loadReview };
 };
 
+/** Read all's pane in a floating element's schema: inside the box that clips it to the usable view. */
+const paneOf = (req: any) => req.schema.children[0];
+const pageOf = (req: any) => paneOf(req).children[1].child.srcDoc as string;
+/** Where the pane's top-left shows on screen, and its scale: CSS scales it about its middle, so its translation makes up for that. */
+const placed = (req: any) => {
+    const pane = paneOf(req);
+    const [, tx, ty, scale] = /translate\((-?[\d.]+)px, (-?[\d.]+)px\) scale\(([\d.]+)\)/.exec(pane.styles.transform)!.map(Number);
+    const [w, h] = [pane.styles.width[0], pane.styles.height[0]];
+    return { x: req.position.x + tx + (w / 2) * (1 - scale), y: req.position.y + ty + (h / 2) * (1 - scale), scale, width: w, height: h };
+};
+
 describe("stepping", () => {
-    it("goes from the PR card to #dispatch(), through nine steps, never to the unchanged caller", async () => {
+    it("walks the code through eight steps, from the PR card to #dispatch() first, never the unchanged caller", async () => {
         const { navigator, nameNow } = setup();
+        await navigator.focus("pr");
+        expect(navigator.current()).toBe(-1);
         const visited: (string | undefined)[] = [];
-        for (let i = 0; i < 11; i++) {
+        for (let i = 0; i < 10; i++) {
             await navigator.next();
             visited.push(nameNow());
         }
-        expect(visited.slice(0, 9)).toEqual(["The pull request", "#dispatch()", "#handleError()", "compose()", "toError()", "compose.test.ts", "hono-base.ts imports", "onError()", "hono.test.ts"]);
-        expect(visited.slice(9)).toEqual(["hono.test.ts", "hono.test.ts"]);
-        expect(navigator.current()).toBe(8);
+        expect(visited.slice(0, 8)).toEqual(["#dispatch()", "#handleError()", "compose()", "toError()", "compose.test.ts", "hono-base.ts imports", "onError()", "hono.test.ts"]);
+        expect(visited.slice(8)).toEqual(["hono.test.ts", "hono.test.ts"]);
+        expect(navigator.current()).toBe(7);
+    });
+
+    it("has no step before step 1, nor before the PR card: the description is not a step", async () => {
+        const { navigator, pinNamed, nameNow } = setup();
+        await navigator.focus(pinNamed("#dispatch()"));
+        expect([navigator.current(), navigator.hasPrevious(), navigator.hasNext()]).toEqual([0, false, true]);
+        await navigator.previous();
+        expect(nameNow()).toBe("#dispatch()");
+        await navigator.focus("pr");
+        expect([navigator.hasPrevious(), navigator.hasNext()]).toEqual([false, true]);
     });
 
     it("says when there is no step before or after, skipping deleted cards", async () => {
@@ -82,7 +105,7 @@ describe("stepping", () => {
         const before = host.calls.length;
         await navigator.next();
         const steps = since(before);
-        expect(nameNow()).toBe("#dispatch()");
+        expect(nameNow()).toBe("#handleError()");
         expect(steps).toContain("command:camera:fly-to-rect");
         expect(steps).not.toContain("command:dom:upsert-floating-element");
         expect(steps.filter((type) => /^command:scene:(add|update|create)-/.test(type))).toEqual([]);
@@ -179,8 +202,14 @@ describe("clicks on the board", () => {
         await navigator.click([pinIds.get(pinNamed("compose()"))!], { x: r.x + 200, y: r.y + rowMiddle(fold) });
         const open = shown();
         const right = host.camera.x + (r.x + r.width) * host.camera.zoom;
-        expect(open.position.x).toBeGreaterThanOrEqual(Math.round(right + VIEW.readAll.gap));
-        const iframe = open.schema.children[1].child.srcDoc as string;
+        const pane = placed(open);
+        expect([pane.x, pane.y, pane.width, pane.scale]).toEqual([
+            expect.closeTo(right + VIEW.readAll.gap * host.camera.zoom, 1),
+            expect.closeTo(host.camera.y + r.y * host.camera.zoom, 1),
+            VIEW.readAll.width,
+            expect.closeTo(host.camera.zoom, 4),
+        ]);
+        const iframe = pageOf(open);
         const row = rows[fold];
         expect(row.kind === "fold" && iframe.includes(`class="r focus ctx" data-at="${row.from}"`)).toBe(true);
         expect(popover.shown()?.pin).toBeTruthy();
@@ -237,11 +266,11 @@ describe("the board without the panel", () => {
         const r = card("compose()");
         const folds = foldsOf(plan.cards.get(pinNamed("compose()"))!);
         const clicking = navigator.click([pinIds.get(pinNamed("compose()"))!], { x: r.x + 100, y: r.y + folds[0][0] + 10 });
-        // Long enough for the popover to pan the camera for room and open.
-        await new Promise((done) => setTimeout(done, 600));
+        // Long enough for the camera to fly to where Read all reads, and the page to open.
+        await new Promise((done) => setTimeout(done, 900));
         expect(loadReview).toHaveBeenCalledTimes(1);
-        const pages = () => host.calls.filter((c) => c.type === "command:dom:upsert-floating-element").map((c) => c.req.schema.children[1].child.srcDoc as string);
-        expect(pages()[0]).toContain("Reading the pull request…");
+        const pages = () => host.calls.filter((c) => c.type === "command:dom:upsert-floating-element").map((c) => pageOf(c.req));
+        expect(pages()[0]).toContain("Reading the PR…");
         resolve(review);
         await clicking;
         expect(pages().pop()).toContain(`class="r focus ctx" data-at="${folds[0][1]}"`);
@@ -270,15 +299,14 @@ describe("the board without the panel", () => {
         }
     });
 
-    it("opens the PR card's Read all from anywhere between its fold zone's top and the card's foot, and not above", async () => {
-        const { navigator, host, pinIds, card, popover, shown } = setup({ panel: false });
-        const r = card("The pull request");
-        const fold = (host.elements.get(pinIds.get("pr")!)!.schema.meta[MARK].folds as [number, number][])[0];
-        await navigator.click([pinIds.get("pr")!], { x: r.x + 100, y: r.y + fold[0] - 2 });
-        expect(popover.shown()).toBeNull();
+    it("makes the PR card current on a click anywhere on it, and opens nothing: the card shows its whole description", async () => {
+        const { navigator, host, pinIds, card, popover, since } = setup({ panel: false });
+        const r = card("The PR");
+        expect(host.elements.get(pinIds.get("pr")!)!.schema.meta[MARK].folds).toBeUndefined();
+        const before = host.calls.length;
         await navigator.click([pinIds.get("pr")!], { x: r.x + 100, y: r.y + r.height - 4 });
-        expect(popover.shown()?.pin).toBeTruthy();
-        expect(shown().schema.children[1].child.srcDoc).toContain("<h3>Behavior change</h3>");
+        expect([navigator.currentPin(), popover.shown()]).toEqual(["pr", null]);
+        expect(since(before)).toEqual(["command:scene:get-drawdy-elements"]);
     });
 
     it("shows why Read all couldn't load, in the panel's words", async () => {
@@ -286,7 +314,7 @@ describe("the board without the panel", () => {
         const r = card("compose()");
         const folds = foldsOf(plan.cards.get(pinNamed("compose()"))!);
         await navigator.click([pinIds.get(pinNamed("compose()"))!], { x: r.x + 100, y: r.y + folds[0][0] + 10 });
-        expect(shown().schema.children[1].child.srcDoc).toContain("Explained: Error: rate limited");
+        expect(pageOf(shown())).toContain("Explained: Error: rate limited");
     });
 
     it("subscribes to camera moves only while the popover is open", async () => {
@@ -302,8 +330,32 @@ describe("the board without the panel", () => {
     });
 });
 
+describe("Description", () => {
+    it("makes the PR card current and flies the camera to it, clearing the selection and closing Read all first", async () => {
+        const { navigator, host, since, pinNamed, popover, card } = setup();
+        await navigator.focus(pinNamed("compose()"));
+        await navigator.readAll();
+        expect(popover.shown()).not.toBeNull();
+        const before = host.calls.length;
+        await navigator.description();
+        const calls = since(before);
+        expect([navigator.currentPin(), navigator.current(), popover.shown()]).toEqual(["pr", -1, null]);
+        expect(calls.indexOf("command:scene:clear-selection")).toBeLessThan(calls.indexOf("command:camera:fly-to-rect"));
+        // The camera shows the PR card whole, at zoom 0.8 to 1.
+        const r = card("The PR");
+        const { zoom } = host.camera;
+        expect(zoom).toBeGreaterThanOrEqual(VIEW.minZoom);
+        expect(-host.camera.y / zoom).toBeLessThanOrEqual(r.y - VIEW.toolbar / zoom + 0.01);
+        expect(host.camera.x + (r.x + r.width) * zoom).toBeLessThanOrEqual(host.screen.width - VIEW.panel + 0.01);
+        // Pressed again with the card in view: nothing moves.
+        const again = host.calls.length;
+        await navigator.description();
+        expect(since(again)).not.toContain("command:camera:fly-to-rect");
+    });
+});
+
 describe("the overview", () => {
-    it("fits every card from its own rect, not Drawdy's combined rect, which drops components' far edges", async () => {
+    it("fits every code card from its own rect, not Drawdy's combined rect, which drops components' far edges", async () => {
         const { navigator, host, since, pinIds } = setup();
         const before = host.calls.length;
         await navigator.overview();
@@ -316,24 +368,117 @@ describe("the overview", () => {
         expect(right).toBeLessThanOrEqual(usableRight);
         expect(bottom).toBeLessThanOrEqual(flight.rect.y + flight.rect.height);
     });
+
+    it("frames the PR card only down to the lowest code card, so a long description runs on below", async () => {
+        const { navigator, host, pinIds } = setup();
+        const pr = host.elements.get(pinIds.get("pr")!)!.rect;
+        const code = [...pinIds].filter(([pin]) => pin !== "pr").map(([, id]) => host.elements.get(id)!.rect);
+        const lowest = Math.max(...code.map((r) => r.y + r.height));
+        await navigator.overview();
+        const whole = host.calls.filter((c) => c.type === "command:camera:fly-to-rect").pop()!.req;
+        Object.assign(pr, { height: 20_000 });
+        await navigator.overview();
+        const tall = host.calls.filter((c) => c.type === "command:camera:fly-to-rect").pop()!.req;
+        expect(tall).toEqual(whole);
+        expect(tall.rect.y + tall.rect.height).toBeLessThan(pr.y + pr.height);
+        expect(tall.rect.y + tall.rect.height).toBeGreaterThanOrEqual(lowest);
+    });
 });
 
-describe("Read all's overlay", () => {
-    it("shows the card's own header in the page, only ✕ drawn over it, in the theme the cards were pinned in", async () => {
+describe("Read all on the board", () => {
+    it("shows the card's own header in the page, a drag handle and ✕ drawn over it, in the theme the cards were pinned in", async () => {
         const { navigator, pinNamed, host, shown } = setup();
         await navigator.focus(pinNamed("compose()"));
         await navigator.readAll();
-        const schema = shown().schema;
-        expect(schema.children.map((c: any) => c.type)).toEqual(["row", "iframe"]);
-        expect(schema.children[0].styles.height).toEqual([0, "px"]);
-        expect(schema.children[0].children.map((b: any) => b.domId)).toEqual(["pr-blackboard:read-all:close"]);
-        const page = schema.children[1].child.srcDoc as string;
+        const req = shown();
+        // The box at the usable view's corner clips the pane, so it never covers Drawdy's toolbar or the panel.
+        expect([req.position, req.schema.styles.width, req.schema.styles.height, req.schema.styles.overflow, req.schema.styles.pointerEvents]).toEqual([
+            { x: 0, y: VIEW.toolbar },
+            [host.screen.width - VIEW.panel, "px"],
+            [host.screen.height - VIEW.toolbar, "px"],
+            "hidden",
+            "none",
+        ]);
+        const pane = paneOf(req);
+        expect(pane.children.map((c: any) => c.type)).toEqual(["row", "iframe"]);
+        expect(pane.children[0].styles.height).toEqual([0, "px"]);
+        expect(pane.children[0].children.map((b: any) => [b.domId, b.styles.cursor])).toEqual([
+            [DRAG_HANDLE, "grab"],
+            [CLOSE_BUTTON, "pointer"],
+        ]);
+        expect(pane.children[0].children[0].styles.height).toEqual([VIEW.readAll.header, "px"]);
+        const page = pageOf(req);
         expect(page).toContain('<header><span class="name">compose()</span>');
         expect(page).toContain(`padding-right: 56px`);
-        expect(page).not.toContain('class="gh"');
         // The cards were pinned light; Drawdy now shows dark: Read all matches the cards.
         expect(host.styling.theme).toBe("dark");
         expect(page).toContain("color-scheme: light;");
-        expect(schema.styles.backgroundColor).toBe("#ffffff");
+        // Its 1 px frame is the cards' faintest ink, darker than their own frame, so a card under it never reads as more of the pane.
+        expect([pane.styles.backgroundColor, pane.styles.borderColor, pane.styles.borderWidth, pane.styles.pointerEvents]).toEqual(["#ffffff", PALETTES.light.ink3, [1, "px"], "auto"]);
+    });
+
+    it("pans and zooms with the board: each camera move places it beside its card again, scaled by the zoom", async () => {
+        const { navigator, pinNamed, popover, card, shown } = setup();
+        await navigator.focus(pinNamed("compose()"));
+        await navigator.readAll();
+        const r = card("compose()");
+        for (const camera of [{ x: -1000, y: -200, zoom: 0.5 }, { x: 300, y: 40, zoom: 0.25 }]) {
+            popover.follow(camera);
+            await new Promise((done) => setTimeout(done, 20));
+            const pane = placed(shown());
+            expect([pane.x, pane.y, pane.scale]).toEqual([
+                expect.closeTo(camera.x + (r.x + r.width + VIEW.readAll.gap) * camera.zoom, 1),
+                expect.closeTo(camera.y + r.y * camera.zoom, 1),
+                expect.closeTo(camera.zoom, 4),
+            ]);
+        }
+    });
+
+    it("moves with a drag of its header, grabbing while it lasts, keeps the header where it can be grabbed again, and opens beside its card again", async () => {
+        const { navigator, pinNamed, popover, card, shown, host } = setup();
+        await navigator.focus(pinNamed("compose()"));
+        await navigator.readAll();
+        const r = card("compose()");
+        const { x, y, zoom } = host.camera;
+        const at = (dx: number, dy: number) => ({ canvasSpace: { x: r.x + 900 + dx, y: r.y + 20 + dy } });
+        const settle = () => new Promise((done) => setTimeout(done, 20));
+        popover.drag({ type: "dragStart", domElementId: DRAG_HANDLE, position: at(0, 0) });
+        popover.drag({ type: "dragging", domElementId: DRAG_HANDLE, position: at(-150, 90) });
+        await settle();
+        expect(paneOf(shown()).children[0].children[0].styles.cursor).toBe("grabbing");
+        expect([placed(shown()).x, placed(shown()).y]).toEqual([
+            expect.closeTo(x + (r.x + r.width + VIEW.readAll.gap - 150) * zoom, 1),
+            expect.closeTo(y + (r.y + 90) * zoom, 1),
+        ]);
+        // Far up and left: the header stops under the toolbar, 120 px of it on screen.
+        popover.drag({ type: "dragging", domElementId: DRAG_HANDLE, position: at(-50_000, -50_000) });
+        popover.drag({ type: "dragEnd", domElementId: DRAG_HANDLE, position: at(-50_000, -50_000) });
+        await settle();
+        const kept = placed(shown());
+        expect([kept.x, kept.y]).toEqual([expect.closeTo(120 - (VIEW.readAll.width - VIEW.readAll.close) * zoom, 1), expect.closeTo(VIEW.toolbar, 1)]);
+        expect(paneOf(shown()).children[0].children[0].styles.cursor).toBe("grab");
+        // After the drop it moves with the board from where it was dropped.
+        popover.follow({ x: x + 100, y, zoom });
+        await settle();
+        expect(placed(shown()).x).toBeCloseTo(kept.x + 100, 1);
+        // Closed and opened again, it opens beside its card.
+        await navigator.closePopover();
+        await navigator.readAll();
+        expect(placed(shown()).x).toBeCloseTo(host.camera.x + (r.x + r.width + VIEW.readAll.gap) * host.camera.zoom, 1);
+    });
+
+    it("first brings the camera to zoom 0.8 to 1 when it opens from a board zoomed out, then stays put while it opens", async () => {
+        const { navigator, pinNamed, host, since } = setup();
+        Object.assign(host.camera, { x: 0, y: 0, zoom: 0.3 });
+        await navigator.focus(pinNamed("compose()"));
+        const before = host.calls.length;
+        await navigator.readAll();
+        const calls = since(before);
+        expect(calls.indexOf("command:camera:fly-to-rect")).toBeLessThan(calls.indexOf("command:dom:upsert-floating-element"));
+        expect(host.camera.zoom).toBeGreaterThanOrEqual(VIEW.minZoom);
+        await navigator.closePopover();
+        const again = host.calls.length;
+        await navigator.readAll();
+        expect(since(again)).not.toContain("command:camera:fly-to-rect");
     });
 });

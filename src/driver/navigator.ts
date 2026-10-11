@@ -4,19 +4,19 @@
  * camera and the panel; nothing on the board changes when they move.
  *
  * The board works on its own: every card's mark holds its name, size and
- * fold rows, and every string's mark its kind and both cards. So fold rows
- * and following strings need no review and no GitHub request. The review
- * (the panel's, or loaded when Read all first opens) adds the steps, every
- * link drawn or not, and Read all's pages.
+ * fold rows, and every string's mark its kind, both cards and colour. So
+ * fold rows and following strings need no review and no GitHub request.
+ * The review (the panel's, or loaded when Read all first opens) adds the
+ * steps, every link drawn or not, and Read all's pages.
  */
 
 import type { ModuleStyling } from "@drawdy/driver-protocol";
 import { foldAt, nameRect, readAllMessage, readAllOf, type Fold, type Theme } from "../lib/card.ts";
 import { distanceToPath } from "../lib/curve.ts";
 import { prKey } from "../lib/github.ts";
-import { stepsOf, union, type Point, type Rect } from "../lib/layout.ts";
+import { stepsOf, type Point, type Rect } from "../lib/layout.ts";
 import type { LinkKind, Pin, Review } from "../lib/model.ts";
-import { overviewCamera, stepCamera } from "../lib/view.ts";
+import { overviewBounds, overviewCamera, stepCamera } from "../lib/view.ts";
 import { readBoard, readClicked, rectsOf, type Clicked, type Marked } from "./board.ts";
 import { fly, screenOf, viewportOf } from "./camera.ts";
 import type { Ddp } from "./ddp.ts";
@@ -27,14 +27,16 @@ export type Target = { kind: "pin"; pin: string } | { kind: "label" | "link"; li
 
 export type IndexPin = { id: string; name: string; width: number; height: number; folds: Fold[] };
 
+export type IndexLink = { id: string; kind: LinkKind; from: string; to: string; colour: number | null };
+
 /** A pull request's board, from its elements' marks alone. */
 export type Index = {
     key: string;
     sha: string;
     /** Each card by pin id: its element, name, size when made and fold rows. */
     pins: Map<string, IndexPin>;
-    /** Each drawn string by link id: its element, kind and both cards. */
-    links: Map<string, { id: string; kind: LinkKind; from: string; to: string }>;
+    /** Each drawn string by link id: its element, kind, both cards and colour, by index into `STRING_COLOURS`. */
+    links: Map<string, IndexLink>;
     labels: Map<string, string>;
     targets: Map<string, Target>;
     /** The theme the cards were pinned in, from the PR card's mark; null when that card is gone. */
@@ -44,18 +46,19 @@ export type Index = {
 /** The index of one pull request's board at one head commit, from the marks on the board. */
 export const indexOf = (key: string, sha: string, elements: readonly Marked[]): Index => {
     const pins = new Map<string, IndexPin>();
-    const links = new Map<string, { id: string; kind: LinkKind; from: string; to: string }>();
+    const links = new Map<string, IndexLink>();
     const labels = new Map<string, string>();
     const targets = new Map<string, Target>();
     let theme: Theme | null = null;
     for (const { id, mark } of elements) {
         if (mark.pr !== key || mark.sha !== sha) continue;
         if ((mark.part === "pr" || mark.part === "pin") && mark.pin) {
-            if (!pins.has(mark.pin)) pins.set(mark.pin, { id, name: mark.name ?? mark.pin, width: mark.width ?? 0, height: mark.height ?? 0, folds: mark.folds ?? [] });
+            // Two boards stacked at one commit (a reload mid-rebuild): the later card, the newer board's, wins, as its strings and labels do.
+            pins.set(mark.pin, { id, name: mark.name ?? mark.pin, width: mark.width ?? 0, height: mark.height ?? 0, folds: mark.folds ?? [] });
             if (mark.part === "pr" && mark.theme) theme = mark.theme;
             targets.set(id, { kind: "pin", pin: mark.pin });
         } else if (mark.part === "link" && mark.link && mark.kind && mark.from && mark.to) {
-            links.set(mark.link, { id, kind: mark.kind, from: mark.from, to: mark.to });
+            links.set(mark.link, { id, kind: mark.kind, from: mark.from, to: mark.to, colour: mark.colour ?? null });
             targets.set(id, { kind: "link", link: mark.link });
         } else if (mark.part === "label" && mark.link) {
             labels.set(mark.link, id);
@@ -75,7 +78,11 @@ export type Navigator = {
     attach: (review: Review) => void;
     /** Reads the board's marks again: cards were deleted, or an undo brought some back. False when none is left. */
     refresh: () => Promise<boolean>;
-    /** The current card's step, or -1: none yet, no review, or a context card, which is not a step. */
+    /** Reads the board's marks when they haven't been read yet: the panel names each link in its string's colour. */
+    readMarks: () => Promise<void>;
+    /** A drawn string's colour, by index into `STRING_COLOURS`, as its mark says; null for a link with no string. */
+    colourOf: (link: string) => number | null;
+    /** The current card's step, or -1: none yet, no review, the PR card or a context card, which are not steps. */
     current: () => number;
     currentPin: () => string | null;
     /** Whether Previous and Next have a step to go to, skipping context and deleted cards. */
@@ -86,6 +93,8 @@ export type Navigator = {
     next: () => Promise<void>;
     previous: () => Promise<void>;
     overview: () => Promise<void>;
+    /** The PR card current, and the camera on it. */
+    description: () => Promise<void>;
     /** Follows a link to its far card, seen from the current card. */
     follow: (link: string) => Promise<void>;
     /** Opens Read all for the current card, at head line `line` or at the first change. */
@@ -97,7 +106,7 @@ export type Navigator = {
 
 /** How near a click must come to a string to count, in screen pixels. */
 const STRING_REACH = 10;
-/** Read all shows `Reading the pull request…` only when the review takes longer than this to load. */
+/** Read all shows `Reading the PR…` only when the review takes longer than this to load. */
 const LOADING_AFTER_MS = 150;
 
 export type NavigatorDeps = {
@@ -175,11 +184,12 @@ export const createNavigator = (deps: NavigatorDeps): Navigator => {
         if (flies) await camera(pin);
     };
 
-    /** The next card in board order that is a step and still on the board. */
+    /** The next card in board order that is a step, a code card, and still on the board: from the PR card, the first. */
     const stepAfter = (delta: 1 | -1): string | null => {
         if (!review || !index) return null;
         const order = review.order;
-        const isStep = (id: string) => pinOf(id)?.kind !== "context" && index!.pins.has(id);
+        const steps = new Set(stepsOf(review));
+        const isStep = (id: string) => steps.has(id) && index!.pins.has(id);
         const at = current ? order.indexOf(current) : -1;
         if (at < 0) return delta === 1 ? (order.find(isStep) ?? null) : null;
         for (let i = at + delta; i >= 0 && i < order.length; i += delta) if (isStep(order[i])) return order[i];
@@ -219,6 +229,7 @@ export const createNavigator = (deps: NavigatorDeps): Navigator => {
      * card by then, the loading page goes and nothing else opens.
      */
     const openReadAll = async (pin: string, line: number | null, rect?: Rect | null) => {
+        if (pin === "pr") return;
         const idx = await ensureIndex();
         const at = rect ?? (await liveCard(pin));
         if (!at || !board) return;
@@ -226,7 +237,7 @@ export const createNavigator = (deps: NavigatorDeps): Navigator => {
         const message = (text: string): PopoverContent => ({ ...readAllMessage(name, text, theme()), theme: theme(), pin });
         if (!review) {
             const wanted = board;
-            const waiting = message("Reading the pull request…");
+            const waiting = message("Reading the PR…");
             let shown: Promise<void> | null = null;
             const late = setTimeout(() => {
                 shown = popover.open(at, waiting);
@@ -273,8 +284,7 @@ export const createNavigator = (deps: NavigatorDeps): Navigator => {
             if (pin !== current) await popover.close();
             current = pin;
             changed();
-            // The PR card's fold zone runs to the card's foot (`prCard`).
-            const fold = foldAt(m.folds ?? [], localY(card, at.y), m.part === "pr" ? Infinity : undefined);
+            const fold = foldAt(m.folds ?? [], localY(card, at.y));
             if (!fold) return true;
             // A fold row reads like a link: the card it selected goes, and so does its toolbar over the board.
             await deselect();
@@ -297,9 +307,11 @@ export const createNavigator = (deps: NavigatorDeps): Navigator => {
     };
 
     /**
-     * The whole board. The current card stays. The union comes from each
-     * card's own rect: Drawdy's `query-combined-rect` takes only the top-left
-     * corner of every component after the first.
+     * The whole board: the code cards whole, and the PR card from its top
+     * down to the lowest code card, so a long description runs on below.
+     * The current card stays. The union comes from each card's own rect:
+     * Drawdy's `query-combined-rect` takes only the top-left corner of every
+     * component after the first.
      */
     const overview = async () => {
         const idx = await ensureIndex();
@@ -307,9 +319,18 @@ export const createNavigator = (deps: NavigatorDeps): Navigator => {
         await popover.close();
         await deselect();
         const [rects, screen] = await Promise.all([rectsOf(ddp, [...idx.pins.values()].map((p) => p.id)), screenOf(ddp)]);
-        const live = [...rects.values()];
-        if (live.length === 0) return;
-        await fly(ddp, overviewCamera(union(live), screen), 550);
+        const code = [...idx.pins].flatMap(([pin, el]) => (pin === "pr" ? [] : [rects.get(el.id)].filter((r): r is Rect => r !== undefined)));
+        const prEl = idx.pins.get("pr");
+        const bounds = overviewBounds(code, (prEl && rects.get(prEl.id)) ?? null);
+        if (bounds) await fly(ddp, overviewCamera(bounds, screen), 550);
+    };
+
+    /** The PR card current, the camera on it as on a step's card; Read all closes. */
+    const description = async () => {
+        if (!(await ensureIndex())?.pins.has("pr")) return;
+        await popover.close();
+        await deselect();
+        await focus("pr", true);
     };
 
     const attach = (next: Review) => {
@@ -340,6 +361,11 @@ export const createNavigator = (deps: NavigatorDeps): Navigator => {
             changed();
             return index.pins.size > 0;
         },
+        readMarks: async () => {
+            if (index || !(await ensureIndex())) return;
+            changed();
+        },
+        colourOf: (link) => index?.links.get(link)?.colour ?? null,
         current: () => (review && current ? stepsOf(review).indexOf(current) : -1),
         currentPin: () => current,
         hasPrevious: () => stepAfter(-1) !== null,
@@ -348,6 +374,7 @@ export const createNavigator = (deps: NavigatorDeps): Navigator => {
         next: () => step(1),
         previous: () => step(-1),
         overview,
+        description,
         follow: (link) => follow(link),
         readAll: async (line = null) => {
             if (current) await openReadAll(current, line);
