@@ -1,5 +1,6 @@
+import { MARKDOWN_CSS } from "../lib/markdown.ts";
 import { webviewMain } from "../webview/main.ts";
-import { PANEL_BODY, PANEL_CSS } from "../webview/markup.ts";
+import { PANEL_BODY, PANEL_CSS, PANEL_MD_CSS } from "../webview/markup.ts";
 import { createPanel } from "../webview/panel.ts";
 
 /**
@@ -24,7 +25,7 @@ export const webviewHtml = (themeCss: string): string => `<!doctype html>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <style id="theme">:root{${themeCss}}</style>
-<style>${PANEL_CSS}</style>
+<style>${PANEL_CSS}${MARKDOWN_CSS}${PANEL_MD_CSS}</style>
 </head>
 <body>
 ${PANEL_BODY}

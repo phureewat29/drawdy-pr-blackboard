@@ -1,5 +1,6 @@
 import type { ModuleStyling } from "@drawdy/driver-protocol";
 import { PALETTES } from "../lib/card.ts";
+import { STRING_TEXT } from "../lib/layout.ts";
 import { parse } from "../lib/guard.ts";
 import { webviewToDriver, type DriverToWebview, type WebviewToDriver } from "../shared/protocol.ts";
 import type { Ddp } from "./ddp.ts";
@@ -22,18 +23,23 @@ export type Channel = {
     pushTheme: () => void;
 };
 
+/** What the panel takes from the cards' palette: diff colours and chips, and what the description needs, its links, code, rules and syntax. */
+const FROM_CARDS = ["add", "del", "add-gut", "blue", "md-link", "md-code-bg", "md-border", "add-bg", "del-bg", "k", "s", "n", "c", "f", "t"];
+
 /**
  * ModuleStyling as `--drawdy-*` CSS variables for the webview's `:root`,
- * e.g. `mutedForeground` becomes `--drawdy-muted-foreground`, plus the
- * cards' green and red for added and removed lines, the NEW chip's green
- * and the TESTS chip's blue, in the same theme.
+ * e.g. `mutedForeground` becomes `--drawdy-muted-foreground`, plus, in the
+ * same theme, the cards' colours the panel shares (`FROM_CARDS`) and each
+ * string colour as panel text, `--string-0` to `--string-7` (`STRING_TEXT`).
  */
 export const themeCss = (styling: ModuleStyling): string =>
     Object.entries(styling)
         .map(([key, value]) =>
             key === "theme" ? `color-scheme: ${value};` : `--drawdy-${key.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}: ${value};`
         )
-        .join("") + ["add", "del", "add-gut", "blue"].map((k) => `--${k}: ${PALETTES[styling.theme][k]};`).join("");
+        .join("") +
+    FROM_CARDS.map((k) => `--${k}: ${PALETTES[styling.theme][k]};`).join("") +
+    STRING_TEXT[styling.theme].map((colour, i) => `--string-${i}: ${colour};`).join("");
 
 /**
  * The driver's end of the PR Blackboard panel: creates the webview, waits for
