@@ -50,6 +50,8 @@ const readyView: PanelView = {
         ],
         canReadAll: true,
     },
+    rebuildCost: null,
+    rebuilding: null,
 };
 const startView: PanelView = { ...readyView, phase: "start", tag: null, pr: null, card: null, current: -1 };
 const NOT_GITHUB = "Only GitHub pull request links work, like github.com/owner/repo/pull/123.";

@@ -1,19 +1,21 @@
 import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
 import type { DriverCommandIssuer, DriverSubscriptionEvent, ModuleStyling } from "@drawdy/driver-protocol";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { projectColour } from "../shared/suggestions.ts";
 import { parse } from "../lib/guard.ts";
 import { webviewToDriver, type PanelView } from "../shared/protocol.ts";
 import { fakeFetch } from "../test/fake-fetch.ts";
 import { fakeHost } from "../test/fake-host.ts";
-import { createRuntime } from "./runtime.ts";
+import { createRuntime, rebuildCostOf } from "./runtime.ts";
 
 const fakeGithub = fakeFetch("hono-5513.json").fetch;
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-/** Waits until `ready` holds, for at most two seconds: opening a pull request takes a few turns of the event loop. */
-const until = async (ready: () => boolean) => {
-    for (let i = 0; i < 200 && !ready(); i++) await wait(10);
+/** Waits until `ready` holds, for at most `ms`: opening a pull request takes a few turns of the event loop. */
+const until = async (ready: () => boolean, ms = 2000) => {
+    for (let i = 0; i < ms / 10 && !ready(); i++) await wait(10);
 };
 
 const boot = async (options: { panel?: boolean; extra?: Record<string, (req: any) => unknown> } = {}) => {
@@ -236,6 +238,148 @@ describe("the runtime and GitHub", () => {
     });
 });
 
+describe("rebuilding a board", () => {
+    /** An open and a rebuild each read and parse the pull request. */
+    const SLOW = 30_000;
+    const realFetch = globalThis.fetch;
+    afterAll(() => {
+        globalThis.fetch = realFetch;
+    });
+
+    /**
+     * hono#5513 opened from a fake GitHub whose requests are counted; `answer`
+     * changes what GitHub says from then on. `extra` gets the host once it is
+     * made, for commands that act on it.
+     */
+    const opened = async (options: { extra?: (host: () => ReturnType<typeof fakeHost>) => Record<string, (req: any) => unknown> } = {}) => {
+        const net = fakeFetch("hono-5513.json");
+        let pull: ((url: string) => Response | null) | null = null;
+        globalThis.fetch = (async (url: string) => pull?.(url) ?? net.fetch(url)) as typeof fetch;
+        let made: ReturnType<typeof fakeHost> | null = null;
+        const booted = await boot({ extra: options.extra?.(() => made!) });
+        made = booted.host;
+        await booted.message({ type: "open", url: "https://github.com/honojs/hono/pull/5513" });
+        await until(() => booted.host.calls.some((c) => c.type === "command:camera:fly-to-rect"), SLOW);
+        const api = () => net.requests.filter((url) => url.startsWith("https://api.github.com/")).length;
+        const jsdelivr = () => net.requests.filter((url) => url.startsWith("https://cdn.jsdelivr.net/")).length;
+        return { ...booted, net, api, jsdelivr, answer: (f: (url: string) => Response | null) => (pull = f) };
+    };
+    const ours = (host: ReturnType<typeof fakeHost>) => [...host.elements].filter(([, e]) => e.schema.meta?.prBlackboard).map(([id]) => id);
+    const flights = (host: ReturnType<typeof fakeHost>) => host.calls.filter((c) => c.type === "command:camera:fly-to-rect").length;
+
+    it("reads GitHub again past the stored copy, pins the new board at the old PR card's corner, then removes only the old board", async () => {
+        const { host, message, view, api, jsdelivr } = await opened();
+        const before = ours(host);
+        const prId = cardsOf(host).get("pr")!.id;
+        // The reader moved the PR card, and drew a note of their own beside the board.
+        Object.assign(host.elements.get(prId)!.rect, { x: 5000, y: 3000 });
+        host.add({ type: "text", drawdyElementId: "readers-note", x: 5100, y: 2900, text: "check this" });
+        const [apiBefore, jsdelivrBefore, from, flown] = [api(), jsdelivr(), host.calls.length, flights(host)];
+        await message({ type: "rebuild" });
+        await until(() => flights(host) > flown, SLOW);
+        const scene = host.calls.slice(from).filter((c) => /^command:scene:(add|remove|update)-/.test(c.type));
+        expect(scene.map((c) => c.type)).toEqual(["command:scene:add-drawdy-elements", "command:scene:remove-drawdy-elements"]);
+        expect([...scene[1].req.drawdyElementIds].sort()).toEqual([...before].sort());
+        expect([api() - apiBefore, jsdelivr() - jsdelivrBefore]).toEqual([2, 0]);
+        expect(host.elements.has("readers-note")).toBe(true);
+        expect(ours(host).some((id) => before.includes(id))).toBe(false);
+        const pr = cardsOf(host).get("pr")!;
+        expect([pr.rect.x, pr.rect.y]).toEqual([5000, 3000]);
+        expect(cardsOf(host).size).toBe(10);
+        expect(view()).toMatchObject({ phase: "ready", error: null, rebuilding: null, rebuildCost: null, card: { pin: "pr" } });
+    }, SLOW);
+
+    it("says the step under way in the reading view, the old board read meanwhile", async () => {
+        const { host, message, view } = await opened();
+        const from = host.calls.length;
+        const flown = flights(host);
+        await message({ type: "rebuild" });
+        await until(() => flights(host) > flown, SLOW);
+        const views = host.calls.slice(from).filter((c) => c.type === "command:webview:post-message" && c.req.message.type === "view").map((c) => c.req.message.view as PanelView);
+        expect(views.every((v) => v.phase === "ready")).toBe(true);
+        const words = [...new Set(views.map((v) => v.rebuilding).filter((w) => w !== null))];
+        expect(words).toEqual(expect.arrayContaining(["Reading the pull request", "Reading 4 changed files", "Pinning 10 cards"]));
+        expect(view().rebuilding).toBeNull();
+    }, SLOW);
+
+    it("leaves the old board as it was when GitHub can't be read, says why in the reading view, and clears it at the next step", async () => {
+        const { host, message, view, answer } = await opened();
+        const before = new Map([...host.elements].map(([id, e]) => [id, { ...e.rect }]));
+        answer((url) => (url.startsWith("https://api.github.com/") ? new Response("{}", { status: 403, headers: { "x-ratelimit-remaining": "0" } }) : null));
+        const from = host.calls.length;
+        await message({ type: "rebuild" });
+        await until(() => view().error !== null, SLOW);
+        expect(view()).toMatchObject({ phase: "ready", rebuilding: null, error: "GitHub is limiting requests from this network. Try again in a few minutes.", card: { pin: "pr" } });
+        expect(host.calls.slice(from).filter((c) => /^command:scene:(add|remove|update)-/.test(c.type))).toEqual([]);
+        expect(new Map([...host.elements].map(([id, e]) => [id, { ...e.rect }]))).toEqual(before);
+        await message({ type: "next" });
+        await wait(20);
+        expect(view().error).toBeNull();
+    }, SLOW);
+
+    it("leaves the old board when the new one can't be pinned", async () => {
+        let refuse = false;
+        const { host, message, view } = await opened({
+            extra: (made) => ({
+                "command:scene:add-drawdy-elements": (req) => {
+                    if (refuse) throw new Error("no room");
+                    for (const e of req.elements) made().add(e);
+                    return undefined;
+                },
+            }),
+        });
+        refuse = true;
+        const before = ours(host);
+        await message({ type: "rebuild" });
+        await until(() => view().error !== null, SLOW);
+        expect(view()).toMatchObject({ phase: "ready", error: "Couldn't pin the board. Try again." });
+        expect(ours(host).sort()).toEqual(before.sort());
+    }, SLOW);
+
+    it("keeps reading the rebuilt board, at its new head commit, when Drawdy reports the old board's removal", async () => {
+        let removed: string[] = [];
+        let deliver: (event: DriverSubscriptionEvent) => Promise<void> = async () => undefined;
+        // Drawdy tells the driver of the removal, as of any, before the command itself answers.
+        const { host, message, view, answer, handle } = await opened({
+            extra: (made) => ({
+                "command:scene:remove-drawdy-elements": (req) => {
+                    const gone = req.drawdyElementIds.filter((id: string) => made().elements.has(id));
+                    const metas = gone.map((id: string) => ({ id, meta: made().elements.get(id)!.schema.meta }));
+                    for (const id of gone) made().remove(id);
+                    removed = gone;
+                    void deliver({ type: "subscription:scene:elements-removed", subscriptionId: "t", body: { drawdyElements: metas, properties: ["meta"] } } as DriverSubscriptionEvent);
+                    return { removed: gone.length };
+                },
+            }),
+        });
+        deliver = handle;
+        // New commits since: GitHub answers with another head, whose files read as before.
+        const saved = JSON.parse(readFileSync(join(import.meta.dirname, "../lib/fixtures/hono-5513.json"), "utf8"));
+        const head = saved.pull.head.sha as string;
+        const newer = "f".repeat(40);
+        const pulls = "https://api.github.com/repos/honojs/hono/pulls/5513";
+        answer((url) => (url === pulls ? new Response(JSON.stringify({ ...saved.pull, head: { ...saved.pull.head, sha: newer } }), { headers: { "x-ratelimit-remaining": "57" } }) : null));
+        const net = globalThis.fetch;
+        globalThis.fetch = (async (url: string) => net(url.replace(newer, head))) as typeof fetch;
+        const flown = flights(host);
+        await message({ type: "rebuild" });
+        await until(() => flights(host) > flown, SLOW);
+        await wait(50);
+        expect(removed.length).toBeGreaterThan(0);
+        expect(view()).toMatchObject({ phase: "ready", error: null, card: { pin: "pr" } });
+        expect(new Set([...host.elements.values()].map((e) => e.schema.meta?.prBlackboard?.sha).filter(Boolean))).toEqual(new Set([newer]));
+        await message({ type: "next" });
+        await wait(20);
+        expect(view().card?.name).toBe("#dispatch()");
+    }, SLOW);
+});
+
+describe("what a rebuild costs", () => {
+    it("is said only when it is more than the usual 2 GitHub requests", () => {
+        expect([rebuildCostOf(4), rebuildCostOf(100), rebuildCostOf(101), rebuildCostOf(2188)]).toEqual([null, null, { files: 101, requests: 3 }, { files: 2188, requests: 23 }]);
+    });
+});
+
 describe("project colours", () => {
     it("colour any pull request of an example project, by its repository, and leave others neutral", () => {
         expect([projectColour("honojs/hono#1"), projectColour("HonoJS/Hono#5513"), projectColour("someone/else#1")]).toEqual(["#E36002", "#E36002", null]);
@@ -244,7 +388,7 @@ describe("project colours", () => {
 
 describe("the panel protocol", () => {
     it("accepts only what the panel can ask for", () => {
-        for (const type of ["ready", "next", "previous", "overview", "read-all", "close"]) expect(parse(webviewToDriver, { type })).not.toBeNull();
+        for (const type of ["ready", "next", "previous", "overview", "read-all", "close", "rebuild"]) expect(parse(webviewToDriver, { type })).not.toBeNull();
         expect(parse(webviewToDriver, { type: "open", url: "x" })).not.toBeNull();
         expect(parse(webviewToDriver, { type: "follow", link: "x" })).not.toBeNull();
         expect(parse(webviewToDriver, { type: "unknown" })).toBeNull();

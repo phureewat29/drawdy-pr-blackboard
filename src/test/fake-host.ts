@@ -46,6 +46,11 @@ export const fakeHost = (screen = { width: 1600, height: 1000 }, extra: Record<s
             for (const e of req.elements) add(e);
             return undefined;
         },
+        "command:scene:remove-drawdy-elements": (req) => {
+            const existing = req.drawdyElementIds.filter((id: string) => elements.has(id));
+            for (const id of existing) elements.delete(id);
+            return { removed: existing.length };
+        },
         "command:scene:element-rects": (req) => ({
             rects: req.drawdyElementIds.filter((id: string) => elements.has(id)).map((id: string) => ({ drawdyElementId: id, rect: elements.get(id)!.rect })),
         }),

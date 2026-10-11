@@ -1,9 +1,10 @@
 import type { DriverModule, DriverSubscriptionEvent } from "@drawdy/driver-protocol";
 import { chipOf, foldsOf, linkGroups, pinCard, whereOf } from "../lib/card.ts";
 import { plural, serial } from "../lib/fp.ts";
-import { createGithub, explainGithub, githubFailure, parsePrUrl, prKey, prLabel } from "../lib/github.ts";
+import { createGithub, explainGithub, githubFailure, pageCount, parsePrUrl, prKey, prLabel } from "../lib/github.ts";
+import { stepsOf } from "../lib/layout.ts";
 import { segments } from "../lib/markdown.ts";
-import { stepsOf, type Pin, type Review } from "../lib/model.ts";
+import type { Pin, Review } from "../lib/model.ts";
 import { appIcon } from "../shared/app-icon.ts";
 import { projectColour } from "../shared/suggestions.ts";
 import type { CurrentCard, LoadStep, PanelView } from "../shared/protocol.ts";
@@ -12,8 +13,8 @@ import { createChannel } from "./channel.ts";
 import { createDdp, protocolError } from "./ddp.ts";
 import { markOf } from "./elements.ts";
 import { createNavigator, indexOf } from "./navigator.ts";
-import { createParser } from "./grammars.ts";
 import { layOut, loadReview, type LoadStep as Step, type Progress } from "./open.ts";
+import { createParser } from "./parser.ts";
 import { CLOSE_BUTTON, createPopover } from "./read-all.ts";
 import { createStore } from "./store.ts";
 import { inWords, isInWords } from "./words.ts";
@@ -33,6 +34,7 @@ const REGISTER_RETRIES_MS = [800, 2000, 4000, 8000, 15000];
 const NO_PERMISSION = "PR Blackboard needs permission for this. Turn it on in Extensions › PR Blackboard › Manage permissions.";
 const PIN_FAILED = "Couldn't pin the board. Try again.";
 const NOT_A_PR = "Only GitHub pull request links work, like github.com/owner/repo/pull/123.";
+const GONE = "GitHub can't find this pull request any more.";
 
 /** The loading view's steps, in the order they show, with their words before counts are known. */
 const STEPS: { step: Step; label: string }[] = [
@@ -63,6 +65,12 @@ export const explain = (err: unknown): string => {
 /** A pull request's tag for the panel: its label and its project's colour. */
 const tagOf = (label: string | null): PanelView["tag"] => (label ? { label, colour: projectColour(label) } : null);
 
+/** What reading a pull request from GitHub again costs, when that is more than the usual 2 requests: the pull request, then its file list's pages. */
+export const rebuildCostOf = (changedFiles: number): PanelView["rebuildCost"] => {
+    const requests = 1 + pageCount(changedFiles);
+    return requests > 2 ? { files: changedFiles, requests } : null;
+};
+
 /** What the panel says about the current card. */
 export const currentCardOf = (review: Review, pin: Pin): CurrentCard => ({
     pin: pin.id,
@@ -87,6 +95,13 @@ export const createRuntime = (args: Parameters<DriverModule["activate"]>[0]): Ru
     let error: string | null = null;
     /** The pull request being loaded, while the panel shows its loading lines. */
     let opening: string | null = null;
+    /** A rebuild runs: its steps go to `loading`, and the reading view stays. */
+    let rebuilding = false;
+    /** The elements a rebuild took off the board itself: their removal is no reader's. */
+    const swept = new Set<string>();
+
+    /** The words of the step a rebuild has reached: the one under way, else the last one done. */
+    const rebuildStep = (): string => (loading.find((l) => l.state === "active") ?? [...loading].reverse().find((l) => l.state === "done") ?? STEPS[0]).label;
 
     const view = (): PanelView => {
         const review = guide.review();
@@ -103,6 +118,8 @@ export const createRuntime = (args: Parameters<DriverModule["activate"]>[0]): Ru
             hasPrevious: guide.hasPrevious(),
             hasNext: guide.hasNext(),
             card: review && pin ? currentCardOf(review, pin) : null,
+            rebuildCost: review ? rebuildCostOf(review.pr.changedFiles) : null,
+            rebuilding: rebuilding ? rebuildStep() : null,
         };
     };
     const push = () => channel.post({ type: "view", view: view() });
@@ -118,7 +135,7 @@ export const createRuntime = (args: Parameters<DriverModule["activate"]>[0]): Ru
         // A key is `owner/repo#123`, which reads as a pull request reference.
         const ref = parsePrUrl(key);
         if (!ref) throw inWords(`PR Blackboard can't tell which pull request ${key} is.`);
-        const review = await loadReview({ github, store, parser }, ref, onProgress);
+        const { review } = await loadReview({ github, store, parser }, ref, onProgress);
         if (review.pr.headSha !== sha) throw inWords(`${prLabel(ref)} has new commits since it was laid out here. Open it again to lay out the latest version.`);
         return review;
     };
@@ -224,7 +241,7 @@ export const createRuntime = (args: Parameters<DriverModule["activate"]>[0]): Ru
         opening = prLabel(ref);
         progress("pr", "active");
         try {
-            const review = await loadReview({ github, store, parser }, ref, progress);
+            const { review, plan } = await loadReview({ github, store, parser }, ref, progress);
             const key = prKey(ref);
             const onBoard = (await readBoard(ddp)).get(key) ?? [];
             if (pinnedAt(onBoard, review.pr.headSha)) {
@@ -235,7 +252,7 @@ export const createRuntime = (args: Parameters<DriverModule["activate"]>[0]): Ru
                 return;
             }
             progress("pin", "active", { label: `Pinning ${plural(review.pins.length, "card")}` });
-            const elements = await layOut({ ddp, generateId: args.generateId }, review, styling.theme);
+            const elements = await layOut({ ddp, generateId: args.generateId }, review, styling.theme, plan ?? undefined);
             try {
                 await ddp.call("command:scene:add-drawdy-elements", { elements });
             } catch (err) {
@@ -249,6 +266,54 @@ export const createRuntime = (args: Parameters<DriverModule["activate"]>[0]): Ru
         } catch (err) {
             console.error("[pr-blackboard]", err);
             fail(explain(err));
+        }
+    };
+
+    /**
+     * Builds the board being read again from GitHub, ignoring this device's
+     * copy and the last read: its files read, parsed and laid out anew. The
+     * new board goes where the old one's PR card stands, and only then do the
+     * old board's elements go, found by their marks (this pull request at the
+     * board's head commit), so the reader's own notes and strokes stay. In
+     * DDP 1.3 that is two undo steps, the add and then the removal: two undos
+     * bring the old board back. A failure leaves the old board as it was and
+     * shows in the reading view.
+     */
+    const rebuild = async () => {
+        const on = guide.board();
+        const ref = on ? parsePrUrl(on.key) : null;
+        if (!on || !ref || rebuilding) return;
+        rebuilding = true;
+        error = null;
+        loading = fresh();
+        push();
+        try {
+            await guide.closePopover();
+            const { review, plan } = await loadReview({ github, store, parser }, ref, progress, true);
+            const old = ((await readBoard(ddp)).get(on.key) ?? []).filter((e) => e.mark.sha === on.sha);
+            const card = old.find((e) => e.mark.part === "pr");
+            const corner = card ? (await rectsOf(ddp, [card.id])).get(card.id) : undefined;
+            progress("pin", "active", { label: `Pinning ${plural(review.pins.length, "card")}` });
+            const elements = await layOut({ ddp, generateId: args.generateId }, review, styling.theme, plan ?? undefined, corner);
+            try {
+                await ddp.call("command:scene:add-drawdy-elements", { elements });
+            } catch (err) {
+                console.error("[pr-blackboard]", err);
+                throw inWords(PIN_FAILED);
+            }
+            for (const e of old) swept.add(e.id);
+            await ddp.call("command:scene:remove-drawdy-elements", { drawdyElementIds: old.map((e) => e.id) });
+            const key = prKey(review.pr.ref);
+            guide.set(indexOf(key, review.pr.headSha, (await readBoard(ddp)).get(key) ?? []), review);
+            rebuilding = false;
+            await guide.focus("pr");
+            await guide.overview();
+        } catch (err) {
+            console.error("[pr-blackboard]", err);
+            error = githubFailure(err)?.kind === "not-found" ? GONE : explain(err);
+        } finally {
+            rebuilding = false;
+            push();
         }
     };
 
@@ -268,6 +333,11 @@ export const createRuntime = (args: Parameters<DriverModule["activate"]>[0]): Ru
     const queue = serial();
 
     channel.subscribe((message) => {
+        // A rebuild's failure shows in the reading view until the reader's next action there.
+        if (phase === "ready" && error && message.type !== "ready") {
+            error = null;
+            push();
+        }
         switch (message.type) {
             case "ready":
                 return push();
@@ -289,6 +359,8 @@ export const createRuntime = (args: Parameters<DriverModule["activate"]>[0]): Ru
                 return void safely(() => guide.readAll());
             case "close":
                 return void safely(guide.closePopover);
+            case "rebuild":
+                return void queue(rebuild);
             default:
                 return;
         }
@@ -317,8 +389,15 @@ export const createRuntime = (args: Parameters<DriverModule["activate"]>[0]): Ru
         push();
     };
 
-    /** Removed or replaced elements of the board being read: it is read again, and put away when no card is left. */
-    const boardChanged = async (elements: readonly { meta?: unknown }[], replaced: boolean) => {
+    /**
+     * Removed or replaced elements of the board being read: it is read again,
+     * and put away when no card is left. A rebuild's own removal is no change.
+     */
+    const boardChanged = async (elements: readonly { id: string; meta?: unknown }[], replaced: boolean) => {
+        if (!replaced && elements.length > 0 && elements.every((e) => swept.has(e.id))) {
+            for (const e of elements) swept.delete(e.id);
+            return;
+        }
         const on = guide.board();
         if (!on) return;
         const ours = replaced || elements.some((e) => markOf(e.meta)?.pr === on.key);

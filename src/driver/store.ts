@@ -2,22 +2,13 @@ import type { Review } from "../lib/model.ts";
 import type { Ddp } from "./ddp.ts";
 
 /** Bump when the shape of a stored review, or how a review is built, changes, so old copies are refetched. */
-const REVIEW_VERSION = 8;
+const REVIEW_VERSION = 9;
 
 export type Store = {
     /** The review last built for a pull request, when it is for this head commit. */
     review: (key: string, sha: string) => Promise<Review | null>;
+    /** Keeps a review as the parser sent it: compact, only what the board and Read all need. */
     saveReview: (key: string, review: Review) => Promise<void>;
-};
-
-/**
- * Only what the board and Read all need: a file with no card keeps its name,
- * role and counts, not its diff. Bun's 2,188-file rewrite would otherwise
- * store 82 MB.
- */
-const compact = (review: Review): Review => {
-    const carded = new Set(review.pins.map((p) => p.path));
-    return { ...review, files: review.files.map((f) => (carded.has(f.path) ? f : { ...f, hunks: [], symbols: [], loose: [], cases: [] })) };
 };
 
 /**
@@ -33,9 +24,6 @@ export const createStore = (ddp: Ddp): Store => ({
         return payload && payload.version === REVIEW_VERSION && payload.sha === sha ? (payload.review as Review) : null;
     },
     saveReview: async (key, review) => {
-        await ddp.tryCall("command:kv-storage:set", {
-            key: `review:${key}`,
-            payload: { version: REVIEW_VERSION, sha: review.pr.headSha, review: compact(review) },
-        });
+        await ddp.tryCall("command:kv-storage:set", { key: `review:${key}`, payload: { version: REVIEW_VERSION, sha: review.pr.headSha, review } });
     },
 });

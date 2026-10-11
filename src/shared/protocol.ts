@@ -32,7 +32,7 @@ export type CurrentCard = {
 export type PanelView = {
     phase: "start" | "loading" | "ready";
     loading: LoadStep[];
-    /** Why the last attempt failed, in words for the reader. */
+    /** Why the last attempt failed, in words for the reader: an open's in the start view, a rebuild's in the reading view. */
     error: string | null;
     /** The pull request being read, or loaded: its `owner/repo#number` and its project's tag colour, if it has one. */
     tag: { label: string; colour: string | null } | null;
@@ -46,6 +46,10 @@ export type PanelView = {
     hasPrevious: boolean;
     hasNext: boolean;
     card: CurrentCard | null;
+    /** What rebuilding the board being read costs, when that is more than the usual 2 GitHub requests: the panel asks first. */
+    rebuildCost: { files: number; requests: number } | null;
+    /** The step a rebuild has reached, in the loading view's words, while one runs. */
+    rebuilding: string | null;
 };
 
 export type DriverToWebview = { type: "theme"; css: string } | { type: "view"; view: PanelView };
@@ -61,6 +65,8 @@ export const webviewToDriver = g.union(
     /** Follow one of the current card's links to its far card. */
     g.object({ type: g.literal("follow"), link: g.string }),
     g.object({ type: g.literal("read-all") }),
+    /** Build the board being read again from GitHub, in the old one's place. */
+    g.object({ type: g.literal("rebuild") }),
     /** Close Read all: Esc while the panel has focus. */
     g.object({ type: g.literal("close") })
 );
