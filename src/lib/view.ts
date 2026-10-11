@@ -1,6 +1,6 @@
 /**
- * Where the camera goes and where Read all opens, as pure functions of the
- * screen: the driver measures, these decide.
+ * Where the camera goes, and where Read all sits on the board and on
+ * screen, as pure functions: the driver measures, these decide.
  *
  * The usable view is the screen minus Drawdy's toolbar on top and the
  * PR Blackboard panel's strip on the right. Drawdy's minimap covers its
@@ -8,7 +8,7 @@
  */
 
 import { clamp } from "./fp.ts";
-import { union, type Rect } from "./layout.ts";
+import { union, type Point, type Rect, type Size } from "./layout.ts";
 
 export const VIEW = {
     toolbar: 64,
@@ -24,7 +24,12 @@ export const VIEW = {
     minZoom: 0.8,
     maxZoom: 1,
     flightMs: 450,
-    readAll: { gap: 24, minWidth: 520, maxWidth: 720, maxHeight: 640, keep: 240, edge: 12 },
+    /**
+     * Read all on the board, in canvas units: `gap` right of its card, `width` wide, as tall as its page up to
+     * `maxHeight`; it opens with the card's right `keep` in view. Its header, `header` high less the `✕` room on its
+     * right, is the drag handle, and a drag leaves at least `grip` px of it on screen.
+     */
+    readAll: { gap: 24, width: 720, maxHeight: 640, keep: 240, header: 56, close: 56, grip: 120 },
 } as const;
 
 export type Screen = { width: number; height: number };
@@ -164,38 +169,87 @@ export const stepCamera = (card: Rect, screen: Screen, viewport: Rect | null, li
     return cameraOf(screen, clearOfMinimap({ x, y, zoom }, card, card, view, tall));
 };
 
-/** The overview: the whole review, centred at the zoom that fits it, at most 1. */
+/** The overview: `bounds` centred at the zoom that fits it, at most 1. */
 export const overviewCamera = (bounds: Rect, screen: Screen): Camera => {
     const view = usable(screen);
     return cameraOf(screen, centred(bounds, view, fitZoom(bounds, view)));
 };
 
-/** The camera that keeps `zoom` and moves the view `pan` screen pixels to the right. */
-export const panned = (viewport: Rect, pan: number, zoom: number): Camera => ({
-    rect: { ...viewport, x: viewport.x + pan / zoom },
-    zoom,
+/**
+ * What the overview frames: the code cards whole, and the PR card from its
+ * top down to the lowest code card, so a long description runs on below
+ * the frame instead of shrinking the board.
+ */
+export const overviewBounds = (code: readonly Rect[], pr: Rect | null): Rect | null => {
+    if (code.length === 0) return pr;
+    const bounds = union(code);
+    return pr ? union([bounds, { ...pr, height: clamp(bounds.y + bounds.height - pr.y, 0, pr.height) }]) : bounds;
+};
+
+/** Read all on the board, in canvas units: 24 right of its card, top level with it, 720 wide and as tall as its page, up to 640. */
+export const readAllRect = (card: Rect, pageHeight: number): Rect => ({
+    x: card.x + card.width + VIEW.readAll.gap,
+    y: card.y,
+    width: VIEW.readAll.width,
+    height: Math.min(VIEW.readAll.maxHeight, Math.ceil(pageHeight)),
 });
 
-export type ReadAllSpot = { x: number; y: number; width: number; height: number; pan: number };
+/**
+ * The camera that makes Read all readable as it opens, or null when it
+ * already is: the zoom 0.8 to 1, and the card's right 240 and the pane
+ * whole in the usable view. Otherwise they are centred at the largest zoom
+ * from 0.8 to 1 that fits them; when not even 0.8 does, their top-left
+ * corner shows.
+ */
+export const readAllCamera = (card: Rect, pane: Rect, screen: Screen, viewport: Rect | null): Camera | null => {
+    const keep = Math.min(VIEW.readAll.keep, card.width);
+    const wanted = union([{ x: card.x + card.width - keep, y: card.y, width: keep, height: Math.min(card.height, pane.height) }, pane]);
+    const view = usable(screen);
+    if (viewport) {
+        const zoom = screen.width / viewport.width;
+        const inside =
+            wanted.x >= viewport.x &&
+            wanted.x + wanted.width <= viewport.x + view.width / zoom &&
+            wanted.y >= viewport.y + VIEW.toolbar / zoom &&
+            wanted.y + wanted.height <= viewport.y + viewport.height;
+        if (inside && zoom >= VIEW.minZoom - 1e-6 && zoom <= VIEW.maxZoom + 1e-6) return null;
+    }
+    const zoom = clamp(fitZoom(wanted, view), VIEW.minZoom, VIEW.maxZoom);
+    const frame = centred(wanted, view, zoom);
+    const margin = VIEW.margin / zoom;
+    return cameraOf(screen, {
+        x: wanted.width * zoom > view.width - 2 * VIEW.margin ? wanted.x - margin : frame.x,
+        y: wanted.height * zoom > view.height - 2 * VIEW.margin ? wanted.y - margin : frame.y,
+        zoom,
+    });
+};
 
 /**
- * Where Read all opens, in screen pixels, for a card at `card` on screen:
- * always to its right, 24 px off, top level with the card, as tall as its
- * page lays out at the width it gets (`pageHeight`), up to 640 or the view
- * less 48, past which the page scrolls. When there isn't room, `pan` says
- * how far the camera must first move left (keeping zoom), which is never
- * further than leaves the card's right 240 px showing.
+ * Read all as Drawdy draws it: a box the size of the usable view, at its
+ * corner, which clips the pane so it never covers Drawdy's toolbar or the
+ * panel, and in it the pane, laid out `size` large, its top-left at `at`
+ * on screen, scaled by `zoom`. CSS scales a box about its middle, so the
+ * translation makes up for that.
  */
-export const placeReadAll = (card: { left: number; right: number; top: number }, screen: Screen, pageHeight: (width: number) => number): ReadAllSpot => {
-    const R = VIEW.readAll;
+export const readAllFrame = (at: Point, zoom: number, size: Size, screen: Screen): { clip: Rect; transform: string } => {
+    const clip = usable(screen);
+    const tx = Math.round((at.x - clip.x - (size.width / 2) * (1 - zoom)) * 100) / 100;
+    const ty = Math.round((at.y - clip.y - (size.height / 2) * (1 - zoom)) * 100) / 100;
+    return { clip, transform: `translate(${tx}px, ${ty}px) scale(${Math.round(zoom * 1e4) / 1e4})` };
+};
+
+/**
+ * Where a dragged Read all's top-left may go on screen, its header
+ * `header` px large there: the header's top no higher than Drawdy's
+ * toolbar's foot and its bottom on screen, and at least 120 px of it left
+ * of the panel's strip and right of the screen's left edge, so it can
+ * always be grabbed again.
+ */
+export const dragLimit = (at: Point, header: Size, screen: Screen): Point => {
     const view = usable(screen);
-    let width = clamp(view.width - 260, R.minWidth, R.maxWidth);
-    const limit = view.x + view.width;
-    const wanted = card.right + R.gap;
-    const pan = Math.round(Math.max(0, Math.min(wanted + width - limit, card.right - R.keep)));
-    const x = wanted - pan;
-    if (x + width > limit) width = Math.max(R.minWidth, limit - x);
-    const height = Math.min(R.maxHeight, view.height - 48, Math.ceil(pageHeight(width)));
-    const y = clamp(card.top, view.y + R.edge, Math.max(view.y + R.edge, screen.height - height - R.edge));
-    return { x: Math.round(x), y: Math.round(y), width: Math.round(width), height: Math.round(height), pan };
+    const grip = VIEW.readAll.grip;
+    return {
+        x: clamp(at.x, grip - header.width, view.x + view.width - grip),
+        y: clamp(at.y, view.y, screen.height - header.height),
+    };
 };

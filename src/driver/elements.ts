@@ -5,10 +5,10 @@
  */
 
 import type { DomElementSchema, DrawdyElementSchema } from "@drawdy/driver-protocol";
-import { cardHtml, foldsOf, prCard, prCardHtml, type Theme } from "../lib/card.ts";
+import { cardHtml, foldsOf, prCardHtml, type Theme } from "../lib/card.ts";
 import * as g from "../lib/guard.ts";
 import { prKey } from "../lib/github.ts";
-import type { BoardPlan } from "../lib/layout.ts";
+import { STRING_COLOURS, type BoardPlan } from "../lib/layout.ts";
 import type { Review } from "../lib/model.ts";
 
 export const MARK = "prBlackboard";
@@ -29,7 +29,7 @@ const boardMark = g.object({
     /** A component's size when made: a resized card scales, it does not reflow. */
     width: g.optional(g.number),
     height: g.optional(g.number),
-    /** On a card: its fold rows, `[top, line]`, so a click on one opens Read all without the review. */
+    /** On a code card: its fold rows, `[top, line]`, so a click on one opens Read all without the review. */
     folds: g.optional(g.arrayOf(fold)),
     /** On the PR card: the theme the cards were pinned in, so Read all matches them. */
     theme: g.optional(g.oneOf(["light", "dark"])),
@@ -38,6 +38,8 @@ const boardMark = g.object({
     kind: g.optional(g.oneOf(["calls", "uses", "context", "tests", "imports"])),
     from: g.optional(g.string),
     to: g.optional(g.string),
+    /** On a string: its colour as pinned, by index into `STRING_COLOURS`, so the panel names its link in that colour. */
+    colour: g.optional(g.number),
 });
 
 export type BoardMark = g.Infer<typeof boardMark>;
@@ -78,9 +80,9 @@ export type ReviewElements = {
 /**
  * The board's elements in `theme`, the one Drawdy shows the reader who pins
  * it. Nothing is grouped, so a click selects one card. Each card's mark
- * holds what a click needs (name, size, fold rows), so the
- * board works without the review. Strings are curves through their bend
- * points; a drag moves only their ends.
+ * holds what a click needs (name, size, fold rows), and each string's its
+ * kind, both cards and colour, so the board works without the review.
+ * Strings are curves through their bend points; a drag moves only their ends.
  */
 export const reviewElements = (review: Review, plan: BoardPlan, newId: () => string, theme: Theme): ReviewElements => {
     const pinIds = new Map([...plan.pins.keys()].map((id) => [id, newId()]));
@@ -90,8 +92,6 @@ export const reviewElements = (review: Review, plan: BoardPlan, newId: () => str
         const pin = review.pins.find((p) => p.id === id)!;
         const pr = id === "pr";
         const html = pr ? prCardHtml(review, theme) : cardHtml(plan.cards.get(id)!, pin, theme);
-        const prFold = pr ? prCard(review).fold : null;
-        const folds = pr ? (prFold === null ? [] : [[prFold, 0] as [number, number]]) : foldsOf(plan.cards.get(id)!);
         return {
             type: "component",
             drawdyElementId: pinIds.get(id)!,
@@ -103,8 +103,7 @@ export const reviewElements = (review: Review, plan: BoardPlan, newId: () => str
                     name: pin.name,
                     width: rect.width,
                     height: rect.height,
-                    folds,
-                    ...(pr ? { theme } : {}),
+                    ...(pr ? { theme } : { folds: foldsOf(plan.cards.get(id)!) }),
                 }),
             },
         };
@@ -121,7 +120,7 @@ export const reviewElements = (review: Review, plan: BoardPlan, newId: () => str
             bend: s.bend.map(point),
             startBinding: { drawdyElementId: pinIds.get(s.from.pin)!, anchorX: s.from.anchorX, anchorY: s.from.anchorY },
             endBinding: { drawdyElementId: pinIds.get(s.to.pin)!, anchorX: s.to.anchorX, anchorY: s.to.anchorY },
-            meta: { [MARK]: markFor(review, "link", { link: s.link, kind: s.kind, from: s.from.pin, to: s.to.pin }) },
+            meta: { [MARK]: markFor(review, "link", { link: s.link, kind: s.kind, from: s.from.pin, to: s.to.pin, colour: (STRING_COLOURS as readonly string[]).indexOf(s.style.color) }) },
         },
         ...(s.label
             ? [

@@ -3,7 +3,7 @@ import { excalidrawFixture, honoFixture, reviewOf, type SavedPr } from "../test/
 import { nameRect } from "./card.ts";
 import { planBoard, stepsOf, type BoardPlan, type Rect } from "./layout.ts";
 import type { Review } from "./model.ts";
-import { VIEW, overviewCamera, placeReadAll, stepCamera, usable, type Camera, type Screen } from "./view.ts";
+import { VIEW, dragLimit, overviewBounds, overviewCamera, readAllCamera, readAllFrame, readAllRect, stepCamera, usable, type Camera, type Screen } from "./view.ts";
 
 let review: Review;
 let plan: BoardPlan;
@@ -59,26 +59,61 @@ describe.each(SCREENS)("the camera at $width × $height", (screen) => {
         }
     });
 
-    it("opens Read all to the right of its card, never left of it", () => {
-        const width = Math.min(VIEW.readAll.maxWidth, Math.max(VIEW.readAll.minWidth, usable(screen).width - 260));
-        for (const left of [40, 300, 600, 900]) {
-            const card = { left, right: left + 500, top: 200 };
-            const spot = placeReadAll(card, screen, () => Infinity);
-            expect(spot.x).toBeGreaterThanOrEqual(card.right - spot.pan + VIEW.readAll.gap);
-            expect(spot.width).toBeGreaterThanOrEqual(VIEW.readAll.minWidth);
-            expect(spot.width).toBeLessThanOrEqual(VIEW.readAll.maxWidth);
-            // Panning keeps the card's right 240 px on screen.
-            expect(card.right - spot.pan).toBeGreaterThanOrEqual(Math.min(card.right, VIEW.readAll.keep));
-            if (spot.pan === 0) expect(spot.width).toBe(width);
+    it("opens Read all readable: from zoom 0.3, or with no room for it, the camera first shows it and the card's right 240 at 0.8 to 1", () => {
+        const card = { x: 2000, y: 500, width: 600, height: 400 };
+        const pane = readAllRect(card, 2000);
+        const wanted = { x: card.x + card.width - 240, y: card.y, width: 240 + VIEW.readAll.gap + pane.width, height: pane.height };
+        const far = { x: 0, y: 0, width: screen.width / 0.3, height: screen.height / 0.3 };
+        // At zoom 1, the card's right edge just left of the view.
+        const past = { x: card.x + card.width + 10, y: card.y - 200, width: screen.width, height: screen.height };
+        for (const viewport of [far, past, null]) {
+            const camera = readAllCamera(card, pane, screen, viewport)!;
+            expect(camera.zoom).toBeGreaterThanOrEqual(VIEW.minZoom);
+            expect(camera.zoom).toBeLessThanOrEqual(VIEW.maxZoom);
+            expect(whole(camera, wanted)).toBe(true);
+            // Where it lands, it opens without moving again.
+            expect(readAllCamera(card, pane, screen, { ...camera.rect, width: screen.width / camera.zoom, height: screen.height / camera.zoom })).toBeNull();
         }
-        if (screen.width === 1920) expect(placeReadAll({ left: 100, right: 600, top: 100 }, screen, () => Infinity).width).toBe(720);
     });
 
-    it("makes Read all as tall as its page, up to 640 or the view less 48", () => {
-        const card = { left: 100, right: 600, top: 200 };
-        expect(placeReadAll(card, screen, () => 150.2).height).toBe(151);
-        expect(placeReadAll(card, screen, () => 5000).height).toBe(Math.min(VIEW.readAll.maxHeight, usable(screen).height - 48));
-        expect(placeReadAll(card, screen, (w) => 100_000 / w).height).toBe(Math.ceil(100_000 / placeReadAll(card, screen, () => 0).width));
+    it("leaves the camera where it is when Read all already reads, at zoom 0.8 to 1 with room", () => {
+        const card = { x: 100, y: 200, width: 300, height: 200 };
+        const zoom = 0.8;
+        // The card's right 240 and the pane, 984 wide in canvas units, fit at 0.8 on both screens.
+        const viewport = { x: card.x + card.width - 250, y: 0, width: screen.width / zoom, height: screen.height / zoom };
+        expect(readAllCamera(card, readAllRect(card, 300), screen, viewport)).toBeNull();
+        expect(readAllCamera(card, readAllRect(card, 300), screen, { ...viewport, width: screen.width / 1.5, height: screen.height / 1.5 })).not.toBeNull();
+        expect(readAllCamera(card, readAllRect(card, 300), screen, { ...viewport, x: viewport.x + 100 })).not.toBeNull();
+    });
+});
+
+describe("Read all on the board", () => {
+    it("sits 24 right of its card, top level with it, 720 wide in canvas units, as tall as its page up to 640", () => {
+        const card = { x: 100, y: 200, width: 500, height: 300 };
+        expect(readAllRect(card, 150.2)).toEqual({ x: 624, y: 200, width: 720, height: 151 });
+        expect(readAllRect(card, 5000).height).toBe(640);
+    });
+
+    it.each(SCREENS)("is clipped to the usable view and drawn scaled by the zoom, its top-left where the camera puts it ($width × $height)", (screen) => {
+        const size = { width: 720, height: 500 };
+        for (const zoom of [0.3, 0.8, 1, 1.5]) {
+            const at = { x: 410.5, y: 233.25 };
+            const { clip, transform } = readAllFrame(at, zoom, size, screen);
+            expect(clip).toEqual(usable(screen));
+            const [, tx, ty, scale] = /^translate\((-?[\d.]+)px, (-?[\d.]+)px\) scale\(([\d.]+)\)$/.exec(transform)!.map(Number);
+            // CSS scales about the box's middle: its top-left lands at the clip's corner, plus the translation, plus what scaling moved it.
+            expect(clip.x + tx + (size.width / 2) * (1 - scale)).toBeCloseTo(at.x, 1);
+            expect(clip.y + ty + (size.height / 2) * (1 - scale)).toBeCloseTo(at.y, 1);
+            expect(scale).toBeCloseTo(zoom, 4);
+        }
+    });
+
+    it.each(SCREENS)("keeps a dragged header where it can be grabbed again: under the toolbar, on screen, 120 px clear of either side ($width × $height)", (screen) => {
+        const header = { width: 664 * 0.8, height: 56 * 0.8 };
+        const view = usable(screen);
+        expect(dragLimit({ x: 300, y: 300 }, header, screen)).toEqual({ x: 300, y: 300 });
+        expect(dragLimit({ x: -10_000, y: -10_000 }, header, screen)).toEqual({ x: 120 - header.width, y: VIEW.toolbar });
+        expect(dragLimit({ x: 10_000, y: 10_000 }, header, screen)).toEqual({ x: view.x + view.width - 120, y: screen.height - header.height });
     });
 });
 
@@ -206,14 +241,29 @@ describe("the camera and Drawdy's minimap", () => {
 });
 
 describe("the overview", () => {
-    it.each(SCREENS)("shows the whole review, centred in the usable view ($width × $height)", (screen) => {
-        const camera = overviewCamera(plan.bounds, screen);
+    const prOf = (p: BoardPlan) => p.pins.get("pr")!;
+    const codeOf = (p: BoardPlan) => [...p.pins].filter(([id]) => id !== "pr").map(([, r]) => r);
+
+    it.each(SCREENS)("shows the whole board, centred in the usable view ($width × $height)", (screen) => {
+        const bounds = overviewBounds(codeOf(plan), prOf(plan))!;
+        expect(bounds).toEqual({ x: 0, y: 0, width: 4369, height: 1526 });
+        const camera = overviewCamera(bounds, screen);
         const view = usable(screen);
-        const box = onScreen(camera, plan.bounds);
+        const box = onScreen(camera, bounds);
         expect(box.left).toBeGreaterThanOrEqual(view.x + VIEW.margin - 0.001);
         expect(box.right).toBeLessThanOrEqual(view.x + view.width - VIEW.margin + 0.001);
         expect(box.top).toBeGreaterThanOrEqual(view.y + VIEW.margin - 0.001);
         expect(box.bottom).toBeLessThanOrEqual(view.y + view.height - VIEW.margin + 0.001);
         expect(Math.abs(box.left - view.x - (view.x + view.width - box.right))).toBeLessThan(0.01);
+    });
+
+    it("frames the code whole and the PR card no lower than the lowest code card, so a long description runs on below", () => {
+        const pr = { x: 0, y: 0, width: 640, height: 5000 };
+        const code = codeOf(plan);
+        const lowest = Math.max(...code.map((r) => r.y + r.height));
+        expect(overviewBounds(code, pr)).toEqual({ x: 0, y: 0, width: 4369, height: lowest });
+        // Dragged below the code, the PR card shows its top.
+        expect(overviewBounds(code, { ...pr, y: lowest + 500 })!.height).toBe(lowest + 500);
+        expect(overviewBounds([], pr)).toEqual(pr);
     });
 });
