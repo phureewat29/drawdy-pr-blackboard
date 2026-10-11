@@ -22,6 +22,6 @@ describe("sha256", () => {
     });
 
     it("hashes each pinned devDependency's wasm to its pin, so the bytes tested are the bytes shipped", () => {
-        for (const name of ["runtime", "typescript", "tsx", "javascript"] as const) expect([name, sha256(wasmBytes(name))]).toEqual([name, PINS[name].sha256]);
+        for (const name of Object.keys(PINS) as (keyof typeof PINS)[]) expect([name, sha256(wasmBytes(name))]).toEqual([name, PINS[name].sha256]);
     });
 });

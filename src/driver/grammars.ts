@@ -22,16 +22,23 @@ export const PINS = {
     typescript: { url: `${CDN}tree-sitter-typescript@0.23.2/tree-sitter-typescript.wasm`, sha256: "778025db5a8be0e70f8ccc3671e486dfeddd048c25d9e8a70c26de2e1bf6f97d" },
     tsx: { url: `${CDN}tree-sitter-typescript@0.23.2/tree-sitter-tsx.wasm`, sha256: "79e5da75ea62855a0cd67177685f0164eac87d5f630b3cbe1e0a099751ad30f8" },
     javascript: { url: `${CDN}tree-sitter-javascript@0.25.0/tree-sitter-javascript.wasm`, sha256: "5fb488d0cabb4775a594bab85682de5ad6ce83c0d6ac997a9f82dd084d571240" },
+    python: { url: `${CDN}tree-sitter-python@0.25.0/tree-sitter-python.wasm`, sha256: "16108b50df4ee9a30168794252ab55e7c93bfc5765d7fa0aa3e335752c515f47" },
+    go: { url: `${CDN}tree-sitter-go@0.25.0/tree-sitter-go.wasm`, sha256: "9504573f352b20be7f2f1911754d710622aedc15afff16d5ed8fb5645681aee7" },
+    rust: { url: `${CDN}tree-sitter-rust@0.24.0/tree-sitter-rust.wasm`, sha256: "f65f354215611fd94ad34134b3427eb3d58cbb745df7b6509ba722184db73d57" },
 } as const satisfies Record<ParserFile, { url: string; sha256: string }>;
 
 const stored = g.object({ sha256: g.string, blob: g.instanceOf(Blob) });
 
-/** What the reader is told a download or a failure is about: `TypeScript`, `JavaScript`, or both. */
+/** Each grammar's language, in the order the reader is told them. */
+const LANGUAGES: Record<Grammar, string> = { typescript: "TypeScript", tsx: "TypeScript", javascript: "JavaScript", python: "Python", go: "Go", rust: "Rust" };
+const ORDER = [...new Set(Object.values(LANGUAGES))];
+
+/** What the reader is told a download or a failure is about: `TypeScript parser`, `Python and Go parsers`; one language's code by its name. */
 export const languagesOf = (grammars: readonly Grammar[]): { parser: string; code: string } => {
-    const ts = grammars.some((x) => x !== "javascript");
-    const js = grammars.includes("javascript");
-    if (ts && js) return { parser: "TypeScript and JavaScript parsers", code: "code" };
-    return js ? { parser: "JavaScript parser", code: "JavaScript" } : { parser: "TypeScript parser", code: "TypeScript" };
+    const names = ORDER.filter((name) => grammars.some((g) => LANGUAGES[g] === name));
+    if (names.length === 0) return { parser: "parser", code: "code" };
+    if (names.length === 1) return { parser: `${names[0]} parser`, code: names[0] };
+    return { parser: `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]} parsers`, code: "code" };
 };
 
 export type Grammars = {

@@ -11,8 +11,8 @@
  * (`driver/parser.ts`), and the tests run this module as it is.
  */
 
-import { parseFacts } from "../lib/facts.ts";
 import { createGithub, type Fetch, type PrFile, type PrInfo } from "../lib/github.ts";
+import { parseFile } from "../lib/langs/index.ts";
 import type { BoardPlan } from "../lib/layout.ts";
 import { analyse, compact, type Review } from "../lib/model.ts";
 import { changedSources, type Parse } from "../lib/sources.ts";
@@ -93,7 +93,7 @@ export const serve = (scope: WorkerScope, start: (runtime: Uint8Array) => Promis
         if (!grammar) return null;
         const s = await load(grammar);
         try {
-            return parseFacts(s, path, text);
+            return parseFile(s, path, text);
         } catch (err) {
             // One file the parser can't read falls back to the line patterns.
             console.warn(`[pr-blackboard] couldn't parse ${path}`, err);

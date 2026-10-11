@@ -23,6 +23,9 @@ describe("the parser's files", () => {
             "tree-sitter-typescript@0.23.2/tree-sitter-typescript.wasm",
             "tree-sitter-typescript@0.23.2/tree-sitter-tsx.wasm",
             "tree-sitter-javascript@0.25.0/tree-sitter-javascript.wasm",
+            "tree-sitter-python@0.25.0/tree-sitter-python.wasm",
+            "tree-sitter-go@0.25.0/tree-sitter-go.wasm",
+            "tree-sitter-rust@0.24.0/tree-sitter-rust.wasm",
         ]);
     });
 
@@ -73,10 +76,12 @@ describe("the parser's files", () => {
     });
 
     it("name the language in the reader's words", () => {
-        expect([languagesOf(["typescript"]), languagesOf(["tsx", "javascript"]), languagesOf(["javascript"])]).toEqual([
+        expect([languagesOf(["typescript"]), languagesOf(["tsx", "javascript"]), languagesOf(["javascript"]), languagesOf(["rust", "python", "go"]), languagesOf(["go"])]).toEqual([
             { parser: "TypeScript parser", code: "TypeScript" },
             { parser: "TypeScript and JavaScript parsers", code: "code" },
             { parser: "JavaScript parser", code: "JavaScript" },
+            { parser: "Python, Go and Rust parsers", code: "code" },
+            { parser: "Go parser", code: "Go" },
         ]);
     });
 });
