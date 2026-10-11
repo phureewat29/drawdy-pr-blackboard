@@ -2,18 +2,22 @@
  * What a pull request's board reads, all from raw.githubusercontent.com at
  * the head commit, which costs no GitHub API quota: the changed files, the
  * `tsconfig.json` or `jsconfig.json` above each JavaScript or TypeScript one
- * (for `paths`), the typings a config names, and each changed file's direct
- * imports. Nothing past the direct imports: a module not read names nothing,
- * so it makes no link.
+ * (for `paths`), the typings a config names, the `go.mod` above each Go file,
+ * and each changed file's direct imports (and for Python, the module an
+ * imported module takes an imported name from). Nothing further: a module
+ * not read names nothing, so it makes no link.
  *
  * Reading goes through an injected `read`, so the driver fetches, and the
  * tests and the score gate serve saved files. Each path is read at most once.
  */
 
+import { isGeneric, type GFile } from "./anyfacts.ts";
+import type { ModuleTry } from "./anylink.ts";
 import type { FileFacts } from "./facts.ts";
 import { limiter } from "./fp.ts";
 import type { PrFile } from "./github.ts";
 import { languageOf, roleOf, type Language } from "./language.ts";
+import { langOf } from "./langs/index.ts";
 import { dirOf, joinPath, moduleCandidates, type PathMapping } from "./linker.ts";
 import { grammarOf } from "./syntax.ts";
 
@@ -21,18 +25,18 @@ import { grammarOf } from "./syntax.ts";
 export type Read = (path: string) => Promise<string | null>;
 
 /** A file's facts, or null when no parser reads it: another language, `@flow`, or too many errors. */
-export type Parse = (path: string, text: string) => Promise<FileFacts | null>;
+export type Parse = (path: string, text: string) => Promise<FileFacts | GFile | null>;
 
 export type Sources = {
-    /** Every text read, by path: the changed files the board can use, configs aside. */
+    /** Every text read, by path: the files the board can use, and `go.mod`; tsconfig aside. */
     texts: Map<string, string>;
-    /** The parsed files, changed files first. */
-    facts: Map<string, FileFacts>;
+    /** The parsed files, changed files first: JavaScript and TypeScript by `facts.ts`, the rest by their rule tables. */
+    facts: Map<string, FileFacts | GFile>;
     /** tsconfig `paths` for a file: those of the nearest config read. */
     paths: (from: string) => readonly PathMapping[];
 };
 
-/** How much is read: changed code and test files, each file's length, imported files, and requests in flight. */
+/** How much is read: changed code and test files, each file's length, imported files, and requests in flight. Every changed file read is parsed. */
 export const READ = { code: 40, tests: 40, chars: 400_000, imports: 300, inFlight: 16 } as const;
 
 /** The parts of a path above its file: `src/js/node` gives `src`. */
@@ -65,13 +69,14 @@ export const pickFiles = (files: readonly PrFile[], max: number): PrFile[] => {
 
 /**
  * The changed files read whole: code in any language, and tests the parser
- * reads. Code the parser doesn't read is read for its diff's sake, so a file
- * with no patch is left out, but for one added whole: every line of it is new.
+ * reads, which can reach the code they test. Code the parser doesn't read is
+ * read for its diff's sake, so a file with no patch is left out, but for one
+ * added whole: every line of it is new.
  */
 export const changedSources = (files: readonly PrFile[]): PrFile[] => {
     const live = files.filter((f) => f.status !== "removed");
     const code = live.filter((f) => roleOf(f.path) === "code" && languageOf(f.path) !== "text" && (grammarOf(f.path) !== null || f.patch !== undefined || f.status === "added"));
-    const tests = live.filter((f) => roleOf(f.path) === "test" && grammarOf(f.path) !== null);
+    const tests = live.filter((f) => roleOf(f.path) === "test" && grammarOf(f.path) !== null && !langOf(f.path)?.local);
     return [...pickFiles(code, READ.code), ...pickFiles(tests, READ.tests)];
 };
 
@@ -167,9 +172,9 @@ export const readSources = async (files: readonly PrFile[], read: Read, parse: P
 
     const changed = changedSources(files);
     const parsedChanged = changed.filter((f) => grammarOf(f.path) !== null);
-    const mappings = Promise.all(parsedChanged.map((f) => mappingsFor(dirOf(f.path))));
+    const mappings = Promise.all(parsedChanged.filter((f) => !langOf(f.path)).map((f) => mappingsFor(dirOf(f.path))));
     const texts = new Map<string, string>();
-    const facts = new Map<string, FileFacts>();
+    const facts = new Map<string, FileFacts | GFile>();
     const take = async (path: string, text: string) => {
         texts.set(path, text);
         const f = await parse(path, text);
@@ -188,6 +193,45 @@ export const readSources = async (files: readonly PrFile[], read: Read, parse: P
         const text = await once(path);
         if (usable(text)) await take(path, text);
     }
+    // Beside a changed file its rule table reads: the go.mod above a Go file, the nearest that answers.
+    const beside = await Promise.all(
+        parsedChanged.map(async (f) => {
+            const found: [string, string][] = [];
+            for (const list of langOf(f.path)?.configFiles?.(f.path) ?? []) {
+                for (const c of list) {
+                    const text = await once(c);
+                    if (text === null) continue;
+                    found.push([c, text]);
+                    break;
+                }
+            }
+            return found;
+        })
+    );
+    for (const [path, text] of beside.flat()) texts.set(path, text);
+    // What makes the folders above a file packages, read upward until one is missing (Python's `__init__.py`): where its imports start.
+    const marked = new Map<string, Promise<void>>();
+    /** Markers read only as markers, so far: an import of one still parses it. */
+    const onlyMarkers = new Set<string>();
+    const markers = (path: string): Promise<void> => {
+        let hit = marked.get(path);
+        if (!hit) {
+            marked.set(
+                path,
+                (hit = (async () => {
+                    for (const m of langOf(path)?.packageMarkers?.(path) ?? []) {
+                        const text = await once(m);
+                        if (text === null) break;
+                        if (texts.has(m)) continue;
+                        texts.set(m, text);
+                        onlyMarkers.add(m);
+                    }
+                })())
+            );
+        }
+        return hit;
+    };
+    await Promise.all(parsedChanged.map((f) => markers(f.path)));
     // Read before any import: a candidate already here wins without a request.
     const known = new Set(texts.keys());
     /** For a file in a directory with no config read: the nearest one read, with no new reads. */
@@ -201,22 +245,75 @@ export const readSources = async (files: readonly PrFile[], read: Read, parse: P
     for (const [dir, m] of byDir) resolvedMappings.set(dir, await m);
 
     // Each import tries its candidates in order, a 404 a miss, until one answers.
-    const resolveImport = async (from: string, spec: string): Promise<string | null> => {
-        const { candidates } = moduleCandidates(from, spec, paths(from));
+    const firstAnswer = async (candidates: readonly string[]): Promise<string | null> => {
         const already = candidates.find((c) => known.has(c));
         if (already) return already;
         for (const c of candidates) if ((await once(c)) !== null) return c;
         return null;
     };
-    const imports = parsedChanged.flatMap((c) => facts.get(c.path) ?? []).flatMap((f) => f.specifiers.map((s) => resolveImport(f.path, s.spec)));
+    // What a rule table's module lookup sees: every path known to exist, and the texts read.
+    const context = { known: new Set([...files.map((f) => f.path), ...texts.keys()]), text: (path: string) => texts.get(path) };
+    // A rule table's tries for a module: which files exist decides whether a module is named at all.
+    const exists = async (path: string) => known.has(path) || (await once(path)) !== null;
+    const firstExisting = async (paths: readonly string[]) => {
+        for (const p of paths) if (await exists(p)) return p;
+        return null;
+    };
+    const moduleAnswers = async (from: string, spec: string, level: number): Promise<string[]> => {
+        const resolver = langOf(from)!.resolver;
+        const tries: readonly ModuleTry[] = resolver.moduleTries?.(from, spec, level, context) ?? resolver.moduleFiles(from, spec, level, context).map((c) => ({ files: [c] }));
+        const out: string[] = [];
+        for (const t of tries) {
+            if (t.first && (await firstExisting(t.first)) === null) continue;
+            const found = await firstExisting(t.files);
+            if (found) out.push(found);
+        }
+        return out;
+    };
+    const genericImports = async (f: GFile): Promise<string[]> => {
+        const lang = langOf(f.path)!;
+        await markers(f.path);
+        const found = await Promise.all(
+            f.imports.map(async (i) => {
+                const mods = await moduleAnswers(f.path, i.spec, i.level);
+                if (i.name === null || i.name === "*" || !lang.isPackage || !mods.some((m) => lang.isPackage!(m))) return mods;
+                // `from a import b` may name a submodule of the package a.
+                return [...mods, ...(await moduleAnswers(f.path, i.spec ? `${i.spec}.${i.name}` : i.name, i.level))];
+            })
+        );
+        return found.flat();
+    };
+    const imports = parsedChanged
+        .flatMap((c) => facts.get(c.path) ?? [])
+        .flatMap((f): Promise<string | string[] | null>[] => (isGeneric(f) ? [genericImports(f)] : f.specifiers.map((s) => firstAnswer(moduleCandidates(f.path, s.spec, paths(f.path)).candidates))));
     let added = 0;
-    for (const target of imports) {
-        const path = await target;
-        if (!path || texts.has(path) || added >= READ.imports) continue;
-        const text = await once(path);
-        if (!usable(text)) continue;
-        added++;
-        await take(path, text);
+    const taken = new Set([...texts.keys()].filter((p) => !onlyMarkers.has(p)));
+    const readAll = async (targets: readonly Promise<string | string[] | null>[]) => {
+        for (const target of targets) {
+            for (const path of [(await target) ?? []].flat()) {
+                if (taken.has(path) || added >= READ.imports) continue;
+                const text = await once(path);
+                if (!usable(text)) continue;
+                taken.add(path);
+                added++;
+                await take(path, text);
+            }
+        }
+    };
+    await readAll(imports);
+    // A name a changed file imports from a module read may live in the module that one imports it from: one more hop.
+    const reexports: Promise<string[]>[] = [];
+    for (const c of parsedChanged) {
+        const f = facts.get(c.path);
+        const lang = langOf(c.path);
+        if (!f || !isGeneric(f) || !lang) continue;
+        for (const i of f.imports) {
+            if (i.name === null || i.name === "*") continue;
+            const from = facts.get(lang.resolver.moduleFiles(f.path, i.spec, i.level, context).find((p) => facts.has(p)) ?? "");
+            if (!from || !isGeneric(from)) continue;
+            for (const j of from.imports) if (j.local === i.name) reexports.push(markers(from.path).then(() => moduleAnswers(from.path, j.spec, j.level)));
+        }
     }
+    await readAll(reexports);
     return { texts, facts, paths };
 };
