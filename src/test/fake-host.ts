@@ -75,7 +75,7 @@ export const fakeHost = (screen = { width: 1600, height: 1000 }, extra: Record<s
         "command:scene:clear-selection": () => undefined,
         "command:dom:window-size": () => screen,
         "command:dom:upsert-floating-element": () => ({ created: true }),
-        "command:dom:move-floating-element": () => undefined,
+        "command:dom:update-floating-element": () => undefined,
         "command:dom:remove-floating-element": () => ({ removed: true }),
         "command:subscription:remove": () => ({ removed: true }),
         "command:camera:get-viewport-rect": () => ({ rect: viewport() }),

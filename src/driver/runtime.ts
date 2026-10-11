@@ -1,9 +1,9 @@
 import type { DriverModule, DriverSubscriptionEvent } from "@drawdy/driver-protocol";
-import { chipOf, foldsOf, linkGroups, pinCard, whereOf } from "../lib/card.ts";
+import { chipOf, foldsOf, linkGroups, pinCard, unpinnedText, whereOf } from "../lib/card.ts";
 import { plural, serial } from "../lib/fp.ts";
 import { createGithub, explainGithub, githubFailure, pageCount, parsePrUrl, prKey, prLabel } from "../lib/github.ts";
 import { stepsOf } from "../lib/layout.ts";
-import { segments } from "../lib/markdown.ts";
+import { lexMarkdown, markdownHtml, segments } from "../lib/markdown.ts";
 import type { Pin, Review } from "../lib/model.ts";
 import { appIcon } from "../shared/app-icon.ts";
 import { projectColour } from "../shared/suggestions.ts";
@@ -15,7 +15,7 @@ import { markOf } from "./elements.ts";
 import { createNavigator, indexOf } from "./navigator.ts";
 import { layOut, loadReview, type LoadStep as Step, type Progress } from "./open.ts";
 import { createParser } from "./parser.ts";
-import { CLOSE_BUTTON, createPopover } from "./read-all.ts";
+import { CLOSE_BUTTON, DRAG_HANDLE, createPopover } from "./read-all.ts";
 import { createStore } from "./store.ts";
 import { inWords, isInWords } from "./words.ts";
 
@@ -33,12 +33,12 @@ const REGISTER_RETRIES_MS = [800, 2000, 4000, 8000, 15000];
 
 const NO_PERMISSION = "PR Blackboard needs permission for this. Turn it on in Extensions › PR Blackboard › Manage permissions.";
 const PIN_FAILED = "Couldn't pin the board. Try again.";
-const NOT_A_PR = "Only GitHub pull request links work, like github.com/owner/repo/pull/123.";
-const GONE = "GitHub can't find this pull request any more.";
+const NOT_A_PR = "Only GitHub PR links work, like github.com/owner/repo/pull/123.";
+const GONE = "GitHub can't find this PR any more.";
 
 /** The loading view's steps, in the order they show, with their words before counts are known. */
 const STEPS: { step: Step; label: string }[] = [
-    { step: "pr", label: "Reading the pull request" },
+    { step: "pr", label: "Reading the PR" },
     { step: "parser", label: "Downloading the parser" },
     { step: "files", label: "Reading the changed files" },
     { step: "pin", label: "Pinning the cards" },
@@ -71,15 +71,34 @@ export const rebuildCostOf = (changedFiles: number): PanelView["rebuildCost"] =>
     return requests > 2 ? { files: changedFiles, requests } : null;
 };
 
-/** What the panel says about the current card. */
-export const currentCardOf = (review: Review, pin: Pin): CurrentCard => ({
-    pin: pin.id,
-    name: pin.name,
-    status: chipOf(pin),
-    where: pin.kind === "pr" ? "" : whereOf(pin),
-    links: linkGroups(pin, review).map((g) => ({ word: g.word, chips: g.links })),
-    canReadAll: pin.kind === "pr" ? review.pr.body.trim() !== "" : foldsOf(pinCard(pin, review)).length > 0,
-});
+/** Each review's description as the panel shows it, rendered once: views go to the panel many times a second while a rebuild runs. */
+const descriptions = new WeakMap<Review, string | null>();
+const descriptionOf = (review: Review): string | null => {
+    if (!descriptions.has(review)) descriptions.set(review, review.pr.body.trim() ? markdownHtml(lexMarkdown(review.pr.body), "page") : null);
+    return descriptions.get(review)!;
+};
+
+/**
+ * What the panel says about the current card. At the PR card: who opened
+ * it and how big it is, what the board leaves off, and the whole
+ * description. At a code card: its name, chip and place, and its links by
+ * kind, each named in its string's colour (`colourOf`), when it has one.
+ */
+export const currentCardOf = (review: Review, pin: Pin, colourOf: (link: string) => number | null = () => null): CurrentCard =>
+    pin.kind === "pr"
+        ? {
+              pin: "pr",
+              about: [`${review.pr.author} · ${plural(review.pr.changedFiles, "file")}`, unpinnedText(review.unpinned)].filter((line): line is string => line !== null),
+              description: descriptionOf(review),
+          }
+        : {
+              pin: pin.id,
+              name: pin.name,
+              status: chipOf(pin),
+              where: whereOf(pin),
+              links: linkGroups(pin, review).map((g) => ({ word: g.word, chips: g.links.map((c) => ({ ...c, colour: colourOf(c.link) })) })),
+              canReadAll: foldsOf(pinCard(pin, review)).length > 0,
+          };
 
 export const createRuntime = (args: Parameters<DriverModule["activate"]>[0]): Runtime => {
     const ddp = createDdp(args.issueCommand, args.manifest.driverId);
@@ -95,13 +114,23 @@ export const createRuntime = (args: Parameters<DriverModule["activate"]>[0]): Ru
     let error: string | null = null;
     /** The pull request being loaded, while the panel shows its loading lines. */
     let opening: string | null = null;
-    /** A rebuild runs: its steps go to `loading`, and the reading view stays. */
-    let rebuilding = false;
+    /**
+     * The one rebuild that may run, from the moment it is asked for: its
+     * board, its own steps (an open or a board click meanwhile has
+     * `loading`), and when it ends.
+     */
+    let rebuilding: { key: string; label: string; steps: (LoadStep & { step: Step })[]; done: Promise<void> } | null = null;
     /** The elements a rebuild took off the board itself: their removal is no reader's. */
     const swept = new Set<string>();
 
-    /** The words of the step a rebuild has reached: the one under way, else the last one done. */
-    const rebuildStep = (): string => (loading.find((l) => l.state === "active") ?? [...loading].reverse().find((l) => l.state === "done") ?? STEPS[0]).label;
+    /**
+     * The words of the step a rebuild has reached: the one under way, else
+     * the last one done. Seen from another board, they name the rebuild's.
+     */
+    const rebuildLine = (job: NonNullable<typeof rebuilding>, shown: string | undefined): string => {
+        const step = (job.steps.find((l) => l.state === "active") ?? [...job.steps].reverse().find((l) => l.state === "done") ?? STEPS[0]).label;
+        return shown === job.key ? step : `${job.label} · ${step}`;
+    };
 
     const view = (): PanelView => {
         const review = guide.review();
@@ -117,9 +146,9 @@ export const createRuntime = (args: Parameters<DriverModule["activate"]>[0]): Ru
             current: guide.current(),
             hasPrevious: guide.hasPrevious(),
             hasNext: guide.hasNext(),
-            card: review && pin ? currentCardOf(review, pin) : null,
+            card: review && pin ? currentCardOf(review, pin, guide.colourOf) : null,
             rebuildCost: review ? rebuildCostOf(review.pr.changedFiles) : null,
-            rebuilding: rebuilding ? rebuildStep() : null,
+            rebuilding: rebuilding ? rebuildLine(rebuilding, guide.board()?.key) : null,
         };
     };
     const push = () => channel.post({ type: "view", view: view() });
@@ -134,7 +163,7 @@ export const createRuntime = (args: Parameters<DriverModule["activate"]>[0]): Ru
         if (kept) return kept;
         // A key is `owner/repo#123`, which reads as a pull request reference.
         const ref = parsePrUrl(key);
-        if (!ref) throw inWords(`PR Blackboard can't tell which pull request ${key} is.`);
+        if (!ref) throw inWords(`PR Blackboard can't tell which PR ${key} is.`);
         const { review } = await loadReview({ github, store, parser }, ref, onProgress);
         if (review.pr.headSha !== sha) throw inWords(`${prLabel(ref)} has new commits since it was laid out here. Open it again to lay out the latest version.`);
         return review;
@@ -143,20 +172,24 @@ export const createRuntime = (args: Parameters<DriverModule["activate"]>[0]): Ru
     const guide = createNavigator({ ddp, popover, styling: () => styling, changed: push, loadReview: reviewAt, explain });
 
     /**
-     * One step under way or done. Starting a step finishes the ones before
-     * it, but the parser's, which shows only while it downloads, runs beside
-     * the files' and finishes on its own.
+     * `steps` with one step under way or done. Starting a step finishes the
+     * ones before it, but the parser's, which shows only while it downloads,
+     * runs beside the files' and finishes on its own.
      */
-    const progress: Progress = (step, state, words = {}) => {
-        if (step === "parser" && state === "done" && !loading.some((l) => l.step === "parser")) return;
+    const advance = (steps: (LoadStep & { step: Step })[], ...[step, state, words = {}]: Parameters<Progress>): (LoadStep & { step: Step })[] => {
+        if (step === "parser" && state === "done" && !steps.some((l) => l.step === "parser")) return steps;
         const order = STEPS.map((s) => s.step);
-        const shown = new Set([...loading.map((l) => l.step), step]);
-        loading = STEPS.filter((s) => shown.has(s.step)).map((s) => {
-            const l = loading.find((x) => x.step === s.step) ?? { step: s.step, label: s.label, state: "todo" as const };
+        const shown = new Set([...steps.map((l) => l.step), step]);
+        return STEPS.filter((s) => shown.has(s.step)).map((s) => {
+            const l = steps.find((x) => x.step === s.step) ?? { step: s.step, label: s.label, state: "todo" as const };
             if (s.step === step) return { ...l, ...words, state };
             if (state === "active" && step !== "parser" && s.step !== "parser" && order.indexOf(s.step) < order.indexOf(step)) return { ...l, state: "done" as const };
             return l;
         });
+    };
+    /** An open's step, on the loading view. */
+    const progress: Progress = (...args) => {
+        loading = advance(loading, ...args);
         push();
     };
     /** The steps every open shows, before any has started. */
@@ -200,7 +233,8 @@ export const createRuntime = (args: Parameters<DriverModule["activate"]>[0]): Ru
             key = [...cards].sort((a, b) => distance(a.id) - distance(b.id))[0]?.k ?? [...current.keys()][0];
         }
         const elements = current.get(key) ?? [];
-        const sha = on?.key === key ? on.sha : (elements.find((e) => e.mark.part === "pr")?.mark.sha ?? elements[0]?.mark.sha);
+        // A reload between a rebuild's add and its removal leaves two boards of one pull request: the newest, last in Drawdy's scene order, is the one to read.
+        const sha = on?.key === key ? on.sha : (elements.findLast((e) => e.mark.part === "pr")?.mark.sha ?? elements.at(-1)?.mark.sha);
         if (!sha) return;
         const review = await reviewForPanel(key, sha);
         const was = on?.key === key && on.sha === sha ? guide.currentPin() : null;
@@ -241,6 +275,8 @@ export const createRuntime = (args: Parameters<DriverModule["activate"]>[0]): Ru
         opening = prLabel(ref);
         progress("pr", "active");
         try {
+            // The board being rebuilt opens once the rebuild has landed: two boards of one pull request at once would be one board of twice the cards.
+            if (rebuilding?.key === prKey(ref)) await rebuilding.done;
             const { review, plan } = await loadReview({ github, store, parser }, ref, progress);
             const key = prKey(ref);
             const onBoard = (await readBoard(ddp)).get(key) ?? [];
@@ -276,24 +312,36 @@ export const createRuntime = (args: Parameters<DriverModule["activate"]>[0]): Ru
      * old board's elements go, found by their marks (this pull request at the
      * board's head commit), so the reader's own notes and strokes stay. In
      * DDP 1.3 that is two undo steps, the add and then the removal: two undos
-     * bring the old board back. A failure leaves the old board as it was and
-     * shows in the reading view.
+     * bring the old board back. A failure leaves the old board as it was.
+     *
+     * One rebuild at a time: another asked for while one runs is refused.
+     * The reader may do anything meanwhile. The landing (the PR card current,
+     * the camera at the overview) and a failure's words are theirs only if
+     * they are still reading this board when it ends; otherwise it lands
+     * silently, and opens of other pull requests never wait for it.
      */
     const rebuild = async () => {
         const on = guide.board();
         const ref = on ? parsePrUrl(on.key) : null;
-        if (!on || !ref || rebuilding) return;
-        rebuilding = true;
+        // Refused: the view goes again, so the panel's Rebuild, turned off at the press, shows what holds.
+        if (!on || !ref || rebuilding) return push();
+        let landed = () => {};
+        const job = { key: on.key, label: prLabel(ref), steps: fresh(), done: new Promise<void>((resolve) => (landed = resolve)) };
+        rebuilding = job;
         error = null;
-        loading = fresh();
         push();
+        const reading = () => phase === "ready" && guide.board()?.key === on.key;
+        const step: Progress = (...args) => {
+            job.steps = advance(job.steps, ...args);
+            push();
+        };
         try {
             await guide.closePopover();
-            const { review, plan } = await loadReview({ github, store, parser }, ref, progress, true);
+            const { review, plan } = await loadReview({ github, store, parser }, ref, step, true);
             const old = ((await readBoard(ddp)).get(on.key) ?? []).filter((e) => e.mark.sha === on.sha);
             const card = old.find((e) => e.mark.part === "pr");
             const corner = card ? (await rectsOf(ddp, [card.id])).get(card.id) : undefined;
-            progress("pin", "active", { label: `Pinning ${plural(review.pins.length, "card")}` });
+            step("pin", "active", { label: `Pinning ${plural(review.pins.length, "card")}` });
             const elements = await layOut({ ddp, generateId: args.generateId }, review, styling.theme, plan ?? undefined, corner);
             try {
                 await ddp.call("command:scene:add-drawdy-elements", { elements });
@@ -304,32 +352,41 @@ export const createRuntime = (args: Parameters<DriverModule["activate"]>[0]): Ru
             for (const e of old) swept.add(e.id);
             await ddp.call("command:scene:remove-drawdy-elements", { drawdyElementIds: old.map((e) => e.id) });
             const key = prKey(review.pr.ref);
-            guide.set(indexOf(key, review.pr.headSha, (await readBoard(ddp)).get(key) ?? []), review);
-            rebuilding = false;
+            const next = indexOf(key, review.pr.headSha, (await readBoard(ddp)).get(key) ?? []);
+            const seen = reading();
+            rebuilding = null;
+            // The old board is gone: whoever still holds it moves to the new one; Read all on one of its cards closes.
+            if (guide.board()?.key === on.key) {
+                await guide.closePopover();
+                guide.set(next, review);
+            }
+            if (!seen) return;
             await guide.focus("pr");
             await guide.overview();
         } catch (err) {
             console.error("[pr-blackboard]", err);
-            error = githubFailure(err)?.kind === "not-found" ? GONE : explain(err);
+            const why = githubFailure(err)?.kind === "not-found" ? GONE : explain(err);
+            // Away from that board, the reader's line names it, until their next action.
+            error = reading() ? why : `${job.label} · failed: ${why}`;
         } finally {
-            rebuilding = false;
+            if (rebuilding === job) rebuilding = null;
+            landed();
             push();
         }
     };
 
-    /** Runs a reader's action; a failure shows in the start view, the only place errors show, in words. */
+    /** Runs a reader's action; a failure shows, in words, in the view on screen: on the toolbar's line, or under the start view's field. */
     const safely = async (job: () => Promise<unknown>) => {
         try {
             await job();
         } catch (err) {
             console.error("[pr-blackboard]", err);
-            phase = "start";
             error = explain(err);
             push();
         }
     };
 
-    // Opening pull requests runs one at a time.
+    // Opens run one at a time. A rebuild runs beside them, one at a time on its own (`rebuild`).
     const queue = serial();
 
     channel.subscribe((message) => {
@@ -346,13 +403,16 @@ export const createRuntime = (args: Parameters<DriverModule["activate"]>[0]): Ru
             case "start":
                 phase = "start";
                 error = null;
-                return push();
+                push();
+                return void safely(guide.closePopover);
             case "next":
                 return void safely(guide.next);
             case "previous":
                 return void safely(guide.previous);
             case "overview":
                 return void safely(guide.overview);
+            case "description":
+                return void safely(guide.description);
             case "follow":
                 return void safely(() => guide.follow(message.link));
             case "read-all":
@@ -360,7 +420,7 @@ export const createRuntime = (args: Parameters<DriverModule["activate"]>[0]): Ru
             case "close":
                 return void safely(guide.closePopover);
             case "rebuild":
-                return void queue(rebuild);
+                return void rebuild();
             default:
                 return;
         }
@@ -371,6 +431,8 @@ export const createRuntime = (args: Parameters<DriverModule["activate"]>[0]): Ru
         const on = guide.board();
         if (!channel.isReady() || !on || guide.review()) return;
         guide.attach(await reviewForPanel(on.key, on.sha));
+        // The panel names each link in its string's colour, which the board's marks hold.
+        await guide.readMarks();
         phase = "ready";
         push();
     };
@@ -378,10 +440,15 @@ export const createRuntime = (args: Parameters<DriverModule["activate"]>[0]): Ru
     /**
      * A click on the board: one read of what was clicked, then what it asks
      * for. A click on a PR Blackboard element while the start view shows (after
-     * Open another, or an error) brings back the reading view of its board.
+     * Home, or an error) brings back the reading view of its board.
      */
     const boardClick = async (ids: readonly string[], at: { x: number; y: number }) => {
         if (!(await guide.click(ids, at))) return;
+        // A click is the reader's next action, as a press in the panel is: the error on show goes, so a rebuild's never follows them to another board.
+        if (error) {
+            error = null;
+            push();
+        }
         await followBoard();
         if (phase !== "start" || !guide.review()) return;
         phase = "ready";
@@ -428,6 +495,7 @@ export const createRuntime = (args: Parameters<DriverModule["activate"]>[0]): Ru
             await ddp.call("subscription:webview:message", { webviewDomId: channel.id });
             await ddp.call("subscription:dom:theme-changed");
             await ddp.call("subscription:dom:element-clicked", { domElementId: CLOSE_BUTTON });
+            await ddp.call("subscription:dom:drag", { domElementId: DRAG_HANDLE });
         });
         await attempt("board subscriptions", async () => {
             await ddp.call("subscription:scene:click", {});
@@ -460,9 +528,13 @@ export const createRuntime = (args: Parameters<DriverModule["activate"]>[0]): Ru
                 return;
             case "subscription:scene:click":
                 return void safely(() => boardClick(event.body.drawdyElementIds, event.body.cursor.canvasSpace));
-            // The popover sits beside its card wherever the camera goes; this subscription lives only while it is open.
+            // Read all pans and zooms with the board; these subscriptions live only while it is open.
             case "subscription:camera:moved-rapid":
                 return popover.follow(event.body);
+            case "subscription:dom:screen-resized":
+                return popover.resize(event.body);
+            case "subscription:dom:drag":
+                return popover.drag(event.body);
             case "subscription:keyboard:control-keys":
                 if (event.body.key === "escape") void guide.closePopover();
                 return;

@@ -1,12 +1,14 @@
-import { afterAll, beforeAll, describe, expect, it } from "@jest/globals";
+import { afterAll, beforeAll, describe, expect, it, jest } from "@jest/globals";
 import type { DriverCommandIssuer, DriverSubscriptionEvent, ModuleStyling } from "@drawdy/driver-protocol";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { projectColour } from "../shared/suggestions.ts";
 import { parse } from "../lib/guard.ts";
-import { webviewToDriver, type PanelView } from "../shared/protocol.ts";
+import { webviewToDriver, type CodeCard, type PanelView } from "../shared/protocol.ts";
 import { fakeFetch } from "../test/fake-fetch.ts";
 import { fakeHost } from "../test/fake-host.ts";
+import { STRING_COLOURS } from "../lib/layout.ts";
+import { Lexer } from "../vendor/marked.ts";
 import { createRuntime, rebuildCostOf } from "./runtime.ts";
 
 const fakeGithub = fakeFetch("hono-5513.json").fetch;
@@ -90,8 +92,9 @@ describe("the runtime on hono#5513", () => {
         expect(types.filter((t) => t === "command:scene:add-drawdy-elements")).toHaveLength(1);
         expect(types.slice(0, add)).not.toContain("command:camera:fly-to-rect");
         expect(types.slice(add).filter((t) => t === "command:camera:fly-to-rect")).toHaveLength(1);
-        expect(view()).toMatchObject({ phase: "ready", current: 0, total: 9, hasPrevious: false, hasNext: true });
-        expect(view().card?.pin).toBe("pr");
+        // The board lands with the description in the panel: not a step, so – / 8, Previous off, Next on.
+        expect(view()).toMatchObject({ phase: "ready", current: -1, total: 8, hasPrevious: false, hasNext: true, card: { pin: "pr", about: ["usualoma · 4 files"] } });
+        expect(view().card).toHaveProperty("description", expect.stringContaining("<h3>Behavior change</h3>"));
         // Cards take the theme Drawdy shows the reader who pins them.
         const pinned = host.calls.find((c) => c.type === "command:scene:add-drawdy-elements")!.req.elements;
         const cards = pinned.filter((e: any) => e.type === "component").map((e: any) => e.schema.children[0].child.srcDoc as string);
@@ -99,7 +102,7 @@ describe("the runtime on hono#5513", () => {
         expect(pinned.find((e: any) => e.meta.prBlackboard.part === "pr").meta.prBlackboard.theme).toBe("dark");
         const views = host.calls.filter((c) => c.type === "command:webview:post-message" && c.req.message.view?.phase === "loading").map((c) => c.req.message.view.loading);
         const words = (l: { label: string; note?: string }) => (l.note ? `${l.label} · ${l.note}` : l.label);
-        expect(views.pop().map(words)).toEqual(["Reading the pull request", "Downloading the TypeScript parser · first time only", "Reading 4 changed files", "Pinning 10 cards"]);
+        expect(views.pop().map(words)).toEqual(["Reading the PR", "Downloading the TypeScript parser · first time only", "Reading 4 changed files", "Pinning 10 cards"]);
         // The download runs beside the reads: both steps turn at once.
         expect(views.some((steps: { state: string }[]) => steps[1].state === "active" && steps[2].state === "active")).toBe(true);
     });
@@ -114,22 +117,93 @@ describe("the runtime on hono#5513", () => {
         const from = host.calls.length;
         await openPanel();
         await until(() => view().phase === "ready");
-        expect(view()).toMatchObject({ phase: "ready", current: 0, hasNext: true });
-        expect(view().card?.pin).toBe("pr");
+        expect(view()).toMatchObject({ phase: "ready", current: -1, hasNext: true, card: { pin: "pr" } });
         expect(host.calls.slice(from).map((c) => c.type)).not.toContain("command:camera:fly-to-rect");
     });
 
     it("closes Read all on Esc in the panel", async () => {
-        const { host, message } = await boot();
+        const { host, message, view } = await boot();
         await message({ type: "open", url: "https://github.com/honojs/hono/pull/5513" });
         await until(() => host.calls.some((c) => c.type === "command:camera:fly-to-rect"));
         await message({ type: "next" });
+        await until(() => view().current === 0);
         await message({ type: "read-all" });
-        await wait(20);
+        // From the overview, Read all first brings the camera to where it reads.
+        await until(() => host.calls.some((c) => c.type === "command:dom:upsert-floating-element"));
         const from = host.calls.length;
         await message({ type: "close" });
         await wait(20);
         expect(host.calls.slice(from).map((c) => c.type)).toContain("command:dom:remove-floating-element");
+    });
+});
+
+describe("the reading view on hono#5513", () => {
+    const realFetch = globalThis.fetch;
+    beforeAll(() => {
+        globalThis.fetch = fakeGithub as typeof fetch;
+    });
+    afterAll(() => {
+        globalThis.fetch = realFetch;
+    });
+
+    const opened = async (extra: Record<string, (req: any) => unknown> = {}) => {
+        const booted = await boot({ extra });
+        await booted.message({ type: "open", url: "https://github.com/honojs/hono/pull/5513" });
+        await until(() => booted.host.calls.some((c) => c.type === "command:camera:fly-to-rect"));
+        return booted;
+    };
+
+    it("names each link in its string's colour, from the string's mark, and a link with no string in none", async () => {
+        const { host, message, view } = await opened();
+        const colours = new Map([...host.elements.values()].filter((e) => e.schema.type === "arrow").map((e) => [e.schema.meta.prBlackboard.link as string, e.schema.color as string]));
+        for (let i = 0; i < 3; i++) {
+            const at = view().current;
+            await message({ type: "next" });
+            await until(() => view().current !== at);
+        }
+        const card = view().card as CodeCard;
+        expect(card.name).toBe("compose()");
+        const chips = card.links.flatMap((row) => row.chips);
+        expect(chips.map((c) => [c.name, c.colour === null ? null : STRING_COLOURS[c.colour]])).toEqual(chips.map((c) => [c.name, colours.get(c.link) ?? null]));
+        // hono-base.ts imports compose(), but its string finds no route: the panel names it uncoloured.
+        expect(chips.find((c) => c.name === "hono-base.ts")).toMatchObject({ colour: null });
+        expect(chips.filter((c) => c.colour !== null).length).toBeGreaterThan(1);
+    });
+
+    it("makes the PR card current on Description and flies the camera to it; the steps go on from there", async () => {
+        const { host, message, view } = await opened();
+        await message({ type: "next" });
+        await until(() => view().current === 0);
+        await message({ type: "next" });
+        await until(() => view().current === 1);
+        expect(view()).toMatchObject({ current: 1, hasPrevious: true });
+        const flights = () => host.calls.filter((c) => c.type === "command:camera:fly-to-rect").length;
+        const flown = flights();
+        await message({ type: "description" });
+        await until(() => view().card?.pin === "pr" && flights() > flown);
+        expect(view()).toMatchObject({ current: -1, hasPrevious: false, hasNext: true, card: { pin: "pr" } });
+        expect(flights()).toBe(flown + 1);
+        await message({ type: "next" });
+        await until(() => view().current === 0);
+        expect(view()).toMatchObject({ current: 0, card: { name: "#dispatch()" } });
+    });
+
+    it("shows a failed action's error on the toolbar's line, in the reading view, until the next action", async () => {
+        let refuse = false;
+        const { message, view } = await opened({
+            "command:dom:upsert-floating-element": () => {
+                if (refuse) throw new Error("no room");
+                return { created: true };
+            },
+        });
+        refuse = true;
+        await message({ type: "next" });
+        await until(() => view().current === 0);
+        await message({ type: "read-all" });
+        await until(() => view().error !== null);
+        expect(view()).toMatchObject({ phase: "ready", card: { name: "#dispatch()" }, error: expect.stringContaining("no room") });
+        await message({ type: "next" });
+        expect(view().error).toBeNull();
     });
 });
 
@@ -145,20 +219,26 @@ describe("the runtime and GitHub", () => {
     it("says which links work when one isn't a GitHub pull request, in the start view, the only place errors show", async () => {
         const { host, message, view } = await boot();
         await message({ type: "open", url: "https://gitlab.com/a/b/-/merge_requests/1" });
-        expect(view()).toMatchObject({ phase: "start", error: "Only GitHub pull request links work, like github.com/owner/repo/pull/123." });
+        expect(view()).toMatchObject({ phase: "start", error: "Only GitHub PR links work, like github.com/owner/repo/pull/123." });
         await message({ type: "open", url: "https://github.com/honojs/hono/pull/5513" });
         await until(() => host.calls.some((c) => c.type === "command:camera:fly-to-rect"));
         await message({ type: "open", url: "not a link" });
         expect(view()).toMatchObject({ phase: "start", error: expect.stringMatching(/^Only GitHub/) });
     });
 
-    it("goes back to the start view on Open another, the board kept, and a click on one of its cards reads it again", async () => {
+    it("goes back to the start view on Home, Read all closed and the board kept, and a click on one of its cards reads it again", async () => {
         const { host, message, view, click } = await boot();
         await message({ type: "open", url: "https://github.com/honojs/hono/pull/5513" });
         await until(() => host.calls.some((c) => c.type === "command:camera:fly-to-rect"));
+        await message({ type: "next" });
+        await until(() => view().card?.pin !== "pr");
+        await message({ type: "read-all" });
+        await until(() => host.calls.some((c) => c.type === "command:dom:upsert-floating-element"));
         const from = host.calls.length;
         await message({ type: "start" });
+        await wait(20);
         expect([view().phase, view().error]).toEqual(["start", null]);
+        expect(host.calls.slice(from).map((c) => c.type)).toContain("command:dom:remove-floating-element");
         expect(host.calls.slice(from).filter((c) => /^command:scene:(remove|delete)/.test(c.type))).toEqual([]);
         const card = cardsOf(host).get("src/compose.ts:18")!;
         await click([card.id], { x: card.rect.x + 40, y: card.rect.y + 20 });
@@ -190,11 +270,11 @@ describe("the runtime and GitHub", () => {
         const subscribed = host.calls.map((c) => c.type);
         for (const type of ["subscription:scene:click", "subscription:scene:elements-removed", "subscription:scene:elements-replaced", "subscription:keyboard:control-keys"]) expect(subscribed).toContain(type);
         expect(subscribed).not.toContain("subscription:camera:moved-rapid");
-        const pr = cardsOf(host).get("pr")!;
-        const fold = (pr.mark.folds as [number, number][])[0];
+        const compose = cardsOf(host).get("src/compose.ts:18")!;
+        const fold = (compose.mark.folds as [number, number][])[0];
         const from = host.calls.length;
-        await click([pr.id], { x: pr.rect.x + 100, y: pr.rect.y + fold[0] + 10 });
-        await wait(400);
+        await click([compose.id], { x: compose.rect.x + 100, y: compose.rect.y + fold[0] + 10 });
+        await until(() => host.calls.slice(from).some((c) => c.type === "command:dom:upsert-floating-element"));
         const types = host.calls.slice(from).map((c) => c.type);
         expect(types[0]).toBe("command:scene:get-drawdy-elements");
         expect(types).toContain("command:dom:upsert-floating-element");
@@ -216,8 +296,7 @@ describe("the runtime and GitHub", () => {
         await click([compose.id], { x: compose.rect.x + 40, y: compose.rect.y + 66 });
         await openPanel();
         await until(() => view().phase === "ready");
-        expect(view()).toMatchObject({ phase: "ready", current: 3 });
-        expect(view().card?.name).toBe("compose()");
+        expect(view()).toMatchObject({ phase: "ready", current: 2, card: { name: "compose()" } });
     });
 
     it("says why in the start view when the panel opens on a board it can't pick up", async () => {
@@ -248,13 +327,22 @@ describe("rebuilding a board", () => {
 
     /**
      * hono#5513 opened from a fake GitHub whose requests are counted; `answer`
-     * changes what GitHub says from then on. `extra` gets the host once it is
-     * made, for commands that act on it.
+     * changes what GitHub says from then on, and `hold` keeps its API
+     * answers back until `release`. excalidraw#12237 can be opened beside it,
+     * from a GitHub of its own. `extra` gets the host once it is made, for
+     * commands that act on it.
      */
     const opened = async (options: { extra?: (host: () => ReturnType<typeof fakeHost>) => Record<string, (req: any) => unknown> } = {}) => {
         const net = fakeFetch("hono-5513.json");
+        const other = fakeFetch("excalidraw-12237.json");
         let pull: ((url: string) => Response | null) | null = null;
-        globalThis.fetch = (async (url: string) => pull?.(url) ?? net.fetch(url)) as typeof fetch;
+        let held: Promise<void> | null = null;
+        let release = () => {};
+        globalThis.fetch = (async (url: string) => {
+            if (url.includes("/excalidraw/excalidraw/")) return other.fetch(url);
+            if (held && url.startsWith("https://api.github.com/")) await held;
+            return pull?.(url) ?? net.fetch(url);
+        }) as typeof fetch;
         let made: ReturnType<typeof fakeHost> | null = null;
         const booted = await boot({ extra: options.extra?.(() => made!) });
         made = booted.host;
@@ -262,8 +350,28 @@ describe("rebuilding a board", () => {
         await until(() => booted.host.calls.some((c) => c.type === "command:camera:fly-to-rect"), SLOW);
         const api = () => net.requests.filter((url) => url.startsWith("https://api.github.com/")).length;
         const jsdelivr = () => net.requests.filter((url) => url.startsWith("https://cdn.jsdelivr.net/")).length;
-        return { ...booted, net, api, jsdelivr, answer: (f: (url: string) => Response | null) => (pull = f) };
+        return {
+            ...booted,
+            net,
+            api,
+            jsdelivr,
+            answer: (f: (url: string) => Response | null) => (pull = f),
+            hold: () => {
+                held = new Promise((resolve) => (release = resolve));
+            },
+            release: () => {
+                held = null;
+                release();
+            },
+        };
     };
+    /** A board's PR card, by its pull request: two boards may share the canvas. */
+    const prCardOf = (host: ReturnType<typeof fakeHost>, pr: string) => {
+        const [id, e] = [...host.elements].find(([, e]) => e.schema.type === "component" && e.schema.meta?.prBlackboard?.pr === pr && e.schema.meta.prBlackboard.pin === "pr")!;
+        return { id, at: { x: e.rect.x + 20, y: e.rect.y + 20 } };
+    };
+    const EXCALIDRAW = "https://github.com/excalidraw/excalidraw/pull/12237";
+    const reading = (view: () => PanelView, label: string) => () => view().phase === "ready" && view().tag?.label === label;
     const ours = (host: ReturnType<typeof fakeHost>) => [...host.elements].filter(([, e]) => e.schema.meta?.prBlackboard).map(([id]) => id);
     const flights = (host: ReturnType<typeof fakeHost>) => host.calls.filter((c) => c.type === "command:camera:fly-to-rect").length;
 
@@ -298,7 +406,7 @@ describe("rebuilding a board", () => {
         const views = host.calls.slice(from).filter((c) => c.type === "command:webview:post-message" && c.req.message.type === "view").map((c) => c.req.message.view as PanelView);
         expect(views.every((v) => v.phase === "ready")).toBe(true);
         const words = [...new Set(views.map((v) => v.rebuilding).filter((w) => w !== null))];
-        expect(words).toEqual(expect.arrayContaining(["Reading the pull request", "Reading 4 changed files", "Pinning 10 cards"]));
+        expect(words).toEqual(expect.arrayContaining(["Reading the PR", "Reading 4 changed files", "Pinning 10 cards"]));
         expect(view().rebuilding).toBeNull();
     }, SLOW);
 
@@ -370,8 +478,182 @@ describe("rebuilding a board", () => {
         expect(new Set([...host.elements.values()].map((e) => e.schema.meta?.prBlackboard?.sha).filter(Boolean))).toEqual(new Set([newer]));
         await message({ type: "next" });
         await wait(20);
-        expect(view().card?.name).toBe("#dispatch()");
+        expect(view().card).toMatchObject({ name: "#dispatch()" });
     }, SLOW);
+
+    it("runs one rebuild at a time: a second press, at once or 120 ms later, is refused while one runs", async () => {
+        const { host, message, view, api, hold, release } = await opened();
+        const [apiBefore, from, flown] = [api(), host.calls.length, flights(host)];
+        hold();
+        await message({ type: "rebuild" });
+        await message({ type: "rebuild" });
+        await wait(120);
+        await message({ type: "rebuild" });
+        release();
+        await until(() => flights(host) > flown, SLOW);
+        await wait(200);
+        const scene = host.calls.slice(from).filter((c) => /^command:scene:(add|remove)-/.test(c.type));
+        expect(scene.map((c) => c.type)).toEqual(["command:scene:add-drawdy-elements", "command:scene:remove-drawdy-elements"]);
+        expect([api() - apiBefore, flights(host) - flown, view().rebuilding]).toEqual([2, 1, null]);
+    }, SLOW);
+
+    it("lands silently after Home: the start view and the camera stay, and a click on the new board reads it", async () => {
+        const { host, message, view, click, hold, release } = await opened();
+        hold();
+        await message({ type: "rebuild" });
+        await message({ type: "start" });
+        const [from, flown] = [host.calls.length, flights(host)];
+        release();
+        await until(() => host.calls.slice(from).some((c) => c.type === "command:scene:remove-drawdy-elements") && view().rebuilding === null, SLOW);
+        await wait(50);
+        expect([view().phase, flights(host) - flown]).toEqual(["start", 0]);
+        const compose = cardsOf(host).get("src/compose.ts:18")!;
+        await click([compose.id], { x: compose.rect.x + 40, y: compose.rect.y + 20 });
+        await wait(20);
+        expect(view()).toMatchObject({ phase: "ready", card: { name: "compose()" }, rebuilding: null });
+    }, SLOW);
+
+    it("opens another pull request at once while a rebuild waits on GitHub, naming the rebuild on its toolbar's line, and the rebuild lands silently", async () => {
+        const { host, message, view, hold, release } = await opened();
+        const old = new Set([...host.elements.keys()]);
+        hold();
+        await message({ type: "rebuild" });
+        await message({ type: "start" });
+        await message({ type: "open", url: EXCALIDRAW });
+        // excalidraw opens, board and all, while hono's rebuild still waits for GitHub.
+        await until(reading(view, "excalidraw/excalidraw#12237"), SLOW);
+        expect(view().rebuilding).toBe("honojs/hono#5513 · Reading the PR");
+        const flown = flights(host);
+        release();
+        await until(() => view().rebuilding === null, SLOW);
+        await wait(50);
+        expect([view().tag?.label, view().phase, flights(host) - flown]).toEqual(["excalidraw/excalidraw#12237", "ready", 0]);
+        expect([...host.elements.keys()].filter((id) => old.has(id))).toEqual([]);
+    }, SLOW);
+
+    it("clears a rebuild's error when a click moves the panel to another board", async () => {
+        const { host, message, view, click, answer } = await opened();
+        await message({ type: "start" });
+        await message({ type: "open", url: EXCALIDRAW });
+        await until(reading(view, "excalidraw/excalidraw#12237"), SLOW);
+        const hono = prCardOf(host, "honojs/hono#5513");
+        await click([hono.id], hono.at);
+        await until(reading(view, "honojs/hono#5513"), SLOW);
+        answer((url) => (url.startsWith("https://api.github.com/repos/honojs/") ? new Response("{}", { status: 404 }) : null));
+        await message({ type: "rebuild" });
+        await until(() => view().error !== null, SLOW);
+        expect(view()).toMatchObject({ tag: { label: "honojs/hono#5513" }, error: "GitHub can't find this PR any more.", rebuilding: null });
+        const excalidraw = prCardOf(host, "excalidraw/excalidraw#12237");
+        await click([excalidraw.id], excalidraw.at);
+        await until(reading(view, "excalidraw/excalidraw#12237"), SLOW);
+        expect(view().error).toBeNull();
+    }, SLOW);
+
+    it("says on another board's line that a rebuild failed while the reader was there, until their next action", async () => {
+        const { host, message, view, click, answer, hold, release } = await opened();
+        await message({ type: "start" });
+        await message({ type: "open", url: EXCALIDRAW });
+        await until(reading(view, "excalidraw/excalidraw#12237"), SLOW);
+        const hono = prCardOf(host, "honojs/hono#5513");
+        await click([hono.id], hono.at);
+        await until(reading(view, "honojs/hono#5513"), SLOW);
+        const before = [...host.elements.keys()].sort();
+        hold();
+        await message({ type: "rebuild" });
+        const excalidraw = prCardOf(host, "excalidraw/excalidraw#12237");
+        await click([excalidraw.id], excalidraw.at);
+        await until(reading(view, "excalidraw/excalidraw#12237"), SLOW);
+        answer((url) => (url.startsWith("https://api.github.com/repos/honojs/") ? new Response("{}", { status: 404 }) : null));
+        release();
+        await until(() => view().rebuilding === null, SLOW);
+        expect(view()).toMatchObject({ tag: { label: "excalidraw/excalidraw#12237" }, error: "honojs/hono#5513 · failed: GitHub can't find this PR any more." });
+        expect([...host.elements.keys()].sort()).toEqual(before);
+        await message({ type: "next" });
+        await wait(20);
+        expect(view().error).toBeNull();
+    }, SLOW);
+
+    it("picks up the newest of two boards of one pull request, stacked by a reload between a rebuild's add and its removal", async () => {
+        const saved = JSON.parse(readFileSync(join(import.meta.dirname, "../lib/fixtures/hono-5513.json"), "utf8"));
+        const head = saved.pull.head.sha as string;
+        const pulls = "https://api.github.com/repos/honojs/hono/pulls/5513";
+        const net = fakeFetch("hono-5513.json");
+        let answering = head;
+        globalThis.fetch = (async (url: string) =>
+            url === pulls
+                ? new Response(JSON.stringify({ ...saved.pull, head: { ...saved.pull.head, sha: answering } }), { headers: { "x-ratelimit-remaining": "57" } })
+                : net.fetch(url.replace(answering, head))) as typeof fetch;
+        const first = await boot();
+        await first.message({ type: "open", url: "https://github.com/honojs/hono/pull/5513" });
+        await until(() => first.host.calls.some((c) => c.type === "command:camera:fly-to-rect"), SLOW);
+        // The same commit, and new commits since: either way the newer board, added last, 3,000 to the right, is the one read.
+        for (const sha of [head, "f".repeat(40)]) {
+            answering = sha;
+            const { host, openPanel, view, message } = await boot({ panel: false });
+            for (const [id, e] of first.host.elements) host.elements.set(id, e);
+            for (const [id, e] of first.host.elements) {
+                const mark = { ...e.schema.meta.prBlackboard, sha };
+                host.elements.set(`${id}-new`, { ...e, rect: { ...e.rect, x: e.rect.x + 3000 }, schema: { ...e.schema, meta: { ...e.schema.meta, prBlackboard: mark } } });
+            }
+            await openPanel();
+            await until(() => view().phase === "ready", SLOW);
+            expect(view()).toMatchObject({ phase: "ready", error: null, card: { pin: "pr" } });
+            const from = host.calls.length;
+            await message({ type: "next" });
+            await until(() => host.calls.slice(from).some((c) => c.type === "command:camera:fly-to-rect"), SLOW);
+            const flight = host.calls.slice(from).find((c) => c.type === "command:camera:fly-to-rect")!;
+            expect([view().card, flight.req.rect.x > 2000]).toEqual([expect.objectContaining({ name: "#dispatch()" }), true]);
+        }
+    }, SLOW);
+
+    it("stays on another board the reader clicked while the rebuild ran", async () => {
+        const { host, message, view, click, hold, release } = await opened();
+        await message({ type: "start" });
+        await message({ type: "open", url: EXCALIDRAW });
+        await until(reading(view, "excalidraw/excalidraw#12237"), SLOW);
+        const hono = prCardOf(host, "honojs/hono#5513");
+        await click([hono.id], hono.at);
+        await until(reading(view, "honojs/hono#5513"), SLOW);
+        hold();
+        await message({ type: "rebuild" });
+        const excalidraw = prCardOf(host, "excalidraw/excalidraw#12237");
+        await click([excalidraw.id], excalidraw.at);
+        await until(reading(view, "excalidraw/excalidraw#12237"), SLOW);
+        const flown = flights(host);
+        release();
+        await until(() => view().rebuilding === null, SLOW);
+        await wait(50);
+        expect([view().tag?.label, view().phase, flights(host) - flown]).toEqual(["excalidraw/excalidraw#12237", "ready", 0]);
+    }, SLOW);
+});
+
+describe("the description, lexed once", () => {
+    const realFetch = globalThis.fetch;
+    afterAll(() => {
+        globalThis.fetch = realFetch;
+    });
+
+    it("is lexed once on this thread for the board, the panel, the steps and Description", async () => {
+        const saved = JSON.parse(readFileSync(join(import.meta.dirname, "../lib/fixtures/hono-5513.json"), "utf8"));
+        // A description no other test reads, so no earlier lex is remembered.
+        const marker = `Lexed once, ${Date.now()}.`;
+        const pulls = "https://api.github.com/repos/honojs/hono/pulls/5513";
+        const net = fakeFetch("hono-5513.json");
+        globalThis.fetch = (async (url: string) =>
+            url === pulls ? new Response(JSON.stringify({ ...saved.pull, body: `${saved.pull.body}\n\n${marker}` }), { headers: { "x-ratelimit-remaining": "57" } }) : net.fetch(url)) as typeof fetch;
+        const blocks = jest.spyOn(Lexer.prototype, "blockTokens");
+        try {
+            const { host, message, view } = await boot();
+            await message({ type: "open", url: "https://github.com/honojs/hono/pull/5513" });
+            await until(() => host.calls.some((c) => c.type === "command:camera:fly-to-rect"), 30_000);
+            expect((view().card as { description: string }).description).toContain(marker);
+            for (const type of ["next", "previous", "description", "start"]) await message({ type });
+            await wait(50);
+            expect(blocks.mock.calls.filter(([src]) => typeof src === "string" && src.includes(marker))).toHaveLength(1);
+        } finally {
+            blocks.mockRestore();
+        }
+    }, 30_000);
 });
 
 describe("what a rebuild costs", () => {
@@ -388,7 +670,7 @@ describe("project colours", () => {
 
 describe("the panel protocol", () => {
     it("accepts only what the panel can ask for", () => {
-        for (const type of ["ready", "next", "previous", "overview", "read-all", "close", "rebuild"]) expect(parse(webviewToDriver, { type })).not.toBeNull();
+        for (const type of ["ready", "start", "next", "previous", "overview", "description", "read-all", "close", "rebuild"]) expect(parse(webviewToDriver, { type })).not.toBeNull();
         expect(parse(webviewToDriver, { type: "open", url: "x" })).not.toBeNull();
         expect(parse(webviewToDriver, { type: "follow", link: "x" })).not.toBeNull();
         expect(parse(webviewToDriver, { type: "unknown" })).toBeNull();
