@@ -9,11 +9,15 @@
  * them, none for an impl inside a function; an inline `mod` sees its parent
  * only through `use super::*`. A type's methods are its inherent impls'
  * (`impl T`), never a trait's: an inherent method wins, and a trait method may
- * be implemented anywhere; but for `x.f()` on a value, a trait's `f(self)`
- * comes first, so an inherent `f(&self)` of a name some trait has by value
- * links only when x is `self` taken by reference. In the standard library's
+ * be implemented anywhere. But `x.f()` probes x's type by value, then `&`,
+ * then `&mut`, and a trait's `f` found at an earlier step wins: an inherent
+ * method links only when no trait method of its name, in the files or the
+ * standard library, takes `self` in a mode that comes first for x (`self`
+ * in a `&self` method is a `&` reference, in a `&mut self` one a `&mut`;
+ * any other receiver may be either, or a value). In the standard library's
  * expression macros (`format!`, `assert_eq!`, ...) only calls count, of names
- * the macro's own tokens don't bind; other macros' tokens prove nothing.
+ * the macro's own tokens don't bind, nested ones included; other macros'
+ * tokens prove nothing.
  * Paths into other files (`crate::`, `super::`, other crates) need the
  * crate's `mod` tree, which isn't read: they name nothing.
  */
@@ -43,8 +47,10 @@ const opensCall = (t: Flat, n: number) => n >= 0 && t.type[n] === "token_tree" &
 /**
  * The names a macro's tokens bind, which are no uses anywhere in them: a
  * closure's parameters (any name between two `|` of one token tree, so an
- * operand of `a | b` counts too), a `let` pattern, a named format argument
- * (`path = p`), and everything `matches!` matches against.
+ * operand of `a | b` counts too), a `let` or `for` pattern, a `match` arm's
+ * pattern, a named format argument (`path = p`), and everything `matches!`
+ * matches against. A token tree inside a pattern is all pattern:
+ * `|(_, v)|`, `if let Some(v) =`.
  */
 const boundCache = new WeakMap<Flat, Map<number, Set<string>>>();
 const macroBound = (t: Flat, macro: number): Set<string> => {
@@ -55,26 +61,41 @@ const macroBound = (t: Flat, macro: number): Set<string> => {
     const bound = (hit = new Set<string>());
     byMacro.set(macro, bound);
     // `matches!(e, Pattern if guard)`: what follows the first comma is a pattern, here or in a `matches!` among the tokens.
-    const walk = (tree: number, mode: "expr" | "matches" | "pattern") => {
+    // A `match`'s braces hold its arms: each arm's pattern runs to its `=>`, its body to a comma or past a braced block.
+    const walk = (tree: number, mode: "expr" | "matches" | "pattern" | "arms") => {
         let pipes = 0;
         let binding = false;
         let commas = 0;
+        let arm = mode === "arms";
+        let armBody = false;
+        let matchArms = false;
         for (let c = t.first[tree], prev = -1, prev2 = -1; c >= 0; prev2 = prev, prev = c, c = t.next[c]) {
             const ty = t.type[c];
-            const inPattern = mode === "pattern" || (mode === "matches" && commas > 0);
+            const inPattern = mode === "pattern" || (mode === "matches" && commas > 0) || pipes % 2 === 1 || binding || arm;
             if (ty === "token_tree") {
                 const matches = prev >= 0 && t.type[prev] === "!" && prev2 >= 0 && t.type[prev2] === "identifier" && textOf(t, prev2) === "matches";
-                walk(c, inPattern ? "pattern" : matches ? "matches" : "expr");
+                const braces = t.text[t.start[c]] === "{";
+                if (inPattern) walk(c, "pattern");
+                else if (matchArms && braces) walk(c, "arms");
+                else walk(c, matches ? "matches" : "expr");
+                if (matchArms && braces) matchArms = false;
+                // An arm whose body is a block ends with it.
+                else if (armBody && braces && prev >= 0 && t.type[prev] === "=>") (armBody = false), (arm = true);
                 continue;
             }
             if (ty === "|") pipes++;
-            else if (ty === ",") commas++;
-            if (ty === "let") binding = true;
-            else if (ty === "=" || ty === ";") binding = false;
+            else if (ty === ",") {
+                commas++;
+                if (mode === "arms" && armBody) (armBody = false), (arm = true);
+            }
+            if (ty === "let" || ty === "for") binding = true;
+            else if (ty === "=" || ty === ";" || (ty === "identifier" && binding && textOf(t, c) === "in")) binding = false;
+            if (ty === "match") matchArms = true;
+            if (ty === "=>" && mode === "arms") (arm = false), (armBody = true);
             if (ty !== "identifier") continue;
             const next = t.next[c];
             const named = next >= 0 && t.type[next] === "=" && !(t.next[next] >= 0 && t.type[t.next[next]] === "=");
-            if (pipes % 2 === 1 || binding || named || inPattern) bound.add(textOf(t, c));
+            if (inPattern || named) bound.add(textOf(t, c));
         }
     };
     const tokens = namedChildren(t, macro).find((c) => t.type[c] === "token_tree");
@@ -423,18 +444,58 @@ const PRELUDE = new Set(
     "Some None Ok Err Box Vec String Option Result drop Default Clone Copy Send Sync Sized ToString ToOwned Into From Iterator IntoIterator Fn FnMut FnOnce Drop PartialEq Eq PartialOrd Ord AsRef AsMut Debug std core alloc".split(" ")
 );
 
-/**
- * Standard traits' methods that take `self` by value, which a value's
- * method call finds before an inherent `&self` method of the same name:
- * Into, IntoIterator and TryInto, Iterator's adapters and consumers, Ord's
- * max, min and clamp, and the operator traits.
- */
-const STD_BY_VALUE =
-    "into into_iter try_into map filter filter_map flat_map flatten take skip take_while skip_while map_while step_by chain zip enumerate peekable rev cloned copied cycle fuse inspect scan count last sum product fold reduce for_each collect partition unzip max min max_by max_by_key min_by min_by_key clamp add sub mul div rem neg not bitand bitor bitxor shl shr".split(" ");
+/** How a method takes `self`: by value, `&self`, `&mut self`, or as another type (`self: Box<Self>`). */
+type Mode = "value" | "ref" | "mut" | "other";
 
-/** The method names a trait's by-value method (`self`, `mut self`, `self: Box<Self>`) may answer: in the trait declarations and impls among the files, and the standard library's. */
-const byValueNames = (files: readonly GFile[]): ReadonlySet<string> => {
-    const out = new Set(STD_BY_VALUE);
+/** A function's receiver mode, or null when it takes no `self`. */
+const modeOf = (t: Flat, fn: number): Mode | null => {
+    for (const p of namedChildren(t, child(t, fn, "parameters"))) {
+        if (t.type[p] === "self_parameter") {
+            let ref = false;
+            let mut = false;
+            for (let c = t.first[p]; c >= 0; c = t.next[c]) {
+                if (t.type[c] === "&") ref = true;
+                else if (t.type[c] === "mutable_specifier") mut = true;
+            }
+            return ref ? (mut ? "mut" : "ref") : "value";
+        }
+        if (t.type[p] !== "parameter" || !namedChildren(t, p).some((c) => t.type[c] === "self")) continue;
+        // `self: Self`, `self: &Self`, `self: &mut Self`; any other type (`Box<Self>`, `Pin<&mut Self>`) is another step of the probe.
+        const type = child(t, p, "type");
+        if (type >= 0 && textOf(t, type) === "Self") return "value";
+        if (type >= 0 && t.type[type] === "reference_type" && textOf(t, child(t, type, "type")) === "Self") return namedChildren(t, type).some((c) => t.type[c] === "mutable_specifier") ? "mut" : "ref";
+        return "other";
+    }
+    return null;
+};
+
+/**
+ * The standard library's trait methods by how they take `self`. By value:
+ * Into, IntoIterator, TryInto and IntoFuture, Iterator's adapters,
+ * consumers and comparisons, Read's and BufRead's adapters, Ord's max, min
+ * and clamp, the operator traits. `&mut self`: io's Write, Read, BufRead
+ * and Seek, Iterator's and DoubleEndedIterator's stepping methods, Hasher,
+ * fmt::Write, Extend, the `*Assign` operators, DerefMut, AsMut, BorrowMut,
+ * IndexMut, Clone::clone_from. `&self`: Clone, ToString, ToOwned, Display
+ * and Debug, PartialEq, PartialOrd, Ord::cmp, Hash, Deref, AsRef, Borrow,
+ * Index, ExactSizeIterator, Error, Any, Hasher::finish.
+ */
+const STD_MODES: Record<"value" | "mut" | "ref", string> = {
+    value:
+        "into into_iter try_into into_future map filter filter_map flat_map flatten take skip take_while skip_while map_while step_by chain zip enumerate peekable rev cloned copied cycle fuse inspect scan count last sum product fold rfold reduce try_reduce for_each collect try_collect collect_into partition is_partitioned unzip max min max_by max_by_key min_by min_by_key clamp cmp partial_cmp eq ne lt le gt ge cmp_by partial_cmp_by eq_by is_sorted is_sorted_by is_sorted_by_key array_chunks map_windows intersperse intersperse_with bytes lines split add sub mul div rem neg not bitand bitor bitxor shl shr",
+    mut: "write write_all write_vectored write_all_vectored write_fmt flush by_ref read read_vectored read_to_end read_to_string read_exact read_buf read_buf_exact fill_buf consume read_until read_line skip_until has_data_left seek rewind stream_position stream_len seek_relative next nth all any find find_map position rposition try_fold try_for_each try_find advance_by next_chunk next_back nth_back rfind try_rfold advance_back_by write_u8 write_u16 write_u32 write_u64 write_u128 write_usize write_i8 write_i16 write_i32 write_i64 write_i128 write_isize write_length_prefix write_str write_char extend extend_one extend_reserve add_assign sub_assign mul_assign div_assign rem_assign bitand_assign bitor_assign bitxor_assign shl_assign shr_assign deref_mut as_mut borrow_mut index_mut clone_from call_mut",
+    ref: "clone to_string to_owned fmt eq ne partial_cmp lt le gt ge cmp hash deref as_ref borrow index size_hint len is_empty source description cause type_id finish build_hasher hash_one call provide",
+};
+
+/** The receiver modes trait methods give each name: the standard library's, and those of the traits and trait impls among the files. */
+const traitModes = (files: readonly GFile[]): ReadonlyMap<string, ReadonlySet<string>> => {
+    const out = new Map<string, Set<string>>();
+    const add = (name: string, mode: Mode) => {
+        const modes = out.get(name);
+        if (modes) modes.add(mode);
+        else out.set(name, new Set([mode]));
+    };
+    for (const [mode, names] of Object.entries(STD_MODES)) for (const name of names.split(" ")) add(name, mode as Mode);
     for (const f of files) {
         const t = f.flat;
         for (let n = 0; n < t.count; n++) {
@@ -442,17 +503,33 @@ const byValueNames = (files: readonly GFile[]): ReadonlySet<string> => {
             const list = t.parent[n];
             const owner = list >= 0 && t.type[list] === "declaration_list" ? t.parent[list] : -1;
             if (owner < 0 || !(t.type[owner] === "trait_item" || (t.type[owner] === "impl_item" && child(t, owner, "trait") >= 0))) continue;
-            const self = namedChildren(t, child(t, n, "parameters")).find((c) => t.type[c] === "self_parameter");
-            if (self !== undefined && !textOf(t, self).startsWith("&")) out.add(textOf(t, child(t, n, "name")));
+            const mode = modeOf(t, n);
+            if (mode) add(textOf(t, child(t, n, "name")), mode);
         }
     }
     return out;
 };
 
-/** Whether a function takes its receiver by reference: `&self`, `&mut self`. */
-const takesRef = (t: Flat, n: number): boolean => {
-    const self = namedChildren(t, child(t, n, "parameters")).find((c) => t.type[c] === "self_parameter");
-    return self !== undefined && textOf(t, self).startsWith("&");
+/**
+ * For a receiver of a mode, or any (a value, `&` or `&mut`), and an
+ * inherent method of a mode: the trait modes the probe tries first. It tries
+ * the receiver's type by value, then `&`, then `&mut`, then the same after
+ * each deref, an inherent method before a trait's at each step.
+ */
+const FIRST: Record<"value" | "ref" | "mut" | "any", Record<"value" | "ref" | "mut", readonly Mode[]>> = {
+    value: { value: [], ref: ["value"], mut: ["value", "ref"] },
+    ref: { value: ["ref"], ref: [], mut: ["ref", "value"] },
+    mut: { value: ["mut"], ref: ["mut", "value"], mut: [] },
+    any: { value: ["ref", "mut"], ref: ["value", "mut"], mut: ["value", "ref"] },
+};
+
+/** What `self` is in the method it's written in: a value, `&` or `&mut`; any other receiver may be any of them. */
+const receiverKind = (t: Flat, n: number): keyof typeof FIRST => {
+    if (n < 0 || !(t.type[n] === "self" || (t.type[n] === "identifier" && textOf(t, n) === "self"))) return "any";
+    let fn = t.parent[n];
+    while (fn >= 0 && t.type[fn] !== "function_item") fn = t.parent[fn];
+    const mode = fn >= 0 ? modeOf(t, fn) : null;
+    return mode === "value" || mode === "ref" || mode === "mut" ? mode : "any";
 };
 
 /** The impl, trait or type a node sits in, whose `self` and `Self` it means, or -1. */
@@ -487,15 +564,14 @@ const RUST_TYPING: Typing = {
     typeOnly: (t, n) => (t.type[t.parent[n]] === "scoped_identifier" || t.type[t.parent[n]] === "scoped_type_identifier") && t.field[n] === "path",
     builtins: PRELUDE,
     selfClass,
-    takesRef,
-    // `self` in a method that takes `&self` or `&mut self` is a reference.
-    receiverIsRef: (t, n) => {
-        if (n < 0 || t.type[n] !== "self") return false;
-        let fn = t.parent[n];
-        while (fn >= 0 && t.type[fn] !== "function_item") fn = t.parent[fn];
-        return fn >= 0 && takesRef(t, fn);
+    traitModes,
+    // A trait method of the name whose mode the probe tries first wins; one taking `self` as another type might.
+    shadowed: (call, receiver, method, unitNode, modes) => {
+        const mode = modeOf(method, unitNode);
+        if (mode === null) return false;
+        if (mode === "other" || modes.has("other")) return modes.size > 0;
+        return FIRST[receiverKind(call, receiver)][mode].some((m) => modes.has(m));
     },
-    byValueNames,
 };
 
 export const RUST_RESOLVER: Resolver = { typing: RUST_TYPING, moduleFiles: () => [] };

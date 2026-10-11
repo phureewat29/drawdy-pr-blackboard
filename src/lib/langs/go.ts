@@ -345,16 +345,15 @@ const all = (xs: Expr[]): Expr | null => xs.reduce<Expr | null>((a, b) => (a ? {
 
 /**
  * A file's build constraint, as go/build reads it: its name's `_GOOS`,
- * `_GOARCH` or `_GOOS_GOARCH` (a `_test` aside), and its `//go:build` line,
- * else its `// +build` lines, above the package clause. Null when it has
- * none; "unknown" when a line doesn't parse.
+ * `_GOARCH` or `_GOOS_GOARCH` before its first dot (a `_test` aside, so
+ * `types_linux.pb.go` is linux's), and its `//go:build` line, else its
+ * `// +build` lines, above the package clause. Null when it has none;
+ * "unknown" when a line doesn't parse.
  */
-const constraintCache = new Map<string, Expr | null | "unknown">();
 const constraintOf = (path: string, text: string): Expr | null | "unknown" => {
-    const key = `${path}\n${text.length}`;
-    if (constraintCache.has(key)) return constraintCache.get(key)!;
     const terms: Expr[] = [];
-    const name = (path.split("/").pop() ?? "").replace(/\.go$/, "");
+    const base = path.split("/").pop() ?? "";
+    const name = base.includes(".") ? base.slice(0, base.indexOf(".")) : base;
     const under = name.indexOf("_");
     if (under >= 0) {
         const l = name.slice(under).split("_");
@@ -378,9 +377,14 @@ const constraintOf = (path: string, text: string): Expr | null | "unknown" => {
             if (line) terms.push(line);
         }
     }
-    const out = unknown ? "unknown" : all(terms);
-    constraintCache.set(key, out);
-    return out;
+    return unknown ? "unknown" : all(terms);
+};
+
+/** A parsed file's build constraint, once per tree: a cache keyed by path would outlive the review that read it. */
+const constraints = new WeakMap<Flat, Expr | null | "unknown">();
+const constraintOfFile = (f: { path: string; flat: Flat }): Expr | null | "unknown" => {
+    if (!constraints.has(f.flat)) constraints.set(f.flat, constraintOf(f.path, f.flat.text));
+    return constraints.get(f.flat)!;
 };
 
 const tagsOf = (e: Expr, out = new Set<string>()): Set<string> => {
@@ -418,20 +422,21 @@ const builds = (exprs: Expr[]): Env[] | null => {
     return out;
 };
 
-/** Whether every build that holds one file holds the other too: then a declaration there is the one this file's code sees. */
-const reachCache = new Map<string, boolean>();
+/** Whether every build that holds one file holds the other too: then a declaration there is the one this file's code sees. Kept per pair of trees. */
+const reachCache = new WeakMap<Flat, WeakMap<Flat, boolean>>();
 const reaches = (from: { path: string; flat: Flat }, to: { path: string; flat: Flat }): boolean => {
     if (from.path === to.path) return true;
-    const target = constraintOf(to.path, to.flat.text);
+    const target = constraintOfFile(to);
     if (target === null) return true;
-    const source = constraintOf(from.path, from.flat.text);
+    const source = constraintOfFile(from);
     if (target === "unknown" || source === "unknown") return false;
-    const key = `${from.path}\n${to.path}`;
-    let hit = reachCache.get(key);
+    let byTarget = reachCache.get(from.flat);
+    if (!byTarget) reachCache.set(from.flat, (byTarget = new WeakMap()));
+    let hit = byTarget.get(to.flat);
     if (hit === undefined) {
         const envs = builds(source ? [source, target] : [target]);
         hit = envs !== null && envs.every((env) => (source ? !holds(source, env) : false) || holds(target, env));
-        reachCache.set(key, hit);
+        byTarget.set(to.flat, hit);
     }
     return hit;
 };

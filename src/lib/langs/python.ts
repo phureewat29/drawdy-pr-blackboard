@@ -2,14 +2,16 @@
  * Python's rule table: tree-sitter-python 0.25.0's nodes, its own
  * `tags.scm` for the units, and Python's scoping: functions, lambdas and
  * comprehensions open scopes, a class body's names are seen only by the code
- * right in it and below their definitions, `global` and `nonlocal` redirect
- * a name, and PEP 695's type parameters are the annotations' own. `self` and
+ * right in it and below their definitions (a deferred annotation of its own
+ * sees them all), `global` and `nonlocal` redirect a name, and PEP 695's type
+ * parameters are the annotations' own. `self` and
  * `super()` mean the class a method is written in, none for a class inside a
  * function; an attribute written to is no use of it. A class's attributes
  * are what its body binds, through its bases in C3 order; `@overload`
  * signatures and a property's setter and deleter join one card. A module is
- * a file (`a/b.py` or `a/b/__init__.py`) under a root Python searches, never
- * a standard-library one; `from m import *` takes `__all__`'s names.
+ * a file (`a/b.py` or `a/b/__init__.py`) under the one root Python searches
+ * that holds it, never a standard-library one, and none in a file that
+ * changes `sys.path`; `from m import *` takes `__all__`'s names.
  */
 
 import type { Emit, GImport, LangRules, Role } from "../anyfacts.ts";
@@ -489,6 +491,30 @@ const BUILTINS = new Set(
     "abs all any ascii bin bool breakpoint bytearray bytes callable chr classmethod compile complex delattr dict dir divmod enumerate eval exec filter float format frozenset getattr globals hasattr hash help hex id input int isinstance issubclass iter len list locals map max memoryview min next object oct open ord pow print property range repr reversed round set setattr slice sorted staticmethod str sum super tuple type vars zip __import__ NotImplemented Ellipsis None True False".split(" ")
 );
 
+/** Whether a file defers its annotations: `from __future__ import annotations`. */
+const deferring = new WeakMap<Flat, boolean>();
+const defersAnnotations = (t: Flat): boolean => {
+    let hit = deferring.get(t);
+    if (hit === undefined) {
+        hit = false;
+        for (let n = 0; n < t.count && !hit; n++) if (t.type[n] === "future_import_statement" && /\bannotations\b/.test(textOf(t, n))) hit = true;
+        deferring.set(t, hit);
+    }
+    return hit;
+};
+
+/** Whether a site sits in a class body's own annotation, `mode: Mode`. */
+const inClassAnnotation = (t: Flat, n: number): boolean => {
+    let x = n;
+    while (x >= 0 && !(t.type[x] === "type" && t.field[x] === "type" && t.type[t.parent[x]] === "assignment")) {
+        if (t.type[x] === "function_definition" || t.type[x] === "lambda" || t.type[x] === "class_definition" || t.type[x] === "block") return false;
+        x = t.parent[x];
+    }
+    const stmt = x >= 0 ? t.parent[t.parent[x]] : -1;
+    const block = stmt >= 0 ? t.parent[stmt] : -1;
+    return stmt >= 0 && t.type[stmt] === "expression_statement" && block >= 0 && t.type[block] === "block" && t.type[t.parent[block]] === "class_definition";
+};
+
 const PYTHON_TYPING: Typing = {
     hint,
     typeName,
@@ -501,6 +527,8 @@ const PYTHON_TYPING: Typing = {
     builtins: BUILTINS,
     selfClass,
     starNames,
+    // Deferred, a class body's annotation is read once the body ran (Python 3.14 defers them all, so without the future import the version decides).
+    deferredAnnotation: (t, n) => (inClassAnnotation(t, n) ? (defersAnnotations(t) ? "deferred" : "unknown") : null),
 };
 
 /**
@@ -523,9 +551,13 @@ export const packageMarkers = (path: string): string[] => {
 /** What the files known say about where packages start, for one lookup context. */
 type Layout = {
     exists: (path: string) => boolean;
-    /** The package root of a folder: above its topmost package, or the folder itself when it is no package. */
-    rootOf: (dir: readonly string[]) => string;
-    /** Folders that hold a top-level package of a file known, `""` aside: `src`, `Lib`, a sub-project's `python`. */
+    /** Known to be absent: a 404, when the reads report them; else anything not among the files given. */
+    missing: (path: string) => boolean;
+    /** Whether a file changes `sys.path`, so its absolute imports come from where it says. */
+    changesPath: (path: string) => boolean;
+    /** The package root of a folder: above its topmost package, or the folder itself when it is no package; null when a marker on the way was never read. */
+    rootOf: (dir: readonly string[]) => string | null;
+    /** Folders that hold a top-level package of a file known, `""` aside: `src`, `Lib`, a sub-project's `python`. A file whose markers weren't all read places none. */
     sourceRoots: readonly string[];
     /** Every folder and every module (a `.py` path without it) the files known lie in. */
     shown: ReadonlySet<string>;
@@ -535,13 +567,30 @@ const layoutOf = (ctx: ModuleContext): Layout => {
     let hit = layouts.get(ctx);
     if (hit) return hit;
     const known = new Set(ctx.known);
-    const exists = (path: string) => known.has(path) || ctx.text(path) !== undefined;
-    const isPackage = (d: readonly string[]) => d.length > 0 && exists([...d, "__init__.py"].join("/"));
-    const rootOf = (dir: readonly string[]) => {
-        if (!isPackage(dir)) return dir.join("/");
+    const exists = (path: string) => known.has(path) || ctx.text(path) !== undefined || ctx.exists?.(path) === true;
+    const missing = (path: string) => (ctx.exists ? ctx.exists(path) === false : !exists(path));
+    const changes = new Map<string, boolean>();
+    const changesPath = (path: string) => {
+        let hit = changes.get(path);
+        if (hit === undefined) changes.set(path, (hit = SYS_PATH.test(code(ctx.text(path) ?? ""))));
+        return hit;
+    };
+    // A folder is a package, isn't, or wasn't looked at (undefined).
+    const isPackage = (d: readonly string[]): boolean | undefined => {
+        if (d.length === 0) return false;
+        const marker = [...d, "__init__.py"].join("/");
+        return exists(marker) ? true : missing(marker) ? false : undefined;
+    };
+    const rootOf = (dir: readonly string[]): string | null => {
+        const here = isPackage(dir);
+        if (here !== true) return here === false ? dir.join("/") : null;
         let top = dir;
-        while (isPackage(top.slice(0, -1))) top = top.slice(0, -1);
-        return top.slice(0, -1).join("/");
+        for (;;) {
+            const above = isPackage(top.slice(0, -1));
+            if (above === undefined) return null;
+            if (!above) return top.slice(0, -1).join("/");
+            top = top.slice(0, -1);
+        }
     };
     const sourceRoots = new Set<string>();
     const shown = new Set<string>();
@@ -551,14 +600,21 @@ const layoutOf = (ctx: ModuleContext): Layout => {
         if (!path.endsWith(".py")) continue;
         shown.add(path.slice(0, -3));
         const dir = segs.slice(0, -1);
-        if (isPackage(dir)) sourceRoots.add(rootOf(dir));
+        const root = isPackage(dir) ? rootOf(dir) : null;
+        if (root !== null) sourceRoots.add(root);
     }
     if ([...known].some((p) => p.startsWith("src/"))) sourceRoots.add("src");
     sourceRoots.delete("");
-    hit = { exists, rootOf, sourceRoots: [...sourceRoots].sort(), shown };
+    hit = { exists, missing, changesPath, rootOf, sourceRoots: [...sourceRoots].sort(), shown };
     layouts.set(ctx, hit);
     return hit;
 };
+
+/** A Python text with its strings and comments blanked: what runs. */
+const code = (text: string) => text.replace(/[rRbBuUfF]{0,2}("""[\s\S]*?"""|'''[\s\S]*?'''|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|#[^\n]*)/g, " ");
+
+/** A change to `sys.path`: a call that adds to it or takes from it, an assignment, `site.addsitedir`. */
+const SYS_PATH = /\bsys\s*\.\s*path\s*(?:\.\s*(?:insert|append|extend|remove|pop|clear)\s*\(|\[[^\]\n]*\]\s*=(?!=)|\+=|=(?!=))|\bsite\s*\.\s*addsitedir\s*\(/;
 
 /** A module's files under a root, its package before its module file, as Python takes them. */
 const filesUnder = (root: string, parts: readonly string[]): string[] => {
@@ -573,7 +629,9 @@ const filesUnder = (root: string, parts: readonly string[]): string[] => {
  * importing file's package root (or, for a script or a test outside any
  * package, its own folder), the repository's root, and the folders that hold
  * a package of the files known (`src`, CPython's `Lib`). When two roots hold
- * the module, which one runs depends on how Python starts: it names none.
+ * the module, which one runs depends on how Python starts: it names none;
+ * nor when a root may hold it, which the reads didn't find out, nor in a file
+ * that changes `sys.path`.
  */
 const pythonModuleFiles = (from: string, spec: string, level: number, ctx: ModuleContext): string[] => {
     const dir = from.split("/").slice(0, -1);
@@ -584,8 +642,17 @@ const pythonModuleFiles = (from: string, spec: string, level: number, ctx: Modul
     }
     if (parts.length === 0 || STDLIB.has(parts[0])) return [];
     const layout = layoutOf(ctx);
-    const found = [...new Set([layout.rootOf(dir), "", ...layout.sourceRoots])].map((root) => filesUnder(root, parts)).filter((files) => files.some(layout.exists));
-    return found.length === 1 ? found[0].filter(layout.exists) : [];
+    if (layout.changesPath(from)) return [];
+    const own = layout.rootOf(dir);
+    if (own === null) return [];
+    // A root holds the module, doesn't (its files are absent, or its first name is), or might.
+    const held: string[][] = [];
+    for (const root of new Set([own, "", ...layout.sourceRoots])) {
+        const files = filesUnder(root, parts);
+        if (files.some(layout.exists)) held.push(files.filter(layout.exists));
+        else if (!files.every(layout.missing) && !(parts.length > 1 && filesUnder(root, parts.slice(0, 1)).every(layout.missing))) return [];
+    }
+    return held.length === 1 ? held[0] : [];
 };
 
 /**
@@ -602,7 +669,8 @@ const pythonModuleTries = (from: string, spec: string, level: number, ctx: Modul
     const parts = spec ? spec.split(".") : [];
     if (parts.length === 0 || STDLIB.has(parts[0])) return [];
     const layout = layoutOf(ctx);
-    const roots = [...new Set([layout.rootOf(dir), "", ...layout.sourceRoots])];
+    if (layout.changesPath(from)) return [];
+    const roots = [...new Set([layout.rootOf(dir) ?? "", "", ...layout.sourceRoots])];
     const under = (root: string, names: readonly string[]) => [...(root ? [root] : []), ...names].join("/");
     if (!roots.some((root) => layout.shown.has(under(root, parts.slice(0, 1))))) return [];
     // The package where its folder is known, else the module file.

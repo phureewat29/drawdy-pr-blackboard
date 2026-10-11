@@ -42,7 +42,8 @@ export type Hint =
 export type TypeName = { kind: "name"; node: number } | { kind: "qualified"; qualifier: number; name: string } | { kind: "self" };
 
 /** What a module lookup may consult: the paths known to exist, and the texts read (`go.mod`, Python's `__init__.py` files). */
-export type ModuleContext = { known: Iterable<string>; text: (path: string) => string | undefined };
+/** What a module lookup knows of the files: those parsed, their texts, and whether a path exists, as far as the reads went (undefined: never asked). */
+export type ModuleContext = { known: Iterable<string>; text: (path: string) => string | undefined; exists?: (path: string) => boolean | undefined };
 
 /** A field a class-like unit declares, with a written type or a value; `onSelf` when a method sets it on `self`. */
 export type Field = { name: string; typeNode: number; init: number; onSelf: boolean };
@@ -80,12 +81,12 @@ export type Typing = {
     builtins?: ReadonlySet<string>;
     /** The class-like node whose `self` a node means (a `self` parameter, a `super()` call, Rust's `self` and `Self`), or -1: a class with no unit, inside a function, means no link. Without it, the class unit around. */
     selfClass?: (t: Flat, n: number) => number;
-    /** Whether a method takes its receiver by reference (Rust's `&self`, `&mut self`). */
-    takesRef?: (t: Flat, unitNode: number) => boolean;
-    /** Whether a receiver is a reference (Rust: `self` in a `&self` or `&mut self` method), for which an inherent by-reference method comes first. */
-    receiverIsRef?: (t: Flat, receiver: number) => boolean;
-    /** Method names a trait's by-value method (`self`) may answer before an inherent by-reference one (Rust): the files' and the standard library's. */
-    byValueNames?: (files: readonly GFile[]) => ReadonlySet<string>;
+    /** The receiver modes trait methods give each method name (Rust: by value, `&self`, `&mut self`): the files' and the standard library's. */
+    traitModes?: (files: readonly GFile[]) => ReadonlyMap<string, ReadonlySet<string>>;
+    /** Whether a trait method of one of these modes would answer `x.f()` before this method (Rust's method probe order): then the call names nothing sure. */
+    shadowed?: (call: Flat, receiver: number, method: Flat, unitNode: number, modes: ReadonlySet<string>) => boolean;
+    /** Whether a site is a class body's annotation (Python), read after the body ran when annotations are deferred: "deferred" when the file defers them, "unknown" when the Python version decides. */
+    deferredAnnotation?: (t: Flat, site: number) => "deferred" | "unknown" | null;
     /** Whether code in one file is built together with a declaration in another (Go's build constraints). */
     reaches?: (from: GFile, to: GFile) => boolean;
     /** The name a module's file gives its module (Go's package clause), which a guessed import name must match. */
@@ -119,7 +120,7 @@ const push = <K, V>(map: Map<K, V[]>, key: K, value: V) => {
     else map.set(key, [value]);
 };
 
-const createProgram = (files: readonly GFile[], langOf: (f: GFile) => Resolver, text: (path: string) => string | undefined) => {
+const createProgram = (files: readonly GFile[], langOf: (f: GFile) => Resolver, text: (path: string) => string | undefined, exists?: (path: string) => boolean | undefined) => {
     const typing = (f: GFile) => langOf(f).typing;
     const byPath = new Map(files.map((f) => [f.path, f]));
     const pkgOf = new Map(files.map((f) => [f, typing(f).packageKey?.(f.path, f.flat) ?? null]));
@@ -291,7 +292,7 @@ const createProgram = (files: readonly GFile[], langOf: (f: GFile) => Resolver, 
     /** The files a module names, among those read. */
     const modules = new Map<string, GFile[]>();
     // One context for every lookup: what a lookup learns from the paths known holds for all of them.
-    const lookupContext: ModuleContext = { known: [...byPath.keys()], text };
+    const lookupContext: ModuleContext = { known: [...byPath.keys()], text, ...(exists ? { exists } : {}) };
     const moduleOf = (from: GFile, spec: string, level: number): GFile[] => {
         const key = `${from.path}\n${spec}\n${level}`;
         let hit = modules.get(key);
@@ -329,6 +330,18 @@ const createProgram = (files: readonly GFile[], langOf: (f: GFile) => Resolver, 
         if (found.length === 1 && sub.length === 0) return found[0];
         if (found.length === 0 && sub.length > 0) return { kind: "module", files: sub, spec: `${imp.spec}.${imp.name}` };
         return NONE(found.length + sub.length === 0 ? `import ${imp.spec}:${imp.name} not read` : "import ambiguous");
+    };
+
+    /**
+     * A name written at node `node`, offset `at`. A class body's annotation
+     * read once the body ran (deferred) sees all the body binds; where the
+     * Python version decides that, a binding below it makes the name unknown.
+     */
+    const nameVal = (f: GFile, scope: GScope, name: string, node: number, at: number, depth: number): Val => {
+        const deferred = scope.kind === "class" ? typing(f).deferredAnnotation?.(f.flat, node) : null;
+        const later = deferred && scope.names.get(name)?.some((b) => b.from !== undefined && b.from > at);
+        if (later && deferred === "unknown") return NONE("an annotation the Python version reads");
+        return lookup(f, scope, name, depth, later ? Number.MAX_SAFE_INTEGER : at);
     };
 
     /**
@@ -428,7 +441,7 @@ const createProgram = (files: readonly GFile[], langOf: (f: GFile) => Resolver, 
             const pk = q.files.map((g) => pkgOf.get(g)).find((k) => k);
             return pk ? `${pk}#${tn.name}` : null;
         }
-        const v = tn.kind === "name" ? lookup(f, scope, textOf(f.flat, tn.node), depth + 1, f.flat.start[tn.node]) : memberVal(exprVal(f, tn.qualifier, scope, depth + 1), tn.name, depth + 1);
+        const v = tn.kind === "name" ? nameVal(f, scope, textOf(f.flat, tn.node), tn.node, f.flat.start[tn.node], depth + 1) : memberVal(exprVal(f, tn.qualifier, scope, depth + 1), tn.name, depth + 1);
         if (v.kind === "class") return v.key;
         if (v.kind === "units" && v.units.length === 1 && CLASSY.has(v.units[0].kind)) return keyOfTypeUnit(v.units[0]);
         if (tn.kind === "name" && typing(f).moduleNameKeys && v.kind === "none") return moduleNameKey(f, scope, textOf(f.flat, tn.node));
@@ -642,7 +655,7 @@ const createProgram = (files: readonly GFile[], langOf: (f: GFile) => Resolver, 
             if (!at) importAt.set(f, (at = new Map(f.imports.map((i) => [i.node, i]))));
             const imp = at.get(s.node);
             v = imp ? importVal(f, imp, 0) : NONE("import");
-        } else v = s.shape === "bare" ? lookup(f, s.scope, s.name, 0, s.start) : memberVal(exprVal(f, s.receiver, s.scope, 0), s.name, 0);
+        } else v = s.shape === "bare" ? nameVal(f, s.scope, s.name, s.node, s.start, 0) : memberVal(exprVal(f, s.receiver, s.scope, 0), s.name, 0);
         if (v.kind !== "units") return [];
         const ty = typing(f);
         // Only what this file's build holds: a declaration under a build constraint this file doesn't share names nothing.
@@ -650,16 +663,17 @@ const createProgram = (files: readonly GFile[], langOf: (f: GFile) => Resolver, 
         // `self.len` names a field where fields and methods are apart, never a method.
         if (s.shape === "member" && s.ref !== "call" && ty.memberIsField?.(f.flat, s.node)) return units.filter((u) => u.kind !== "function" && u.kind !== "method");
         if (ty.typeOnly?.(f.flat, s.node)) return units.filter((u) => CLASSY.has(u.kind) || u.kind === "namespace");
-        // `x.f()`: a trait's `f(self)` is found before an inherent `f(&self)` when x is a value, not when it is a reference (Rust).
-        if (s.shape === "member" && byValue(f).has(s.name) && !ty.receiverIsRef?.(f.flat, s.receiver)) return units.filter((u) => !typing(fileOfUnit.get(u.id)!).takesRef?.(fileOfUnit.get(u.id)!.flat, u.node));
+        // `x.f()`: a trait's method found at an earlier step of the probe than an inherent one wins (Rust).
+        const modes = s.shape === "member" && ty.shadowed ? traitModesOf(f).get(s.name) : undefined;
+        if (modes) return units.filter((u) => !ty.shadowed!(f.flat, s.receiver, fileOfUnit.get(u.id)!.flat, u.node, modes));
         return units;
     };
-    const byValueSets = new Map<Typing, ReadonlySet<string>>();
-    /** The method names a trait's by-value method may answer, for a file's language. */
-    const byValue = (f: GFile): ReadonlySet<string> => {
+    const modeMaps = new Map<Typing, ReadonlyMap<string, ReadonlySet<string>>>();
+    /** The receiver modes trait methods give each name, for a file's language. */
+    const traitModesOf = (f: GFile): ReadonlyMap<string, ReadonlySet<string>> => {
         const ty = typing(f);
-        let hit = byValueSets.get(ty);
-        if (!hit) byValueSets.set(ty, (hit = ty.byValueNames?.(files.filter((g) => typing(g) === ty)) ?? new Set()));
+        let hit = modeMaps.get(ty);
+        if (!hit) modeMaps.set(ty, (hit = ty.traitModes?.(files.filter((g) => typing(g) === ty)) ?? new Map()));
         return hit;
     };
 
@@ -686,8 +700,8 @@ const createProgram = (files: readonly GFile[], langOf: (f: GFile) => Resolver, 
 };
 
 /** Every reference in the files given that names a declaration among them. */
-export const resolveAny = (files: readonly GFile[], langOf: (f: GFile) => Resolver, text: (path: string) => string | undefined): Ref[] => {
-    const program = createProgram(files, langOf, text);
+export const resolveAny = (files: readonly GFile[], langOf: (f: GFile) => Resolver, text: (path: string) => string | undefined, exists?: (path: string) => boolean | undefined): Ref[] => {
+    const program = createProgram(files, langOf, text, exists);
     // A site resolves only to a unit of its own name, or through an import's local name: no other site can make a link.
     const names = new Set<string>();
     for (const f of files) {

@@ -151,7 +151,7 @@ export const analyse = async (pr: PrInfo, files: readonly PrFile[], read: Read, 
             changed,
             { paths: sources.paths, builtin: builtinRule(pr.ref, changed) }
         ),
-        ...resolveAny(generic, (f) => langOf(f.path)!.resolver, (path) => sources.texts.get(path)),
+        ...resolveAny(generic, (f) => langOf(f.path)!.resolver, (path) => sources.texts.get(path), sources.exists),
     ];
     const labels = new Map(generic.flatMap((f) => [...f.labels]));
     return buildReview(pr, files, { texts: sources.texts, facts: sources.facts, refs, labels });
@@ -363,7 +363,7 @@ type BoardContext = {
     nameOf: (u: Unit) => string;
 };
 
-const prPin = (): Pin => ({ id: "pr", kind: "pr", name: "The pull request", from: 0, to: 0, band: 0, lane: "flow", column: 0, status: "changed", add: 0, del: 0 });
+const prPin = (): Pin => ({ id: "pr", kind: "pr", name: "The PR", from: 0, to: 0, band: 0, lane: "flow", column: 0, status: "changed", add: 0, del: 0 });
 
 /** Two units of one file, one inside the other. */
 const nests = (a: Pick<Unit, "path" | "start" | "end">, b: Pick<Unit, "path" | "start" | "end">) => a.path === b.path && ((a.start <= b.start && b.end <= a.end) || (b.start <= a.start && a.end <= b.end));

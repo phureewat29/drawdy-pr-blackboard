@@ -34,6 +34,8 @@ export type Sources = {
     facts: Map<string, FileFacts | GFile>;
     /** tsconfig `paths` for a file: those of the nearest config read. */
     paths: (from: string) => readonly PathMapping[];
+    /** Whether a path exists at the head commit, as far as the reads went, a file too long to take included: undefined when never asked. */
+    exists: (path: string) => boolean | undefined;
 };
 
 /** How much is read: changed code and test files, each file's length, imported files, and requests in flight. Every changed file read is parsed. */
@@ -115,10 +117,19 @@ const breathe = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 export const readSources = async (files: readonly PrFile[], read: Read, parse: Parse): Promise<Sources> => {
     const slot = limiter(READ.inFlight);
     const answers = new Map<string, Promise<string | null>>();
+    /** What each answer said of a path: there, or a 404. A failed read says nothing. */
+    const found = new Map<string, boolean>();
     /** Each path once; a text too long to use counts as an answer, so an import stops there. */
     const once = (path: string) => {
         let answer = answers.get(path);
-        if (!answer) answers.set(path, (answer = slot(() => read(path)).catch(() => null)));
+        if (!answer)
+            answers.set(
+                path,
+                (answer = slot(() => read(path)).then(
+                    (text) => (found.set(path, text !== null), text),
+                    () => null
+                ))
+            );
         return answer;
     };
     const usable = (text: string | null): text is string => text !== null && text.length <= READ.chars;
@@ -315,5 +326,8 @@ export const readSources = async (files: readonly PrFile[], read: Read, parse: P
         }
     }
     await readAll(reexports);
-    return { texts, facts, paths };
+    // The pull request's files are there at the head, but those it removes or renames away.
+    const there = new Map(files.flatMap((f): [string, boolean][] => [[f.path, f.status !== "removed"], ...(f.previousPath && f.previousPath !== f.path ? [[f.previousPath, false] as [string, boolean]] : [])]));
+    const existing = (path: string) => (texts.has(path) || found.get(path) === true ? true : (there.get(path) ?? found.get(path)));
+    return { texts, facts, paths, exists: existing };
 };
