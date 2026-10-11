@@ -6,8 +6,9 @@ import type { ModuleStyling } from "@drawdy/driver-protocol";
 import { themeCss } from "../driver/channel.ts";
 import { webviewScript } from "../driver/webview-html.ts";
 import { PALETTES } from "../lib/card.ts";
-import type { PanelView, WebviewToDriver } from "../shared/protocol.ts";
-import { PANEL_BODY, PANEL_CSS } from "./markup.ts";
+import { STRING_TEXT } from "../lib/layout.ts";
+import type { CodeCard, PanelView, WebviewToDriver } from "../shared/protocol.ts";
+import { PANEL_BODY, PANEL_CSS, PANEL_MD_CSS } from "./markup.ts";
 import { createPanel } from "./panel.ts";
 
 /**
@@ -34,9 +35,9 @@ const readyView: PanelView = {
     error: null,
     tag: { label: "honojs/hono#5513", colour: "#E36002" },
     pr: { title: [{ text: "fix(hono): handle non-Error throws with onError", code: false }], state: "merged", additions: 202, deletions: 11 },
-    total: 9,
-    current: 1,
-    hasPrevious: true,
+    total: 8,
+    current: 0,
+    hasPrevious: false,
     hasNext: true,
     card: {
         pin: "d",
@@ -44,9 +45,9 @@ const readyView: PanelView = {
         status: null,
         where: "src/hono-base.ts · 411–471",
         links: [
-            { word: "called by", chips: [{ link: "c", name: "fetch()" }] },
-            { word: "calls", chips: [{ link: "h", name: "#handleError()" }, { link: "k", name: "compose()" }] },
-            { word: "tested by", chips: [{ link: "t", name: "hono.test.ts" }] },
+            { word: "called by", chips: [{ link: "c", name: "fetch()", colour: 0 }] },
+            { word: "calls", chips: [{ link: "h", name: "#handleError()", colour: 0 }, { link: "k", name: "compose()", colour: 1 }] },
+            { word: "tested by", chips: [{ link: "t", name: "hono.test.ts", colour: null }] },
         ],
         canReadAll: true,
     },
@@ -54,7 +55,9 @@ const readyView: PanelView = {
     rebuilding: null,
 };
 const startView: PanelView = { ...readyView, phase: "start", tag: null, pr: null, card: null, current: -1 };
-const NOT_GITHUB = "Only GitHub pull request links work, like github.com/owner/repo/pull/123.";
+const NOT_GITHUB = "Only GitHub PR links work, like github.com/owner/repo/pull/123.";
+const prCard: PanelView["card"] = { pin: "pr", about: ["usualoma · 4 files"], description: "<p>A value thrown.</p><h3>Behavior change</h3><details><summary>More</summary><p>Hidden.</p></details>" };
+const codeCard = readyView.card as CodeCard;
 
 describe("panel", () => {
     let post: jest.Mock<(message: WebviewToDriver) => void>;
@@ -72,15 +75,15 @@ describe("panel", () => {
         panel.show(startView);
         const field = $<HTMLInputElement>("start-url");
         expect([field.placeholder, field.getAttribute("aria-label"), field.getAttribute("inputmode"), field.getAttribute("enterkeyhint")]).toEqual([
-            "Paste a GitHub pull request link",
-            "GitHub pull request link",
+            "Paste a GitHub PR link",
+            "GitHub PR link",
             "url",
             "go",
         ]);
         expect($("start").querySelectorAll("button:not(.prs button)")).toHaveLength(0);
         expect(document.querySelectorAll("h3")).toHaveLength(0);
         expect($("start").textContent).not.toMatch(/\bTry\b|requests left|Open another/);
-        for (const gone of ["open", "url", "recent", "start-quota", "notice", "copy", "pr-chip", "card-where", "begin", "pop", "another-url", "another-error"]) expect($(gone)).toBeNull();
+        for (const gone of ["open", "url", "recent", "start-quota", "notice", "copy", "pr-chip", "card-where", "begin", "pop", "another-url", "another-error", "another"]) expect($(gone)).toBeNull();
         expect(document.querySelector("form, header, label")).toBeNull();
     });
 
@@ -159,9 +162,9 @@ describe("panel", () => {
     });
 
     it("shows the pull request's tag while loading, then the steps", () => {
-        panel.show({ ...readyView, phase: "loading", loading: [{ label: "Reading the pull request", state: "done" }, { label: "Reading 4 changed files", state: "active" }, { label: "Pinning the cards", state: "todo" }] });
+        panel.show({ ...readyView, phase: "loading", loading: [{ label: "Reading the PR", state: "done" }, { label: "Reading 4 changed files", state: "active" }, { label: "Pinning the cards", state: "todo" }] });
         expect([$("loading-tag").textContent, $("loading-tag").className, $("loading-tag").style.getPropertyValue("--c")]).toEqual(["honojs/hono#5513", "tag hue", "#E36002"]);
-        expect([...document.querySelectorAll("#load-steps li")].map((li) => `${li.className} ${li.textContent}`)).toEqual(["done Reading the pull request", "active Reading 4 changed files", "todo Pinning the cards"]);
+        expect([...document.querySelectorAll("#load-steps li")].map((li) => `${li.className} ${li.textContent}`)).toEqual(["done Reading the PR", "active Reading 4 changed files", "todo Pinning the cards"]);
         // Lucide marks: circle-check done, loader-circle turning, circle to do.
         expect([...document.querySelectorAll("#load-steps li")].map((li) => li.firstElementChild!.innerHTML)).toEqual([
             '<circle cx="12" cy="12" r="10"></circle><path d="m16 9-5.5 5.5L8 12"></path>',
@@ -177,7 +180,7 @@ describe("panel", () => {
             ...readyView,
             phase: "loading",
             loading: [
-                { label: "Reading the pull request", state: "done" },
+                { label: "Reading the PR", state: "done" },
                 { label: "Downloading the TypeScript parser", note: "first time only", state: "active" },
                 { label: "Reading 4 changed files", state: "active" },
                 { label: "Pinning the cards", state: "todo" },
@@ -185,7 +188,7 @@ describe("panel", () => {
         });
         const steps = [...document.querySelectorAll("#load-steps li")];
         expect(steps.map((li) => `${li.className} ${li.textContent}`)).toEqual([
-            "done Reading the pull request",
+            "done Reading the PR",
             "active Downloading the TypeScript parser · first time only",
             "active Reading 4 changed files",
             "todo Pinning the cards",
@@ -205,61 +208,171 @@ describe("panel", () => {
         // The panel's + and − and its chips take the cards' colours in the same theme.
         for (const theme of ["light", "dark"] as const) {
             const vars = themeCss({ theme } as ModuleStyling);
-            for (const k of ["add", "del", "add-gut", "blue"]) expect(vars).toContain(`--${k}: ${PALETTES[theme][k]};`);
+            for (const k of ["add", "del", "add-gut", "blue", "md-link", "md-code-bg", "md-border", "add-bg", "del-bg", "k", "s", "n", "c", "f", "t"]) expect(vars).toContain(`--${k}: ${PALETTES[theme][k]};`);
+            STRING_TEXT[theme].forEach((colour, i) => expect(vars).toContain(`--string-${i}: ${colour};`));
         }
         expect(document.body.textContent).not.toContain("↗");
     });
 
-    it("shows the current card: its name and chip, its plain path, Read all only when it hides some, and its links by kind", () => {
+    it("shows the current card: its name and chip, its plain path, Read all only when it hides some, and its links by kind, each name in its string's colour", () => {
         panel.show(readyView);
-        expect([$("position").textContent, $("name").textContent, $("name").className]).toEqual(["2 / 9", "#dispatch()", "mono"]);
+        expect([$("position").textContent, $("name").textContent, $("name").className]).toEqual(["1 / 8", "#dispatch()", "mono"]);
         expect([$("path").tagName, $("path").textContent]).toEqual(["DIV", "src/hono-base.ts\u00a0·\u00a0411–471"]);
         expect([$("read-all").hidden, $("read-all").textContent]).toEqual([false, "Read all"]);
         const cells = [...$("links").children].map((c) => c.textContent);
         expect(cells).toEqual(["called by", "fetch()", "calls", "#handleError()", "", "compose()", "tested by", "hono.test.ts"]);
         const buttons = [...$("links").querySelectorAll("button")];
+        // A name with a string takes its colour as the panel reads it; a link with no string, none.
+        expect(buttons.map((b) => b.getAttribute("style"))).toEqual(["color: var(--string-0)", "color: var(--string-0)", "color: var(--string-1)", null]);
+        expect(css).toContain("#links button:hover { text-decoration-color: currentColor; }");
+        expect(css).not.toMatch(/#links button:hover \{[^}]*background/);
         buttons[2].click();
         $("read-all").click();
         expect(post.mock.calls.map(([m]) => m)).toEqual([{ type: "follow", link: "k" }, { type: "read-all" }]);
-        panel.show({ ...readyView, current: -1, card: { ...readyView.card!, pin: "f", name: "fetch()", status: "UNCHANGED", canReadAll: false } });
-        expect([$("position").textContent, $("read-all").hidden]).toEqual(["– / 9", true]);
+        panel.show({ ...readyView, current: -1, card: { ...codeCard, pin: "f", name: "fetch()", status: "UNCHANGED", canReadAll: false } });
+        expect([$("position").textContent, $("read-all").hidden]).toEqual(["– / 8", true]);
         // The chip sits right after the name.
         expect($("name").lastElementChild!.outerHTML).toBe('<span class="status UNCHANGED">UNCHANGED</span>');
     });
 
     it("breaks long names and paths at camel humps and after a slash", () => {
-        panel.show({ ...readyView, card: { ...readyView.card!, name: "type PointerDownState", where: "packages/excalidraw/types.ts · 1256–1341" } });
+        panel.show({ ...readyView, card: { ...codeCard, name: "type PointerDownState", where: "packages/excalidraw/types.ts · 1256–1341" } });
         expect($("name").innerHTML).toBe("type Pointer<wbr>Down<wbr>State");
         expect($("path").innerHTML).toContain("packages/<wbr>excalidraw/<wbr>types.ts");
     });
 
-    it("shows no name or path for the PR card, which the header names, but always `Description` and Read all, or that there is none", () => {
-        const pr: PanelView["card"] = { pin: "pr", name: "The pull request", status: null, where: "", links: [], canReadAll: false };
-        panel.show({ ...readyView, current: 0, hasPrevious: false, card: pr });
-        expect([$("card").hidden, $("name").textContent, $("read-all").hidden]).toEqual([false, "No description provided.", true]);
-        panel.show({ ...readyView, current: 0, hasPrevious: false, card: { ...pr, canReadAll: true } });
-        expect([$("card").hidden, $("name").hidden, $("path").hidden, $("read-all").hidden, $("links").hidden]).toEqual([false, false, true, false, true]);
-        expect([$("name").textContent, $("name").className]).toEqual(["Description", "about"]);
-        expect([$<HTMLButtonElement>("previous").disabled, $<HTMLButtonElement>("next").disabled]).toEqual([true, false]);
-        expect([$("next").title, $("previous").title]).toEqual(["Next (→)", "Previous (←)"]);
-        panel.show({ ...readyView, current: 8, hasNext: false });
-        expect($<HTMLButtonElement>("next").disabled).toBe(true);
+    it("shows at the PR card who opened it and how big it is, then the whole description, scrolling in the card area, or that there is none", () => {
+        panel.show({ ...readyView, current: -1, card: prCard });
+        expect([$("card").hidden, $("card-head").hidden, $("path").hidden, $("links").hidden, $("about").hidden, $("pr-body").hidden]).toEqual([false, true, true, true, false, false]);
+        expect($("about").textContent).toBe("usualoma · 4 files");
+        expect([$("pr-body").className, $("pr-body").querySelector("h3")?.textContent, $("pr-body").querySelector("details > summary")?.textContent]).toEqual(["md scroll", "Behavior change", "More"]);
+        expect(css).toContain("#pr-body { flex: 0 1 auto; min-height: 0; overflow-y: auto;");
+        // No `Description` row and no `Read all`: the card area is the description.
+        expect(`${$("about").textContent}${$("pr-body").textContent}`).not.toMatch(/Read all|Description/);
+        // It scrolls back to its top whenever the PR card becomes current, and keeps the reader's place while it stays.
+        $("pr-body").scrollTop = 120;
+        panel.show({ ...readyView, current: -1, card: prCard, rebuilding: "Reading the PR" });
+        expect($("pr-body").scrollTop).toBe(120);
+        panel.show(readyView);
+        panel.show({ ...readyView, current: -1, card: prCard });
+        expect($("pr-body").scrollTop).toBe(0);
+        panel.show({ ...readyView, current: -1, card: { pin: "pr", about: ["someone · 1 file", "13 functions and 5 files not pinned"], description: null } });
+        expect([$("about").innerHTML, $("pr-body").innerHTML]).toEqual(["someone · 1 file<br>13 functions and 5 files not pinned", '<p class="none">No description provided.</p>']);
+        expect(PANEL_MD_CSS).toContain("#pr-body pre { padding: 8px 12px; overflow-x: auto;");
     });
 
-    it("ends the reading view in a quiet Open another, which goes back to the start view with the field focused", () => {
+    it("ends the reading view in one toolbar: Home, Rebuild, a rule, Overview, Description, then Previous, the position and Next", () => {
         panel.show(readyView);
-        expect([$("another").tagName, $("another").textContent, $("another").parentElement!.className]).toEqual(["BUTTON", "Open another", "another"]);
+        const bar = document.querySelector(".tools .bar")!;
+        expect([...bar.children].map((c) => c.id || c.className)).toEqual(["home", "rebuild", "sep", "overview", "description", "spacer", "previous", "position", "next"]);
+        expect([...bar.querySelectorAll("button")].map((b) => [b.id, b.getAttribute("aria-label"), b.dataset.tip, b.title])).toEqual([
+            ["home", "Home", "Home: open another PR", ""],
+            ["rebuild", "Rebuild", "Rebuild this board from GitHub", ""],
+            ["overview", "Overview", "Overview: the whole board", ""],
+            ["description", "Description", "Description", ""],
+            ["previous", "Previous card", "Previous (←)", ""],
+            ["next", "Next card", "Next (→)", ""],
+        ]);
+        // Lucide house, refresh-cw, scan, file-text and the chevrons; no text button and no nav row left.
+        expect([...bar.querySelectorAll("button svg")].map((svg) => svg.firstElementChild!.getAttribute("d"))).toEqual([
+            "M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8",
+            "M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8",
+            "M3 7V5a2 2 0 0 1 2-2h2",
+            "M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z",
+            "m15 18-6-6 6-6",
+            "m9 18 6-6-6-6",
+        ]);
+        expect([...bar.querySelectorAll("button")].every((b) => b.textContent === "")).toBe(true);
+        expect(document.querySelector(".nav, #another")).toBeNull();
+        expect(css).toContain("#ready { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; grid-template-columns: minmax(0, 1fr); }");
+        expect(css).not.toContain(".nav {");
+        expect(document.body.textContent).not.toMatch(/[‹›]|Open another|Overview/);
+    });
+
+    it("marks Description while the PR card is current, and never Overview; Previous is off at step 1 and at the PR card", () => {
+        panel.show({ ...readyView, current: -1, hasPrevious: false, card: prCard });
+        expect([$("description").getAttribute("aria-current"), $("overview").getAttribute("aria-current"), $("position").textContent]).toEqual(["true", null, "– / 8"]);
+        expect([$<HTMLButtonElement>("previous").disabled, $<HTMLButtonElement>("next").disabled]).toEqual([true, false]);
+        panel.show(readyView);
+        expect([$("description").getAttribute("aria-current"), $<HTMLButtonElement>("previous").disabled]).toEqual([null, true]);
+        panel.show({ ...readyView, current: 7, hasPrevious: true, hasNext: false });
+        expect([$<HTMLButtonElement>("previous").disabled, $<HTMLButtonElement>("next").disabled, $("position").textContent]).toEqual([false, true, "8 / 8"]);
+    });
+
+    it("goes Home to the start view with the field focused", () => {
+        panel.show(readyView);
         expect($("ready").querySelector("input")).toBeNull();
-        expect(css).toContain("#ready > .another { grid-row: 4; }");
-        $("another").click();
+        $("home").click();
         expect(post).toHaveBeenLastCalledWith({ type: "start" });
         panel.show(startView);
         expect(document.activeElement).toBe($("start-url"));
-        // Only Open another moves the focus: a start view for any other reason leaves it alone.
+        // Only Home moves the focus: a start view for any other reason leaves it alone.
         $("start-url").blur();
         panel.show(readyView);
         panel.show(startView);
         expect(document.activeElement).not.toBe($("start-url"));
+    });
+
+    it("rebuilds at once for 2 requests; past that, holds Rebuild down on the first press with the cost on its line, until the second press, Esc or another control", () => {
+        panel.show(readyView);
+        $("rebuild").click();
+        expect(post).toHaveBeenLastCalledWith({ type: "rebuild" });
+        post.mockClear();
+        const costly = { ...readyView, rebuildCost: { files: 2188, requests: 23 } };
+        panel.show(costly);
+        $("rebuild").click();
+        expect(post).not.toHaveBeenCalled();
+        expect([$("rebuild").classList.contains("armed"), $("tools-line").hidden, $("tools-line").textContent]).toEqual([
+            true,
+            false,
+            "Rebuilding reads 2,188 files: 23 of 60 GitHub requests. Press Rebuild again to start.",
+        ]);
+        document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+        expect([$("rebuild").classList.contains("armed"), $("tools-line").hidden]).toEqual([false, true]);
+        $("rebuild").click();
+        $("overview").click();
+        expect($("rebuild").classList.contains("armed")).toBe(false);
+        $("rebuild").click();
+        $("rebuild").click();
+        expect(post.mock.calls.map(([m]) => m)).toEqual([{ type: "close" }, { type: "overview" }, { type: "rebuild" }]);
+    });
+
+    it("turns Rebuild off the moment it asks for a rebuild, so a second press asks nothing more, until the driver's views say it ended", () => {
+        panel.show(readyView);
+        $("rebuild").click();
+        $("rebuild").click();
+        expect(post.mock.calls.map(([m]) => m)).toEqual([{ type: "rebuild" }]);
+        expect($<HTMLButtonElement>("rebuild").disabled).toBe(true);
+        panel.show({ ...readyView, rebuilding: "Reading the PR" });
+        $("rebuild").click();
+        expect([post.mock.calls.length, $<HTMLButtonElement>("rebuild").disabled]).toEqual([1, true]);
+        panel.show(readyView);
+        expect($<HTMLButtonElement>("rebuild").disabled).toBe(false);
+        // Past 2 requests, the second press is the one that asks, and it turns Rebuild off too.
+        panel.show({ ...readyView, rebuildCost: { files: 2188, requests: 23 } });
+        $("rebuild").click();
+        $("rebuild").click();
+        $("rebuild").click();
+        expect([post.mock.calls.length, $<HTMLButtonElement>("rebuild").disabled, $("rebuild").classList.contains("armed")]).toEqual([2, true, false]);
+    });
+
+    it("says a rebuild's step under way on the toolbar's line, the loading view's mark turning, with Rebuild off; and an error there", () => {
+        panel.show({ ...readyView, rebuilding: "Reading 4 changed files" });
+        expect([$("tools-line").hidden, $("tools-line").textContent, $("tools-line").getAttribute("role"), $<HTMLButtonElement>("rebuild").disabled]).toEqual([false, "Reading 4 changed files", "status", true]);
+        expect($("tools-line").querySelector("svg path")!.getAttribute("d")).toBe("M21 12a9 9 0 1 1-6.219-8.56");
+        expect(css).toContain("#load-steps .active svg, .line svg { color: var(--drawdy-primary); animation: spin .8s linear infinite; }");
+        const limited = "This network has used GitHub's 60 requests for this hour. Try again in 12 minutes.";
+        panel.show({ ...readyView, error: limited });
+        expect([$("tools-line").hidden, $("tools-error").hidden, $("tools-error").textContent, $("tools-error").getAttribute("role"), $("error").hidden]).toEqual([true, false, limited, "alert", true]);
+        panel.show(readyView);
+        expect($("tools-error").hidden).toBe(true);
+    });
+
+    it("shows tooltips above the buttons, after a moment under the pointer and at once on keyboard focus, and a ring that reads on white", () => {
+        expect(css).toContain("[data-tip]::after { content: attr(data-tip); position: absolute; bottom: calc(100% + 8px);");
+        expect(css).toContain("[data-tip]:hover::after { opacity: 1; transition-delay: .4s; }");
+        expect(css).toContain("[data-tip]:focus-visible::after { opacity: 1; transition-delay: 0s; }");
+        expect(css).toContain(":focus-visible { outline: 2px solid color-mix(in oklab, var(--drawdy-ring) 55%, var(--drawdy-foreground)); outline-offset: 2px; }");
     });
 
     it("clears the field once a pull request opens, and keeps it, with the error under it, when one fails", () => {
@@ -279,10 +392,8 @@ describe("panel", () => {
         expect($("error").hidden).toBe(true);
     });
 
-    it("draws Previous and Next with Lucide chevrons, and Esc closes Read all", () => {
+    it("closes Read all on Esc", () => {
         panel.show(readyView);
-        expect([$("previous").querySelector("path")!.getAttribute("d"), $("next").querySelector("path")!.getAttribute("d")]).toEqual(["m15 18-6-6 6-6", "m9 18 6-6-6-6"]);
-        expect(document.body.textContent).not.toMatch(/[‹›]/);
         document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
         expect(post).toHaveBeenLastCalledWith({ type: "close" });
     });
@@ -292,7 +403,23 @@ describe("panel", () => {
         $("next").click();
         for (const key of ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "j", "k", "Home"]) document.dispatchEvent(new KeyboardEvent("keydown", { key }));
         $("overview").click();
-        expect(post.mock.calls.map(([m]) => m)).toEqual([{ type: "next" }, { type: "previous" }, { type: "next" }, { type: "overview" }]);
+        $("description").click();
+        expect(post.mock.calls.map(([m]) => m)).toEqual([{ type: "next" }, { type: "previous" }, { type: "next" }, { type: "overview" }, { type: "description" }]);
+    });
+
+    it("leaves ← and → to the description and the links while focus is in them, so a wide code block or table scrolls sideways", () => {
+        const wide = '<pre><code><div class="l">const wide = 1;</div></code></pre><table><tr><td>a</td></tr></table>';
+        panel.show({ ...readyView, current: -1, card: { pin: "pr", about: ["usualoma · 4 files"], description: wide } });
+        const key = (el: Element, k: string) => el.dispatchEvent(new KeyboardEvent("keydown", { key: k, bubbles: true }));
+        key(document.querySelector("#pr-body pre")!, "ArrowRight");
+        key(document.querySelector("#pr-body table")!, "ArrowLeft");
+        key($("pr-body"), "ArrowRight");
+        panel.show(readyView);
+        key(document.querySelector("#links button")!, "ArrowRight");
+        expect(post).not.toHaveBeenCalled();
+        key($("next"), "ArrowRight");
+        key(document.body, "ArrowLeft");
+        expect(post.mock.calls.map(([m]) => m)).toEqual([{ type: "next" }, { type: "previous" }]);
     });
 
     it("renders inline code in the pull request's title as code", () => {
