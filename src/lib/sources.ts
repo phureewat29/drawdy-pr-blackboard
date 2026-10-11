@@ -286,6 +286,8 @@ export const readSources = async (files: readonly PrFile[], read: Read, parse: P
         await markers(f.path);
         const found = await Promise.all(
             f.imports.map(async (i) => {
+                // An import that names nothing needs no read.
+                if (i.unproven) return [];
                 const mods = await moduleAnswers(f.path, i.spec, i.level);
                 if (i.name === null || i.name === "*" || !lang.isPackage || !mods.some((m) => lang.isPackage!(m))) return mods;
                 // `from a import b` may name a submodule of the package a.
@@ -319,10 +321,10 @@ export const readSources = async (files: readonly PrFile[], read: Read, parse: P
         const lang = langOf(c.path);
         if (!f || !isGeneric(f) || !lang) continue;
         for (const i of f.imports) {
-            if (i.name === null || i.name === "*") continue;
+            if (i.name === null || i.name === "*" || i.unproven) continue;
             const from = facts.get(lang.resolver.moduleFiles(f.path, i.spec, i.level, context).find((p) => facts.has(p)) ?? "");
             if (!from || !isGeneric(from)) continue;
-            for (const j of from.imports) if (j.local === i.name) reexports.push(markers(from.path).then(() => moduleAnswers(from.path, j.spec, j.level)));
+            for (const j of from.imports) if (j.local === i.name && !j.unproven) reexports.push(markers(from.path).then(() => moduleAnswers(from.path, j.spec, j.level)));
         }
     }
     await readAll(reexports);

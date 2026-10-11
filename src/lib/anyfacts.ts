@@ -62,6 +62,8 @@ export type GImport = {
     stmt: number;
     /** `local` is guessed from the path (Go, with no name written): it binds only where the module's own name is `local`. */
     implicit?: true;
+    /** Where it runs, the file may have changed where modules come from (Python's `sys.path`): it names nothing. */
+    unproven?: true;
 };
 
 export type RefKind = "call" | "value" | "type" | "import";

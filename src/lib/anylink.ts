@@ -226,6 +226,7 @@ const createProgram = (files: readonly GFile[], langOf: (f: GFile) => Resolver, 
         if (depth > MAX_DEPTH) return NONE("too deep");
         const found: Val[] = [];
         for (const i of starsIn(f.module)) {
+            if (i.unproven) return NONE("sys.path may have moved");
             const mods = moduleOf(f, i.spec, i.level);
             if (mods.length === 0) return NONE("star import not read");
             for (const m of mods) {
@@ -312,6 +313,7 @@ const createProgram = (files: readonly GFile[], langOf: (f: GFile) => Resolver, 
 
     const importVal = (f: GFile, imp: GImport, depth: number): Val => {
         if (depth > MAX_DEPTH) return NONE("import chain too deep");
+        if (imp.unproven) return NONE("sys.path may have moved");
         const mods = moduleOf(f, imp.spec, imp.level);
         // A name guessed from the path binds only where the module calls itself so.
         if (imp.implicit && !ownNamed(mods, imp.local)) return NONE("the module's own name differs");

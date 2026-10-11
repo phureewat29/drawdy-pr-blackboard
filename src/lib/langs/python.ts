@@ -10,8 +10,9 @@
  * are what its body binds, through its bases in C3 order; `@overload`
  * signatures and a property's setter and deleter join one card. A module is
  * a file (`a/b.py` or `a/b/__init__.py`) under the one root Python searches
- * that holds it, never a standard-library one, and none in a file that
- * changes `sys.path`; `from m import *` takes `__all__`'s names.
+ * that holds it, never a standard-library one, and none where the file
+ * may have changed `sys.path` before the import runs (after the first change,
+ * or in a function); `from m import *` takes `__all__`'s names.
  */
 
 import type { Emit, GImport, LangRules, Role } from "../anyfacts.ts";
@@ -134,7 +135,16 @@ const importsOf = (t: Flat): GImport[] => {
             }
         }
     }
+    // Where the file changes `sys.path`: an absolute import runs before that only at module level above the first change (a function can't run before it's defined).
+    const first = firstPathChange(t.text);
+    if (first >= 0) for (const i of out) if (i.level === 0 && (t.start[i.stmt] > first || inFunction(t, i.stmt))) i.unproven = true;
     return out;
+};
+
+/** Whether a node is inside a function or a lambda, whose code runs when called. */
+const inFunction = (t: Flat, n: number): boolean => {
+    for (let x = t.parent[n]; x >= 0; x = t.parent[x]) if (t.type[x] === "function_definition" || t.type[x] === "lambda") return true;
+    return false;
 };
 
 const importCache = new WeakMap<Flat, GImport[]>();
@@ -553,8 +563,6 @@ type Layout = {
     exists: (path: string) => boolean;
     /** Known to be absent: a 404, when the reads report them; else anything not among the files given. */
     missing: (path: string) => boolean;
-    /** Whether a file changes `sys.path`, so its absolute imports come from where it says. */
-    changesPath: (path: string) => boolean;
     /** The package root of a folder: above its topmost package, or the folder itself when it is no package; null when a marker on the way was never read. */
     rootOf: (dir: readonly string[]) => string | null;
     /** Folders that hold a top-level package of a file known, `""` aside: `src`, `Lib`, a sub-project's `python`. A file whose markers weren't all read places none. */
@@ -569,12 +577,6 @@ const layoutOf = (ctx: ModuleContext): Layout => {
     const known = new Set(ctx.known);
     const exists = (path: string) => known.has(path) || ctx.text(path) !== undefined || ctx.exists?.(path) === true;
     const missing = (path: string) => (ctx.exists ? ctx.exists(path) === false : !exists(path));
-    const changes = new Map<string, boolean>();
-    const changesPath = (path: string) => {
-        let hit = changes.get(path);
-        if (hit === undefined) changes.set(path, (hit = SYS_PATH.test(code(ctx.text(path) ?? ""))));
-        return hit;
-    };
     // A folder is a package, isn't, or wasn't looked at (undefined).
     const isPackage = (d: readonly string[]): boolean | undefined => {
         if (d.length === 0) return false;
@@ -605,16 +607,19 @@ const layoutOf = (ctx: ModuleContext): Layout => {
     }
     if ([...known].some((p) => p.startsWith("src/"))) sourceRoots.add("src");
     sourceRoots.delete("");
-    hit = { exists, missing, changesPath, rootOf, sourceRoots: [...sourceRoots].sort(), shown };
+    hit = { exists, missing, rootOf, sourceRoots: [...sourceRoots].sort(), shown };
     layouts.set(ctx, hit);
     return hit;
 };
 
-/** A Python text with its strings and comments blanked: what runs. */
-const code = (text: string) => text.replace(/[rRbBuUfF]{0,2}("""[\s\S]*?"""|'''[\s\S]*?'''|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|#[^\n]*)/g, " ");
+/** A change to `sys.path`: a call that adds to it or takes from it, an assignment, a `del`, `site.addsitedir`. */
+const SYS_PATH = /\bsys\s*\.\s*path\s*(?:\.\s*(?:insert|append|extend|remove|pop|clear)\s*\(|\[[^\]\n]*\]\s*=(?!=)|\+=|=(?!=))|\bdel\s+sys\s*\.\s*path\b|\bsite\s*\.\s*addsitedir\s*\(/;
 
-/** A change to `sys.path`: a call that adds to it or takes from it, an assignment, `site.addsitedir`. */
-const SYS_PATH = /\bsys\s*\.\s*path\s*(?:\.\s*(?:insert|append|extend|remove|pop|clear)\s*\(|\[[^\]\n]*\]\s*=(?!=)|\+=|=(?!=))|\bsite\s*\.\s*addsitedir\s*\(/;
+/** Where a file's code first changes `sys.path`, its strings and comments blanked, or -1. */
+const firstPathChange = (text: string): number => {
+    const code = text.replace(/[rRbBuUfF]{0,2}("""[\s\S]*?"""|'''[\s\S]*?'''|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|#[^\n]*)/g, (m) => m.replace(/[^\n]/g, " "));
+    return SYS_PATH.exec(code)?.index ?? -1;
+};
 
 /** A module's files under a root, its package before its module file, as Python takes them. */
 const filesUnder = (root: string, parts: readonly string[]): string[] => {
@@ -630,8 +635,7 @@ const filesUnder = (root: string, parts: readonly string[]): string[] => {
  * package, its own folder), the repository's root, and the folders that hold
  * a package of the files known (`src`, CPython's `Lib`). When two roots hold
  * the module, which one runs depends on how Python starts: it names none;
- * nor when a root may hold it, which the reads didn't find out, nor in a file
- * that changes `sys.path`.
+ * nor when a root may hold it, which the reads didn't find out.
  */
 const pythonModuleFiles = (from: string, spec: string, level: number, ctx: ModuleContext): string[] => {
     const dir = from.split("/").slice(0, -1);
@@ -642,7 +646,6 @@ const pythonModuleFiles = (from: string, spec: string, level: number, ctx: Modul
     }
     if (parts.length === 0 || STDLIB.has(parts[0])) return [];
     const layout = layoutOf(ctx);
-    if (layout.changesPath(from)) return [];
     const own = layout.rootOf(dir);
     if (own === null) return [];
     // A root holds the module, doesn't (its files are absent, or its first name is), or might.
@@ -669,7 +672,6 @@ const pythonModuleTries = (from: string, spec: string, level: number, ctx: Modul
     const parts = spec ? spec.split(".") : [];
     if (parts.length === 0 || STDLIB.has(parts[0])) return [];
     const layout = layoutOf(ctx);
-    if (layout.changesPath(from)) return [];
     const roots = [...new Set([layout.rootOf(dir) ?? "", "", ...layout.sourceRoots])];
     const under = (root: string, names: readonly string[]) => [...(root ? [root] : []), ...names].join("/");
     if (!roots.some((root) => layout.shown.has(under(root, parts.slice(0, 1))))) return [];
