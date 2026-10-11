@@ -155,21 +155,48 @@ describe("buildReview on made-up pull requests", () => {
     });
 });
 
-describe("other languages", () => {
-    it("draw calls between changed functions and imports from import lines, but no uses and no tests", async () => {
+describe("Python, Go and Rust", () => {
+    it("link through their resolver, as JavaScript and TypeScript do: calls, uses, and a test file's tests", async () => {
         const review = await small(
             {
-                "app/run.py": "from .util import helper\n\ndef run(x):\n    value = helper(x)\n    return limit\n",
-                "app/util.py": "limit = 3\n\ndef helper(x):\n    return x + limit\n",
+                "app/__init__.py": "",
+                "app/run.py": "from .util import helper, LIMIT\n\ndef run(x):\n    value = helper(x)\n    return LIMIT + value\n",
+                "app/util.py": "LIMIT = 3\n\ndef helper(x):\n    return x + LIMIT\n",
+                "tests/test_run.py": "from app.run import run\n\ndef test_run():\n    assert run(1) == 4\n",
             },
             {
-                "app/run.py": "@@ -1,5 +1,5 @@\n from .util import helper\n \n def run(x):\n-    value = x\n+    value = helper(x)\n     return limit",
-                "app/util.py": "@@ -1,4 +1,4 @@\n limit = 3\n \n def helper(x):\n-    return x\n+    return x + limit",
-                "tests/test_run.py": "@@ -1,2 +1,3 @@\n from app.run import run\n+def test_run():\n+    assert run(1) == 2",
+                "app/run.py": "@@ -1,5 +1,5 @@\n from .util import helper, LIMIT\n \n def run(x):\n-    value = x\n+    value = helper(x)\n     return LIMIT + value",
+                "app/util.py": "@@ -1,4 +1,4 @@\n-LIMIT = 2\n+LIMIT = 3\n \n def helper(x):\n-    return x\n+    return x + LIMIT",
+                "tests/test_run.py": "@@ -1,3 +1,4 @@\n from app.run import run\n+\n def test_run():\n     assert run(1) == 4",
             }
         );
-        expect(review.links.map((l) => `${l.kind} ${l.from} → ${l.to}`)).toEqual(["calls app/run.py:3 → app/util.py:3"]);
-        expect(review.pins.find((p) => p.kind === "test")!.lane).toBe("rest");
+        const name = (id: string) => review.pins.find((p) => p.id === id)!.name;
+        expect(review.links.map((l) => `${l.kind} ${name(l.from)} → ${name(l.to)}`)).toEqual(["calls run() → helper()", "uses run() → LIMIT", "uses helper() → LIMIT", "tests test_run.py → run()"]);
+        expect(review.pins.find((p) => p.kind === "test")!.lane).toBe("under");
+    });
+
+    it("draw no string in a language without a rule table: its cards come from line patterns", async () => {
+        const review = await small(
+            { "lib/a.rb": "class A\n  def run\n    helper(1)\n  end\n\n  def helper(x)\n    x\n  end\nend\n" },
+            { "lib/a.rb": "@@ -1,9 +1,9 @@\n class A\n   def run\n-    helper(0)\n+    helper(1)\n   end\n \n   def helper(x)\n-    x + 1\n+    x\n   end\n end" }
+        );
+        expect(review.pins.map((p) => p.name)).toEqual(["The pull request", "run()", "helper()"]);
+        expect(review.links).toEqual([]);
+    });
+
+    it("rank calls above type uses when the board overflows: a call chain keeps its place among types many functions use", async () => {
+        const types = Array.from({ length: 4 }, (_, k) => [`type T${k} struct{}`, ...Array.from({ length: 9 }, (_, i) => `func use${k}x${i}(t T${k}) {}`)]).flat();
+        const chain = Array.from({ length: 8 }, (_, i) => (i < 7 ? `func step${i}() { step${i + 1}() }` : `func step${i}() {}`));
+        const text = ["package big", "", ...types, ...chain, ""].join("\n");
+        const { pr } = honoFixture();
+        const review = await reviewOf({
+            pr: { ...pr, changedFiles: 1 },
+            files: [{ path: "big/big.go", status: "added", additions: text.split("\n").length - 1, deletions: 0 }],
+            raw: new Map([["big/big.go", text]]),
+        });
+        expect(review.pins).toHaveLength(LIMITS.cards);
+        expect(review.pins.filter((p) => p.name.startsWith("step")).map((p) => p.name)).toEqual(Array.from({ length: 8 }, (_, i) => `step${i}()`));
+        expect(review.links.filter((l) => l.kind === "calls")).toHaveLength(7);
     });
 });
 

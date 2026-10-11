@@ -2,7 +2,7 @@ import { describe, expect, it } from "@jest/globals";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parsePatch } from "./diff.ts";
-import { callEdges, callsTo, changedSymbols, findDecls, labelOf, testCases } from "./symbols.ts";
+import { changedSymbols, findDecls, labelOf, testCases } from "./symbols.ts";
 
 const fixture = JSON.parse(readFileSync(join(process.cwd(), "src/lib/fixtures/hono-5513.json"), "utf8"));
 const heads = new Map<string, string[]>(Object.entries(fixture.raw as Record<string, string>).map(([p, t]) => [p, t.split("\n")]));
@@ -77,6 +77,18 @@ describe("Rust declarations", () => {
     });
 });
 
+describe("Python and Go declarations a parser can't read", () => {
+    it("take `def new` and `def delete`, and name a method with its class", () => {
+        const py = ["class Store:", "    def new(self):", "        pass", "", "    def delete(self, key):", "        pass", "", "def delete(key):", "    pass"];
+        expect(findDecls(py, "py").map((d) => labelOf(d, "py"))).toEqual(["class Store", "Store.new()", "Store.delete()", "delete()"]);
+    });
+
+    it("name a Go method with its receiver's type, and run a function past a label at column 0", () => {
+        const go = ["func (s *Server[T]) Start() error {", "loop:", "\tfor {", "\t\tbreak loop", "\t}", "\treturn nil", "}", "", "func main() {}"];
+        expect(findDecls(go, "go").map((d) => `${labelOf(d, "go")} ${d.start}-${d.end}`)).toEqual(["Server.Start() 1-7", "main() 9-9"]);
+    });
+});
+
 describe("changedSymbols", () => {
     it("names what a diff changed, and gives a doc comment to the declaration below it", () => {
         const { symbols, loose } = changedSymbols("src/hono-base.ts", "ts", heads.get("src/hono-base.ts")!, patchOf("src/hono-base.ts"));
@@ -91,33 +103,6 @@ describe("changedSymbols", () => {
     it("marks a declaration whose first line is added as new", () => {
         const { symbols } = changedSymbols("src/compose.ts", "ts", heads.get("src/compose.ts")!, patchOf("src/compose.ts"));
         expect(symbols.map((s) => `${s.label} ${s.status} +${s.add} −${s.del}`)).toEqual(["toError() new +3 −0", "compose() changed +4 −3"]);
-    });
-});
-
-describe("callEdges", () => {
-    const symbols = ["src/compose.ts", "src/hono-base.ts"].flatMap((p) => changedSymbols(p, "ts", heads.get(p)!, patchOf(p)).symbols);
-    const label = (id: string) => symbols.find((s) => s.id === id)!.label;
-
-    it("links changed code that calls changed code by name, without matching a parameter that shares a method's name", () => {
-        expect(callEdges(symbols, heads).map((e) => `${label(e.from)} → ${label(e.to)}`)).toEqual([
-            "compose() → toError()",
-            "#handleError() → toError()",
-            "#dispatch() → compose()",
-            "#dispatch() → #handleError()",
-        ]);
-        expect(callEdges(symbols, heads).find((e) => label(e.from) === "#dispatch()" && label(e.to) === "#handleError()")!.calls).toEqual([442, 451, 468]);
-    });
-});
-
-describe("callsTo", () => {
-    const caller = { start: 0, end: 4, kind: "function" as const };
-    const target = (name: string) => ({ path: "b.ts", name, kind: "function" as const, start: 1 });
-
-    it("counts a name followed by `(`, never a mention or a comment, and skips names too common to tell", () => {
-        const lines = ["const a = run", "run(a)", "// run(b)", "x.run(c)"];
-        expect(callsTo("a.ts", lines, "ts", caller, target("run"))).toEqual([]);
-        const named = ["const fn = parseOptions", "parseOptions(a)", "// parseOptions(b)"];
-        expect(callsTo("a.ts", named, "ts", caller, target("parseOptions"))).toEqual([2]);
     });
 });
 
