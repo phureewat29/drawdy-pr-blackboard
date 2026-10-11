@@ -16,6 +16,7 @@
 import { allLines, type DiffLine } from "./diff.ts";
 import { clamp, count, plural, sortBy } from "./fp.ts";
 import { escapeHtml, highlightLine, type HighlightState } from "./highlight.ts";
+import { languageOf } from "./language.ts";
 import type { Link, Pin, Review, ReviewFile } from "./model.ts";
 import { MARKDOWN_CSS, blocksHeight, lexMarkdown, markdownBlocks, markdownHtml, segments, segmentsHtml, type MdToken } from "./markdown.ts";
 import type { TestCase } from "./symbols.ts";
@@ -169,7 +170,7 @@ const lineRows = (lang: ReviewFile["lang"], lines: readonly DiffLine[]): Extract
  * above what replaced them. Unchanged lines between hunks get their base
  * number from the offset the hunks above left.
  */
-const declLines = (f: ReviewFile, head: readonly string[], from: number, to: number, trailing = false): DiffLine[] => {
+const declLines = (f: Pick<ReviewFile, "hunks">, head: readonly string[], from: number, to: number, trailing = false): DiffLine[] => {
     const all = allLines(f.hunks);
     const byHead = new Map(all.filter((l) => l.n !== undefined).map((l) => [l.n!, l]));
     const dels = new Map<number, DiffLine[]>();
@@ -231,29 +232,53 @@ const foldRows = (lang: ReviewFile["lang"], lines: readonly DiffLine[], priority
 
 const outgoing = (review: Pick<Review, "links">, pin: string) => review.links.filter((l) => l.from === pin);
 
+/**
+ * The file a declaration's card reads: the pull request's, or for an
+ * unchanged caller in a file the pull request leaves alone, that file with
+ * nothing changed.
+ */
+const declFileOf = (pin: Pin, review: Pick<Review, "files">): Pick<ReviewFile, "hunks" | "lang"> | undefined =>
+    review.files.find((x) => x.path === pin.path) ?? (pin.kind === "context" && pin.path ? { hunks: [], lang: languageOf(pin.path) } : undefined);
+
+/** The cards a card's lines hold, a Python class's methods: their lines fold on it, since their own cards show them. */
+const nestedIn = (pin: Pin, pins: readonly Pin[]): Pin[] =>
+    pins.filter((q) => q.id !== pin.id && (q.kind === "change" || q.kind === "context") && q.path === pin.path && pin.from <= q.from && q.to <= pin.to && (pin.from < q.from || q.to < pin.to));
+
 /** Rows for a changed or unchanged declaration. */
-const declRows = (pin: Pin, review: Pick<Review, "files" | "links">): Row[] => {
-    const f = review.files.find((x) => x.path === pin.path);
+const declRows = (pin: Pin, review: Pick<Review, "files" | "links"> & Partial<Pick<Review, "pins">>): Row[] => {
+    const f = declFileOf(pin, review);
     if (!f || !pin.head) return [{ kind: "info", text: "PR Blackboard couldn't read this file." }];
     const lines = declLines(f, pin.head, pin.from, pin.to, (pin.symbol?.to ?? 0) > pin.to);
     const out = outgoing(review, pin.id);
     const starts = new Set(out.map((l) => l.at).filter((n): n is number => n !== undefined));
     const calls = new Set(out.flatMap((l) => l.rows));
     const start = pin.symbol?.start ?? pin.from;
+    // Lines that are the card's own, not a nested card's: only these show. Blank lines go with the code below them, else above.
+    const nested = nestedIn(pin, review.pins ?? []);
+    const own = lines.map((l) => !nested.some((q) => l.at >= q.from && l.at <= q.to));
+    const blank = (i: number) => lines[i].text.trim() === "";
+    for (let i = 0; nested.length > 0 && i < lines.length; i++) {
+        if (!blank(i)) continue;
+        let j = i;
+        while (j < lines.length && blank(j)) j++;
+        for (let k = i; k < j; k++) own[k] = j < lines.length ? own[j] : i > 0 ? own[i - 1] : own[k];
+        i = j;
+    }
     if (pin.kind === "context") {
         // Callers show their call rows; a short helper shows its body.
-        const priority = lines.map((l) => (l.n === start || starts.has(l.n ?? -1) || calls.has(l.n ?? -1) ? 3 : 0));
+        const priority = lines.map((l, i) => (own[i] && (l.n === start || starts.has(l.n ?? -1) || calls.has(l.n ?? -1)) ? 3 : 0));
         const near = priority.map((_, i) => priority.slice(Math.max(0, i - 1), i + 2).some((p) => p === 3));
         const helper = calls.size === 0;
-        return foldRows(f.lang, lines, priority.map((p, i) => (p === 3 ? 3 : helper || near[i] ? 1 : 0)), calls, CARD.contextRows);
+        return foldRows(f.lang, lines, priority.map((p, i) => (p === 3 ? 3 : own[i] && (helper || near[i]) ? 1 : 0)), calls, CARD.contextRows);
     }
     const sigEnd = (() => {
         for (let n = start; n <= Math.min(pin.to, start + 15); n++) if (/(\{|=>|:|=)\s*$/.test((pin.head[n - pin.from] ?? "").trim())) return n;
         return start;
     })();
-    const changedAt = lines.map((l, i) => (l.t === "ctx" ? -1 : i)).filter((i) => i >= 0);
+    const changedAt = lines.map((l, i) => (l.t === "ctx" || !own[i] ? -1 : i)).filter((i) => i >= 0);
     const priority = lines.map((l, i) => {
         const n = l.n ?? -1;
+        if (!own[i]) return 0;
         if ((l.t !== "del" && n === start) || starts.has(n)) return 3;
         if (l.t !== "ctx" || calls.has(n) || (n === sigEnd && sigEnd - start + 1 > 3)) return 2;
         if (changedAt.some((c) => Math.abs(c - i) <= CARD.context)) return 1;
@@ -370,7 +395,7 @@ const rowWidth = (r: Row): number => CARD.gutter + rowChars(r) * CARD.charWidth 
  * its widest cuts long lines with `…`; unless it already ends in Read all,
  * a row saying so follows, Read all opening at the first one.
  */
-export const pinCard = (pin: Pin, review: Pick<Review, "files" | "links">): CardModel => {
+export const pinCard = (pin: Pin, review: Pick<Review, "files" | "links"> & Partial<Pick<Review, "pins">>): CardModel => {
     const built = pin.kind === "change" || pin.kind === "context" ? declRows(pin, review) : pin.kind === "test" ? testRows(pin, review) : fileRows(pin, review);
     const header = 220 + (pin.name.length + (pin.path ?? "").length) * 7;
     const width = Math.round(clamp(Math.max(header, ...built.map(rowWidth)), CARD.minWidth, CARD.maxWidth));
@@ -543,16 +568,36 @@ export const whereOf = (pin: Pin): string => {
     return pin.kind === "change" || pin.kind === "context" ? `${pin.path} · ${pin.from}–${pin.to}` : pin.path;
 };
 
+/** Languages whose method cards are named with their type, `Server.Start()` (`labelOf`). */
+const TYPED_METHODS: ReadonlySet<string> = new Set(["py", "go", "rs"]);
+
+/**
+ * A card's name as its header shows it, `width` wide: 52 % of the header
+ * inside its padding, at about 9.2 px a character. A method's name that
+ * doesn't fit loses its type from the left, never the method:
+ * `…ServerProtocolConfigFlow.async_step_user()`; with fewer than 8
+ * characters of the type left, the method shows alone. Read all and the
+ * panel show the whole name.
+ */
+export const headerName = (pin: Pick<Pin, "kind" | "name" | "path">, width: number): string => {
+    const room = Math.floor(((width - 28) * 0.52) / 9.2);
+    const parts = /^(\S+)(\.|::)([^\s.:()]+(?:\(\))?)$/.exec(pin.name);
+    if (pin.name.length <= room || !parts || (pin.kind !== "change" && pin.kind !== "context") || !TYPED_METHODS.has(languageOf(pin.path ?? ""))) return pin.name;
+    const [, type, separator, method] = parts;
+    const keep = room - 1 - separator.length - method.length;
+    return keep >= 8 ? `…${type.slice(type.length - keep)}${separator}${method}` : method;
+};
+
 /** A card's header: the name, its chip, where it is and `+N −M`. Read all opens with the same one, `✕` drawn over its right end. */
-const headerHtml = (pin: Pin): string => {
+const headerHtml = (pin: Pin, name = pin.name): string => {
     const chip = chipOf(pin);
     const counts = pin.kind === "context" ? "" : `<span class="counts"><span class="a">+${count(pin.add)}</span> <span class="d">−${count(pin.del)}</span></span>`;
-    return `<header><span class="name">${escapeHtml(pin.name)}</span>${chip ? `<span class="chip ${CHIP_CLASS[chip]}">${chip}</span>` : ""}<span class="where">${escapeHtml(whereOf(pin))}</span>${counts}</header>`;
+    return `<header><span class="name">${escapeHtml(name)}</span>${chip ? `<span class="chip ${CHIP_CLASS[chip]}">${chip}</span>` : ""}<span class="where">${escapeHtml(whereOf(pin))}</span>${counts}</header>`;
 };
 
 export const cardHtml = (card: CardModel, pin: Pin, theme: Theme): string => {
     const plain = pin.kind === "context";
-    return page(CARD_CSS, headerHtml(pin) + `<div class="${plain ? "plain" : ""}">${card.rows.map((r) => rowHtml(r, plain)).join("")}</div>`, theme, "", plain ? "context" : "");
+    return page(CARD_CSS, headerHtml(pin, headerName(pin, card.width)) + `<div class="${plain ? "plain" : ""}">${card.rows.map((r) => rowHtml(r, plain)).join("")}</div>`, theme, "", plain ? "context" : "");
 };
 
 const PR = {
@@ -715,8 +760,8 @@ const fileDiffRows = (f: ReviewFile): Row[] => {
 };
 
 /** A whole declaration with its changes, nothing folded, and `→` on the rows that call another card, as on the card. */
-export const declarationRows = (pin: Pin, f: ReviewFile, review: Pick<Review, "links">): Row[] => {
-    if (!pin.head) return fileDiffRows(f);
+export const declarationRows = (pin: Pin, f: Pick<ReviewFile, "hunks" | "lang">, review: Pick<Review, "links">): Row[] => {
+    if (!pin.head) return [];
     const calls = new Set(outgoing(review, pin.id).flatMap((l) => l.rows));
     return lineRows(f.lang, declLines(f, pin.head, pin.from, pin.to, (pin.symbol?.to ?? 0) > pin.to)).map((r) => (r.line.n !== undefined && calls.has(r.line.n) ? { ...r, call: true } : r));
 };
@@ -822,8 +867,8 @@ export const readAllOf = (pin: Pin, review: Pick<Review, "pr" | "files" | "links
         return { html: page(CARD_CSS + READ_ALL_CSS + PR_CSS + MARKDOWN_CSS + PR_READ_ALL_CSS, body, theme), height: (width) => prPageHeight(review, tokens, width) };
     }
     const file = review.files.find((f) => f.path === pin.path);
-    const decl = pin.kind === "change" || pin.kind === "context";
-    const rows = !file ? [] : decl ? declarationRows(pin, file, review) : fileDiffRows(file);
+    const declFile = declFileOf(pin, review);
+    const rows = pin.kind === "change" || pin.kind === "context" ? (declFile ? declarationRows(pin, declFile, review) : []) : file ? fileDiffRows(file) : [];
     const isFocus = (r: Row) => focus !== null && r.kind === "line" && r.line.at === focus;
     const plain = pin.kind === "context";
     const html = rows.map((r) => (isFocus(r) ? rowHtml(r, plain, true).replace('class="r ', 'class="r focus ') : rowHtml(r, plain, true))).join("");

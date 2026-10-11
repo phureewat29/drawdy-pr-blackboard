@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "@jest/globals";
 import { excalidrawFixture, honoFixture, reviewOf } from "../test/fixture.ts";
 import { twoThreads } from "../test/synthetic.ts";
-import { CARD, cardHtml, changedSpan, declarationRows, foldAt, foldsOf, linkGroups, pinCard, prCard, prCardHtml, readAllOf, unpinnedText, type CardModel, type Row } from "./card.ts";
+import { CARD, cardHtml, changedSpan, declarationRows, foldAt, foldsOf, headerName, linkGroups, pinCard, prCard, prCardHtml, readAllOf, unpinnedText, type CardModel, type Row } from "./card.ts";
 import type { Review } from "./model.ts";
 import { blocksHeight, lexMarkdown, markdownBlocks } from "./markdown.ts";
 
@@ -63,6 +63,55 @@ describe("folds", () => {
     });
 });
 
+describe("header names", () => {
+    const method = (name: string, path = "homeassistant/components/mcp_server/config_flow.py") => ({ kind: "change" as const, name, path });
+
+    it("cut a method's type from the left, never the method, when the name doesn't fit 52 % of the header", () => {
+        expect(headerName(method("ModelContextServerProtocolConfigFlow.async_step_user()"), 880)).toBe("…ntextServerProtocolConfigFlow.async_step_user()");
+        expect(headerName(method("GetAddrInfoRequestWithAVeryLongTypeName::then()", "src/dns.rs"), 480)).toBe("…VeryLongTypeName::then()");
+        expect(headerName(method("Server.Start()", "srv/s.go"), 480)).toBe("Server.Start()");
+    });
+
+    it("show the method alone when fewer than 8 characters of its type would stay", () => {
+        expect(headerName(method("ModelContextServerProtocolConfigFlow.async_step_user()"), 480)).toBe("async_step_user()");
+        expect(headerName(method("_ApplyInferredDiscriminator._infer_discriminator_values_for_choice()", "pydantic/_internal/_discriminated_union.py"), 880)).toBe("_infer_discriminator_values_for_choice()");
+    });
+
+    it("cut a property's name the same way, and leave a JavaScript name, a class and a file to the header's own cut", () => {
+        expect(headerName(method("TrainingArgumentsForAVeryLongModel._no_sync_in_gradient_accumulation", "src/training_args.py"), 880)).toBe("…VeryLongModel._no_sync_in_gradient_accumulation");
+        const long = "averyveryveryverylongnamespace.handleEveryErrorThrownInsideTheHandler()";
+        expect(headerName(method(long, "src/hono-base.ts"), 480)).toBe(long);
+        expect(headerName(method("class ModelContextServerProtocolConfigFlowWithOptions", "a.py"), 480)).toBe("class ModelContextServerProtocolConfigFlowWithOptions");
+        expect(headerName({ kind: "test", name: "test_model_context_server_protocol_config_flow.py", path: "tests/test_model_context_server_protocol_config_flow.py" }, 480)).toBe("test_model_context_server_protocol_config_flow.py");
+    });
+
+    it("cut only on the card: Read all keeps the whole name", () => {
+        const p = { ...pin("toError()"), name: "ModelContextServerProtocolConfigFlow.async_step_user()", path: "a/config_flow.py" };
+        const narrow = { ...card("toError()"), width: 480 };
+        expect(cardHtml(narrow, p, "light")).toContain('<span class="name">async_step_user()</span>');
+        expect(readAllOf(p, { ...review, files: [] }, "light", null).html).toContain('<span class="name">ModelContextServerProtocolConfigFlow.async_step_user()</span>');
+    });
+});
+
+describe("a class card", () => {
+    it("shows only its own lines: the lines of cards nested in it fold, with the blank lines above them", async () => {
+        const source = "class Flow:\n    VERSION = 1\n\n    def first(self):\n        return self.second()\n\n    def second(self):\n        return 2\n";
+        const lines = source.split("\n").slice(0, -1);
+        const { pr } = honoFixture();
+        const flow = await reviewOf({
+            pr: { ...pr, changedFiles: 1 },
+            files: [{ path: "app/flow.py", status: "added", additions: lines.length, deletions: 0, patch: `@@ -0,0 +1,${lines.length} @@\n${lines.map((l) => `+${l}`).join("\n")}` }],
+            raw: new Map([["app/flow.py", source]]),
+        });
+        const named = (name: string) => flow.pins.find((p) => p.name === name)!;
+        expect(flow.pins.map((p) => p.name)).toEqual(expect.arrayContaining(["class Flow", "Flow.first()", "Flow.second()"]));
+        expect(pinCard(named("class Flow"), flow).rows.map(text)).toEqual(["+ 1", "+ 2", "⋯6 Read all"]);
+        expect(pinCard(named("Flow.first()"), flow).rows.map(text)).toEqual(["+ 4", "+→5"]);
+        // Without the nested cards on the board, the class shows all its lines.
+        expect(pinCard(named("class Flow"), { ...flow, pins: [named("class Flow")] }).rows).toHaveLength(8);
+    });
+});
+
 describe("card headers", () => {
     const html = (name: string) => cardHtml(card(name), pin(name), "light");
 
@@ -121,6 +170,16 @@ describe("other cards", () => {
         expect(html).toContain("border: 1.5px dashed");
         expect(html).toContain("UNCHANGED");
         expect(html).not.toContain("<b>+</b>");
+    });
+
+    it("show an unchanged caller from a file the pull request leaves alone: its code, on the card and in Read all", () => {
+        const fetch = pin("fetch()");
+        const elsewhere = { ...review, files: review.files.filter((f) => f.path !== fetch.path) };
+        const rows = pinCard(fetch, elsewhere).rows;
+        expect(rows.some((r) => r.kind === "info")).toBe(false);
+        expect(rows.map(text)).toEqual(card("fetch()").rows.map(text));
+        expect(readAllOf(fetch, elsewhere, "light", null).html).toContain("fetch");
+        expect(readAllOf(fetch, elsewhere, "light", null).html).not.toContain("couldn't read");
     });
 
     it("fold tests to their case names, each with its bare line number in the gutter, cases nested under their group", () => {
