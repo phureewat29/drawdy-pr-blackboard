@@ -2,7 +2,7 @@ import { describe, expect, it } from "@jest/globals";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parsePatch } from "./diff.ts";
-import { callEdges, callRows, changedSymbols, findDecls, testCases } from "./symbols.ts";
+import { callEdges, callsTo, changedSymbols, findDecls, testCases } from "./symbols.ts";
 
 const fixture = JSON.parse(readFileSync(join(process.cwd(), "src/lib/fixtures/hono-5513.json"), "utf8"));
 const heads = new Map<string, string[]>(Object.entries(fixture.raw as Record<string, string>).map(([p, t]) => [p, t.split("\n")]));
@@ -75,12 +75,15 @@ describe("callEdges", () => {
     });
 });
 
-describe("callRows", () => {
+describe("callsTo", () => {
+    const caller = { start: 0, end: 4, kind: "function" as const };
+    const target = (name: string) => ({ path: "b.ts", name, kind: "function" as const, start: 1 });
+
     it("counts a name followed by `(`, never a mention or a comment, and skips names too common to tell", () => {
         const lines = ["const a = run", "run(a)", "// run(b)", "x.run(c)"];
-        expect(callRows(lines, 1, 4, "ts", { name: "run", kind: "function" })).toEqual([]);
+        expect(callsTo("a.ts", lines, "ts", caller, target("run"))).toEqual([]);
         const named = ["const fn = parseOptions", "parseOptions(a)", "// parseOptions(b)"];
-        expect(callRows(named, 1, 3, "ts", { name: "parseOptions", kind: "function" })).toEqual([2]);
+        expect(callsTo("a.ts", named, "ts", caller, target("parseOptions"))).toEqual([2]);
     });
 });
 

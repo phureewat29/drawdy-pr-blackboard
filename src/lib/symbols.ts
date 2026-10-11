@@ -15,6 +15,7 @@
 
 import type { DiffLine, Hunk } from "./diff.ts";
 import type { Language } from "./language.ts";
+import { rustFile } from "./rust.ts";
 
 export type DeclKind = "function" | "method" | "class" | "type" | "value" | "namespace";
 
@@ -129,7 +130,7 @@ const GO: Pattern[] = [
 
 const RS: Pattern[] = [
     { re: /^\s*impl(?:<[^>]*>)?\s+(?:[\w:<>, ]+\s+for\s+)?([\w:]+)/, kind: "class", container: true },
-    { re: /^\s*(?:pub(?:\([^)]*\))?\s+)?(?:(?:async|const|unsafe|extern)\s+)*fn\s+(\w+)/, kind: "function" },
+    { re: /^\s*(?:pub(?:\([^)]*\))?\s+)?(?:(?:async|const|unsafe|extern(?:\s+"[^"]*")?)\s+)*fn\s+(\w+)/, kind: "function" },
     { re: /^\s*(?:pub(?:\([^)]*\))?\s+)?(?:struct|enum|trait|type|union)\s+(\w+)/, kind: "type" },
 ];
 
@@ -355,49 +356,106 @@ const COMMON = new Set([
 /**
  * How code refers to a symbol. A method is reached through an object
  * (`this.run(`, `app.onError(`), so a bare word with its name, often a
- * parameter, doesn't count.
+ * parameter, doesn't count. Null when the name is too short or too common.
  */
-const referencePattern = (symbol: Pick<ChangedSymbol, "name" | "kind">): RegExp | null => {
-    const { name } = symbol;
-    const bare = name.replace(/^#/, "");
+const calledAs = (symbol: Pick<ChangedSymbol, "name" | "kind">): ((t: CallToken) => boolean) | null => {
+    const bare = symbol.name.replace(/^#/, "");
     if (bare.length < 3 || COMMON.has(bare)) return null;
-    const escaped = name.replace(/[$]/g, "\\$");
-    if (name.startsWith("#")) return new RegExp(`${escaped}\\b`);
-    if (symbol.kind === "method") return new RegExp(`(\\.|::|->)${escaped}\\b`);
-    return new RegExp(`(^|[^\\w$#.])${escaped}\\b`);
+    if (symbol.name.startsWith("#")) return () => true;
+    return symbol.kind === "method" ? (t) => t.member : (t) => t.plain;
+};
+
+/** A name followed by `(`, maybe through type arguments or `?.`: `run(`, `run<T>(`, `run?.(`. */
+const CALL_TOKEN = /(#?[A-Za-z_$][\w$]*)\s*(?:<[^<>()]*>)?\s*(?:\?\.)?\(/g;
+
+/** `member`: reached through `.`, `::` or `->`; `plain`: after no word character, `$`, `#` or `.`. */
+type CallToken = { name: string; line: number; member: boolean; plain: boolean };
+
+const tokenCache = new WeakMap<readonly string[], CallToken[][]>();
+
+/** Each line's calls, once per file, so finding who calls what is one pass rather than one per pair. */
+const callTokens = (lines: readonly string[], lang: Language): CallToken[][] => {
+    const hit = tokenCache.get(lines);
+    if (hit) return hit;
+    const out = lines.map((line, i) =>
+        isComment(line, lang)
+            ? []
+            : [...line.matchAll(CALL_TOKEN)].map((m) => {
+                  const at = m.index!;
+                  const two = line.slice(Math.max(0, at - 2), at);
+                  return { name: m[1], line: i + 1, member: line[at - 1] === "." || two === "::" || two === "->", plain: at === 0 || !/[\w$#.]/.test(line[at - 1]) };
+              })
+    );
+    tokenCache.set(lines, out);
+    return out;
+};
+
+const declCache = new WeakMap<readonly string[], Decl[]>();
+const rustOf = (lines: readonly string[]) => {
+    let decls = declCache.get(lines);
+    if (!decls) declCache.set(lines, (decls = findDecls(lines, "rs")));
+    return rustFile(lines, decls);
+};
+
+/**
+ * The head lines of `caller` that call `target`. Rust counts only a call the
+ * file proves (`rust.ts`); other languages, the name followed by `(`.
+ * Comment lines don't count.
+ */
+export const callsTo = (
+    path: string,
+    lines: readonly string[],
+    lang: Language,
+    caller: Pick<Decl, "start" | "end" | "kind">,
+    target: Pick<ChangedSymbol, "path" | "name" | "kind" | "start">
+): number[] => {
+    if (lang === "rs") return path === target.path ? [...new Set(rustOf(lines).calls(caller).filter((c) => c.to.start === target.start).map((c) => c.line))] : [];
+    const matches = calledAs(target);
+    if (!matches) return [];
+    const rows = new Set<number>();
+    const tokens = callTokens(lines, lang);
+    for (let n = Math.max(1, caller.start + 1); n <= Math.min(lines.length, caller.end); n++) if (tokens[n - 1].some((t) => t.name === target.name && matches(t))) rows.add(n);
+    return [...rows];
 };
 
 /** One declaration calling another, with the head lines in `from` that do. */
 export type CallEdge = { from: string; to: string; calls: number[] };
 
-/** The head lines between `from` and `to` (inclusive) that call `target`: its name followed by `(`. Comment lines don't count. */
-export const callRows = (lines: readonly string[], from: number, to: number, lang: Language, target: Pick<ChangedSymbol, "name" | "kind">): number[] => {
-    const re = referencePattern(target);
-    if (!re) return [];
-    const call = new RegExp(`${re.source}\\s*(?:<[^<>()]*>)?\\s*(?:\\?\\.)?\\(`);
-    const calls: number[] = [];
-    for (let n = Math.max(1, from); n <= Math.min(lines.length, to); n++) if (!isComment(lines[n - 1], lang) && call.test(lines[n - 1])) calls.push(n);
-    return calls;
-};
-
 /**
  * Which changed declarations call which: an edge from `a` to `b` means
- * `a`'s code calls `b` by name, with the rows that do. A private `#name`
- * only links within its file.
+ * `a`'s code calls `b`, with the rows that do. A private `#name` only links
+ * within its file; Rust only what `rust.ts` proves.
  */
 export const callEdges = (symbols: readonly ChangedSymbol[], headByPath: ReadonlyMap<string, readonly string[]>): CallEdge[] => {
     const edges: CallEdge[] = [];
+    const order = new Map(symbols.map((s, i) => [s, i]));
+    const byName = new Map<string, ChangedSymbol[]>();
+    for (const s of symbols) byName.set(s.name, [...(byName.get(s.name) ?? []), s]);
+    const byStart = new Map(symbols.map((s) => [`${s.path}:${s.start}`, s]));
     for (const a of symbols) {
         const lines = headByPath.get(a.path);
         if (!lines || a.kind === "class") continue;
-        for (const b of symbols) {
+        const rows = new Map<ChangedSymbol, Set<number>>();
+        if (a.lang === "rs") {
+            for (const c of rustOf(lines).calls(a)) {
+                const b = byStart.get(`${a.path}:${c.to.start}`);
+                if (b) rows.set(b, (rows.get(b) ?? new Set()).add(c.line));
+            }
+        } else {
+            const tokens = callTokens(lines, a.lang);
+            for (let n = a.start + 1; n <= Math.min(lines.length, a.end); n++) {
+                for (const t of tokens[n - 1]) {
+                    for (const b of byName.get(t.name) ?? []) if (calledAs(b)?.(t)) rows.set(b, (rows.get(b) ?? new Set()).add(n));
+                }
+            }
+        }
+        const targets = [...rows.keys()].sort((x, y) => order.get(x)! - order.get(y)!);
+        for (const b of targets) {
             if (a === b) continue;
             if (b.path === a.path && b.start <= a.start && a.end <= b.end) continue;
             if (a.path === b.path && a.start <= b.start && b.end <= a.end) continue;
             if (b.name.startsWith("#") && b.path !== a.path) continue;
-            // The first line names `a` itself; its body starts after.
-            const calls = callRows(lines, a.start + 1, a.end, a.lang, b);
-            if (calls.length > 0) edges.push({ from: a.id, to: b.id, calls });
+            edges.push({ from: a.id, to: b.id, calls: [...rows.get(b)!].sort((x, y) => x - y) });
         }
     }
     return edges;
