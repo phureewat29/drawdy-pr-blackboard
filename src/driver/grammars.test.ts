@@ -1,7 +1,8 @@
 import { describe, expect, it } from "@jest/globals";
 import { fakeFetch } from "../test/fake-fetch.ts";
 import { fakeHost } from "../test/fake-host.ts";
-import { createParser, languagesOf, PINS } from "./grammars.ts";
+import { wasmBytes } from "../test/parser.ts";
+import { createGrammars, languagesOf, PINS } from "./grammars.ts";
 
 /** A host whose kv-storage keeps what it is given, as Drawdy's IndexedDB does. */
 const storage = () => {
@@ -25,43 +26,50 @@ describe("the parser's files", () => {
         ]);
     });
 
-    it("download once, say so once, and are kept: the next session reads storage and makes no request", async () => {
+    it("download once each, saying so first, and are kept: the next session reads storage and makes no request", async () => {
         const { host, kept } = storage();
         const net = fakeFetch("hono-5513.json");
-        const parser = createParser({ ddp: host.ddp, fetch: net.fetch });
+        const grammars = createGrammars({ ddp: host.ddp, fetch: net.fetch });
         let told = 0;
-        await parser.load(["typescript"], () => told++);
-        expect([told, jsdelivr(net.requests)]).toEqual([1, [PINS.runtime.url, PINS.typescript.url]]);
+        const runtime = await grammars.bytes("runtime", "TypeScript parser", () => told++);
+        await grammars.bytes("typescript", "TypeScript parser", () => told++);
+        expect([told, jsdelivr(net.requests)]).toEqual([2, [PINS.runtime.url, PINS.typescript.url]]);
         expect([...kept.keys()]).toEqual(["wasm:runtime", "wasm:typescript"]);
         expect(kept.get("wasm:typescript")).toMatchObject({ sha256: PINS.typescript.sha256, blob: expect.any(Blob) });
+        expect(runtime).toEqual(wasmBytes("runtime"));
         // The same session loads nothing again.
-        await parser.load(["typescript"], () => told++);
-        expect(told).toBe(1);
+        await grammars.bytes("typescript", "TypeScript parser", () => told++);
+        expect(told).toBe(2);
         // A new session, with no network at all.
-        const offline = createParser({ ddp: host.ddp, fetch: async () => Promise.reject(new Error("offline")) });
-        await offline.load(["typescript"], () => told++);
-        expect(told).toBe(1);
-        expect(await offline.parse(() => told++)("a.ts", "export const a = 1")).not.toBeNull();
+        const offline = createGrammars({ ddp: host.ddp, fetch: async () => Promise.reject(new Error("offline")) });
+        expect(await offline.bytes("typescript", "TypeScript parser", () => told++)).toEqual(wasmBytes("typescript"));
+        expect(told).toBe(2);
     });
 
-    it("fail in words on a failed download or a file that isn't its pin, and keep nothing", async () => {
-        for (const broken of [
-            async () => new Response("", { status: 503 }),
-            async () => new Response(new Uint8Array([0, 97, 115, 109])),
-        ]) {
+    it("fail in words on a failed download or a file that isn't its pin, keep nothing, and are tried again next time", async () => {
+        for (const broken of [async () => new Response("", { status: 503 }), async () => new Response(new Uint8Array([0, 97, 115, 109]))]) {
             const { host, kept } = storage();
-            const parser = createParser({ ddp: host.ddp, fetch: broken });
-            await expect(parser.load(["typescript", "javascript"], () => undefined)).rejects.toThrow("Couldn't download the TypeScript and JavaScript parsers from cdn.jsdelivr.net. Try again.");
+            const grammars = createGrammars({ ddp: host.ddp, fetch: broken });
+            await expect(grammars.bytes("javascript", "TypeScript and JavaScript parsers", () => undefined)).rejects.toThrow(
+                "Couldn't download the TypeScript and JavaScript parsers from cdn.jsdelivr.net. Try again."
+            );
             expect(kept.size).toBe(0);
         }
+        const { host } = storage();
+        let fail = true;
+        const net = fakeFetch("hono-5513.json");
+        const grammars = createGrammars({ ddp: host.ddp, fetch: async (url) => (fail ? new Response("", { status: 503 }) : net.fetch(url)) });
+        await expect(grammars.bytes("runtime", "TypeScript parser", () => undefined)).rejects.toThrow("Couldn't download");
+        fail = false;
+        expect(await grammars.bytes("runtime", "TypeScript parser", () => undefined)).toEqual(wasmBytes("runtime"));
     });
 
     it("download again when storage holds a copy that isn't the pin", async () => {
         const { host, kept } = storage();
         kept.set("wasm:runtime", { sha256: PINS.runtime.sha256, blob: new Blob([new Uint8Array([1, 2, 3])]) });
         const net = fakeFetch("hono-5513.json");
-        await createParser({ ddp: host.ddp, fetch: net.fetch }).load(["javascript"], () => undefined);
-        expect(jsdelivr(net.requests).sort()).toEqual([PINS.javascript.url, PINS.runtime.url]);
+        await createGrammars({ ddp: host.ddp, fetch: net.fetch }).bytes("runtime", "JavaScript parser", () => undefined);
+        expect(jsdelivr(net.requests)).toEqual([PINS.runtime.url]);
     });
 
     it("name the language in the reader's words", () => {
@@ -70,13 +78,5 @@ describe("the parser's files", () => {
             { parser: "TypeScript and JavaScript parsers", code: "code" },
             { parser: "JavaScript parser", code: "JavaScript" },
         ]);
-    });
-});
-
-describe("a parser that won't run", () => {
-    it("fails in words, with nothing to try again for", async () => {
-        const { host } = storage();
-        const parser = createParser({ ddp: host.ddp, fetch: fakeFetch("hono-5513.json").fetch, start: async () => Promise.reject(new Error("CompileError")) });
-        await expect(parser.load(["typescript"], () => undefined)).rejects.toThrow("Couldn't parse this pull request's TypeScript.");
     });
 });
