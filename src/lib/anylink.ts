@@ -83,8 +83,8 @@ export type Typing = {
     selfClass?: (t: Flat, n: number) => number;
     /** The receiver modes trait methods give each method name (Rust: by value, `&self`, `&mut self`): the files' and the standard library's. */
     traitModes?: (files: readonly GFile[]) => ReadonlyMap<string, ReadonlySet<string>>;
-    /** Whether a trait method of one of these modes would answer `x.f()` before this method (Rust's method probe order): then the call names nothing sure. */
-    shadowed?: (call: Flat, receiver: number, method: Flat, unitNode: number, modes: ReadonlySet<string>) => boolean;
+    /** Whether a trait method of one of these modes would answer `x.f()` before this method (Rust's method probe order): then the call names nothing sure. `declared` is the type x's binding writes, or -1. */
+    shadowed?: (call: Flat, receiver: number, declared: number, method: Flat, unitNode: number, modes: ReadonlySet<string>) => boolean;
     /** Whether a site is a class body's annotation (Python), read after the body ran when annotations are deferred: "deferred" when the file defers them, "unknown" when the Python version decides. */
     deferredAnnotation?: (t: Flat, site: number) => "deferred" | "unknown" | null;
     /** Whether code in one file is built together with a declaration in another (Go's build constraints). */
@@ -346,6 +346,17 @@ const createProgram = (files: readonly GFile[], langOf: (f: GFile) => Resolver, 
         return lookup(f, scope, name, depth, later ? Number.MAX_SAFE_INTEGER : at);
     };
 
+    /** The one binding a name has where it's written, or null: none, or several. */
+    const bindingAt = (scope: GScope, name: string, at: number): GBinding | null => {
+        for (let s: GScope | null = scope; s; s = s.parent) {
+            if (s.kind === "class" && s !== scope) continue;
+            const named = s.names.get(name);
+            const bs = named?.some((b) => b.from !== undefined) ? named.filter((b) => b.from === undefined || b.from <= at) : named;
+            if (bs && bs.length > 0) return bs.length === 1 ? bs[0] : null;
+        }
+        return null;
+    };
+
     /**
      * The bindings of a name written at offset `at`, innermost scope first. A
      * class body is seen only by the code right in it, and a Go or Rust local
@@ -404,7 +415,8 @@ const createProgram = (files: readonly GFile[], langOf: (f: GFile) => Resolver, 
             return b.kind === "self" ? { kind: "instance", key: selfKey(f, cls) } : { kind: "class", key: selfKey(f, cls) };
         }
         if (b.typeNode !== undefined) {
-            const key = typeKey(f, b.typeNode, b.scope, depth + 1);
+            // Read where the type is written: a Python parameter's annotation outside its function, as it runs.
+            const key = typeKey(f, b.typeNode, scopeAround(f, b.typeNode), depth + 1);
             return key ? { kind: "instance", key } : NONE("type not resolved");
         }
         if (b.init !== undefined) {
@@ -667,7 +679,12 @@ const createProgram = (files: readonly GFile[], langOf: (f: GFile) => Resolver, 
         if (ty.typeOnly?.(f.flat, s.node)) return units.filter((u) => CLASSY.has(u.kind) || u.kind === "namespace");
         // `x.f()`: a trait's method found at an earlier step of the probe than an inherent one wins (Rust).
         const modes = s.shape === "member" && ty.shadowed ? traitModesOf(f).get(s.name) : undefined;
-        if (modes) return units.filter((u) => !ty.shadowed!(f.flat, s.receiver, fileOfUnit.get(u.id)!.flat, u.node, modes));
+        if (modes) {
+            // A receiver written as a name: the type its one binding declares, a parameter's or a local's.
+            const r = s.receiver;
+            const declared = r >= 0 && f.flat.type[r] === "identifier" ? (bindingAt(s.scope, textOf(f.flat, r), f.flat.start[r])?.typeNode ?? -1) : -1;
+            return units.filter((u) => !ty.shadowed!(f.flat, r, declared, fileOfUnit.get(u.id)!.flat, u.node, modes));
+        }
         return units;
     };
     const modeMaps = new Map<Typing, ReadonlyMap<string, ReadonlySet<string>>>();

@@ -44,6 +44,10 @@ const expressionMacro = (t: Flat, n: number): number => {
 
 const opensCall = (t: Flat, n: number) => n >= 0 && t.type[n] === "token_tree" && t.text[t.start[n]] === "(";
 
+/** Tokens after which a `|` starts a closure: a tree's opening, a separator, an assignment or arrow, `&`, another closure, `move`, `return`. */
+const CLOSURE_AFTER = new Set(["(", "[", "{", ",", ";", ":", "=", "=>", "&", "|", "move", "return"]);
+const opensClosure = (t: Flat, prev: number) => prev < 0 || CLOSURE_AFTER.has(t.type[prev]) || (t.type[prev] === "identifier" && (textOf(t, prev) === "move" || textOf(t, prev) === "return"));
+
 /**
  * The names a macro's tokens bind, which are no uses anywhere in them: a
  * closure's parameters (any name between two `|` of one token tree, so an
@@ -83,7 +87,8 @@ const macroBound = (t: Flat, macro: number): Set<string> => {
                 else if (armBody && braces && prev >= 0 && t.type[prev] === "=>") (armBody = false), (arm = true);
                 continue;
             }
-            if (ty === "|") pipes++;
+            // A `|` opens a closure's parameters only where a closure can start; else it is a bitwise or, unless it closes them.
+            if (ty === "|" && (pipes % 2 === 1 || opensClosure(t, prev))) pipes++;
             else if (ty === ",") {
                 commas++;
                 if (mode === "arms" && armBody) (armBody = false), (arm = true);
@@ -514,22 +519,46 @@ const traitModes = (files: readonly GFile[]): ReadonlyMap<string, ReadonlySet<st
  * For a receiver of a mode, or any (a value, `&` or `&mut`), and an
  * inherent method of a mode: the trait modes the probe tries first. It tries
  * the receiver's type by value, then `&`, then `&mut`, then the same after
- * each deref, an inherent method before a trait's at each step.
+ * each deref, an inherent method before a trait's at each step. A receiver
+ * that is another type (`Box<Self>`, `&&T`) meets traits implemented for that
+ * type before x's own methods: any mode comes first.
  */
-const FIRST: Record<"value" | "ref" | "mut" | "any", Record<"value" | "ref" | "mut", readonly Mode[]>> = {
+const ALL: readonly Mode[] = ["value", "ref", "mut"];
+const FIRST: Record<"value" | "ref" | "mut" | "any" | "other", Record<"value" | "ref" | "mut", readonly Mode[]>> = {
     value: { value: [], ref: ["value"], mut: ["value", "ref"] },
     ref: { value: ["ref"], ref: [], mut: ["ref", "value"] },
     mut: { value: ["mut"], ref: ["mut", "value"], mut: [] },
     any: { value: ["ref", "mut"], ref: ["value", "mut"], mut: ["value", "ref"] },
+    other: { value: ALL, ref: ALL, mut: ALL },
 };
 
-/** What `self` is in the method it's written in: a value, `&` or `&mut`; any other receiver may be any of them. */
-const receiverKind = (t: Flat, n: number): keyof typeof FIRST => {
-    if (n < 0 || !(t.type[n] === "self" || (t.type[n] === "identifier" && textOf(t, n) === "self"))) return "any";
-    let fn = t.parent[n];
-    while (fn >= 0 && t.type[fn] !== "function_item") fn = t.parent[fn];
-    const mode = fn >= 0 ? modeOf(t, fn) : null;
-    return mode === "value" || mode === "ref" || mode === "mut" ? mode : "any";
+/** The receiver mode a declared type gives: `&T`, `&mut T`, `T`; two `&`s or a raw pointer are another type; anything else may be any. */
+const typeMode = (t: Flat, type: number): keyof typeof FIRST => {
+    switch (t.type[type]) {
+        case "reference_type": {
+            const inner = child(t, type, "type");
+            if (inner >= 0 && t.type[inner] === "reference_type") return "other";
+            return namedChildren(t, type).some((c) => t.type[c] === "mutable_specifier") ? "mut" : "ref";
+        }
+        case "type_identifier":
+        case "scoped_type_identifier":
+        case "generic_type":
+            return "value";
+        case "pointer_type":
+            return "other";
+        default:
+            return "any";
+    }
+};
+
+/** What a receiver is: `self` in the method it's written in takes that method's mode, a name its declared type's; any other may be any. */
+const receiverKind = (t: Flat, n: number, declared: number): keyof typeof FIRST => {
+    if (n >= 0 && (t.type[n] === "self" || (t.type[n] === "identifier" && textOf(t, n) === "self"))) {
+        let fn = t.parent[n];
+        while (fn >= 0 && t.type[fn] !== "function_item") fn = t.parent[fn];
+        return (fn >= 0 ? modeOf(t, fn) : null) ?? "any";
+    }
+    return declared >= 0 ? typeMode(t, declared) : "any";
 };
 
 /** The impl, trait or type a node sits in, whose `self` and `Self` it means, or -1. */
@@ -566,11 +595,11 @@ const RUST_TYPING: Typing = {
     selfClass,
     traitModes,
     // A trait method of the name whose mode the probe tries first wins; one taking `self` as another type might.
-    shadowed: (call, receiver, method, unitNode, modes) => {
+    shadowed: (call, receiver, declared, method, unitNode, modes) => {
         const mode = modeOf(method, unitNode);
         if (mode === null) return false;
         if (mode === "other" || modes.has("other")) return modes.size > 0;
-        return FIRST[receiverKind(call, receiver)][mode].some((m) => modes.has(m));
+        return FIRST[receiverKind(call, receiver, declared)][mode].some((m) => modes.has(m));
     },
 };
 

@@ -136,7 +136,7 @@ const importsOf = (t: Flat): GImport[] => {
         }
     }
     // Where the file changes `sys.path`: an absolute import runs before that only at module level above the first change (a function can't run before it's defined).
-    const first = firstPathChange(t.text);
+    const first = firstPathChange(t);
     if (first >= 0) for (const i of out) if (i.level === 0 && (t.start[i.stmt] > first || inFunction(t, i.stmt))) i.unproven = true;
     return out;
 };
@@ -525,6 +525,22 @@ const inClassAnnotation = (t: Flat, n: number): boolean => {
     return stmt >= 0 && t.type[stmt] === "expression_statement" && block >= 0 && t.type[block] === "block" && t.type[t.parent[block]] === "class_definition";
 };
 
+/** Whether a site sits in a parameter's or the result's annotation of a function written right in a class body. */
+const inMethodAnnotation = (t: Flat, n: number): boolean => {
+    let x = n;
+    while (x >= 0 && t.type[x] !== "type") {
+        if (t.type[x] === "function_definition" || t.type[x] === "lambda" || t.type[x] === "class_definition" || t.type[x] === "block") return false;
+        x = t.parent[x];
+    }
+    if (x < 0) return false;
+    const p = t.parent[x];
+    const fn = t.type[p] === "function_definition" && t.field[x] === "return_type" ? p : (t.type[p] === "typed_parameter" || t.type[p] === "typed_default_parameter") && t.field[x] === "type" ? t.parent[t.parent[p]] : -1;
+    if (fn < 0 || t.type[fn] !== "function_definition") return false;
+    let up = t.parent[fn];
+    if (up >= 0 && t.type[up] === "decorated_definition") up = t.parent[up];
+    return up >= 0 && t.type[up] === "block" && t.type[t.parent[up]] === "class_definition";
+};
+
 const PYTHON_TYPING: Typing = {
     hint,
     typeName,
@@ -538,7 +554,8 @@ const PYTHON_TYPING: Typing = {
     selfClass,
     starNames,
     // Deferred, a class body's annotation is read once the body ran (Python 3.14 defers them all, so without the future import the version decides).
-    deferredAnnotation: (t, n) => (inClassAnnotation(t, n) ? (defersAnnotations(t) ? "deferred" : "unknown") : null),
+    // A method's annotations, deferred, are read in the module (`get_type_hints`) or the class (type checkers): a class binding below them names nothing sure.
+    deferredAnnotation: (t, n) => (inClassAnnotation(t, n) ? (defersAnnotations(t) ? "deferred" : "unknown") : inMethodAnnotation(t, n) ? "unknown" : null),
 };
 
 /**
@@ -612,13 +629,76 @@ const layoutOf = (ctx: ModuleContext): Layout => {
     return hit;
 };
 
-/** A change to `sys.path`: a call that adds to it or takes from it, an assignment, a `del`, `site.addsitedir`. */
-const SYS_PATH = /\bsys\s*\.\s*path\s*(?:\.\s*(?:insert|append|extend|remove|pop|clear)\s*\(|\[[^\]\n]*\]\s*=(?!=)|\+=|=(?!=))|\bdel\s+sys\s*\.\s*path\b|\bsite\s*\.\s*addsitedir\s*\(/;
+/** List methods that change `sys.path` in place. */
+const PATH_CHANGES = new Set(["insert", "append", "extend", "remove", "pop", "clear", "sort", "reverse", "__setitem__", "__delitem__", "__iadd__"]);
 
-/** Where a file's code first changes `sys.path`, its strings and comments blanked, or -1. */
-const firstPathChange = (text: string): number => {
-    const code = text.replace(/[rRbBuUfF]{0,2}("""[\s\S]*?"""|'''[\s\S]*?'''|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|#[^\n]*)/g, (m) => m.replace(/[^\n]/g, " "));
-    return SYS_PATH.exec(code)?.index ?? -1;
+/**
+ * Where a file's code first changes `sys.path`, or -1: a method that adds
+ * to it, takes from it or reorders it, an item or slice set or deleted, `+=`,
+ * the list replaced, `site.addsitedir`. Under any name: `import sys as s`,
+ * `from sys import path`, a name the list is assigned to.
+ */
+const firstPathChange = (t: Flat): number => {
+    const sysNames = new Set(["sys"]);
+    const siteNames = new Set(["site"]);
+    const pathNames = new Set<string>();
+    for (let n = 0; n < t.count; n++) {
+        if (t.type[n] === "import_statement") {
+            for (const c of namedChildren(t, n)) {
+                if (t.type[c] !== "aliased_import") continue;
+                const name = textOf(t, child(t, c, "name")).replace(/\s+/g, "");
+                if (name === "sys") sysNames.add(textOf(t, child(t, c, "alias")));
+                if (name === "site") siteNames.add(textOf(t, child(t, c, "alias")));
+            }
+        } else if (t.type[n] === "import_from_statement") {
+            const mod = child(t, n, "module_name");
+            if (mod < 0 || textOf(t, mod).replace(/\s+/g, "") !== "sys") continue;
+            for (const c of namedChildren(t, n)) {
+                if (c === mod) continue;
+                if (t.type[c] === "wildcard_import" || (t.type[c] === "dotted_name" && textOf(t, c) === "path")) pathNames.add("path");
+                else if (t.type[c] === "aliased_import" && textOf(t, child(t, c, "name")) === "path") pathNames.add(textOf(t, child(t, c, "alias")));
+            }
+        }
+    }
+    const isSysPath = (e: number) => e >= 0 && t.type[e] === "attribute" && t.type[child(t, e, "object")] === "identifier" && sysNames.has(textOf(t, child(t, e, "object"))) && textOf(t, child(t, e, "attribute")) === "path";
+    const isPath = (e: number) => isSysPath(e) || (e >= 0 && t.type[e] === "identifier" && pathNames.has(textOf(t, e)));
+    // A name the list is assigned to, and one that name is: `search = sys.path`.
+    for (let grew = true; grew; ) {
+        grew = false;
+        for (let n = 0; n < t.count; n++) {
+            if (t.type[n] !== "assignment") continue;
+            const left = child(t, n, "left");
+            if (left >= 0 && t.type[left] === "identifier" && !pathNames.has(textOf(t, left)) && isPath(child(t, n, "right"))) {
+                pathNames.add(textOf(t, left));
+                grew = true;
+            }
+        }
+    }
+    let first = -1;
+    const found = (n: number) => {
+        if (first < 0 || t.start[n] < first) first = t.start[n];
+    };
+    for (let n = 0; n < t.count; n++) {
+        const ty = t.type[n];
+        if (ty === "call") {
+            const fn = child(t, n, "function");
+            if (fn < 0 || t.type[fn] !== "attribute") continue;
+            const obj = child(t, fn, "object");
+            const attr = textOf(t, child(t, fn, "attribute"));
+            if ((isPath(obj) && PATH_CHANGES.has(attr)) || (attr === "addsitedir" && t.type[obj] === "identifier" && siteNames.has(textOf(t, obj)))) found(n);
+        } else if (ty === "assignment" || ty === "augmented_assignment") {
+            const left = child(t, n, "left");
+            if (isSysPath(left) || (ty === "augmented_assignment" && isPath(left)) || (left >= 0 && t.type[left] === "subscript" && isPath(child(t, left, "value")))) found(n);
+        } else if (ty === "delete_statement") {
+            for (let x = n + 1; x < t.count && t.start[x] < t.end[n]; x++) {
+                if (isSysPath(x) || (t.type[x] === "subscript" && isPath(child(t, x, "value")))) {
+                    found(n);
+                    break;
+                }
+            }
+        }
+    }
+    return first;
 };
 
 /** A module's files under a root, its package before its module file, as Python takes them. */
