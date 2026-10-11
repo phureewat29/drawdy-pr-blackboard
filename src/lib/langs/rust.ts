@@ -49,16 +49,18 @@ const KEYWORDS = new Set("as async await break const continue dyn else enum exte
 
 /**
  * Whether a token ends an operand, so a `|` after it is a bitwise or: a
- * name that isn't a keyword, a literal, `self`, a `(...)` or `[...]` group,
- * `?`. After anything else a `|` opens a closure's parameters, so a case
- * not foreseen binds its names and links nothing.
+ * name that isn't a keyword or a label (`'outer`), a literal, a primitive
+ * type (`x as u32`), `self`, a `(...)` group, a `[...]` group that isn't an
+ * attribute (`#[...]`), `?`. After anything else a `|` opens a closure's
+ * parameters, so a case not foreseen binds its names and links nothing.
  */
 const endsOperand = (t: Flat, prev: number): boolean => {
     if (prev < 0) return false;
     const ty = t.type[prev];
-    if (ty === "identifier") return !KEYWORDS.has(textOf(t, prev));
-    if (ty === "token_tree") return t.text[t.start[prev]] === "(" || t.text[t.start[prev]] === "[";
-    return ty === "?" || ty === "self" || ty === "super" || ty === "crate" || ty.endsWith("_literal");
+    const before = previous(t, prev);
+    if (ty === "identifier") return !KEYWORDS.has(textOf(t, prev)) && !(before >= 0 && t.type[before] === "'");
+    if (ty === "token_tree") return t.text[t.start[prev]] === "(" || (t.text[t.start[prev]] === "[" && !(before >= 0 && t.type[before] === "#"));
+    return ty === "?" || ty === "self" || ty === "super" || ty === "crate" || ty === "primitive_type" || ty.endsWith("_literal");
 };
 
 /**

@@ -630,15 +630,33 @@ const layoutOf = (ctx: ModuleContext): Layout => {
 };
 
 /** List methods that change `sys.path` in place. */
+/** Builtins that read their arguments and keep no hold of them. */
+const READERS = new Set("print len list tuple sorted str repr any all enumerate iter set frozenset reversed id type isinstance".split(" "));
+
 /**
  * Where a file's code first changes `sys.path`, or might, or -1. The list
  * goes by any name: `sys.path` through `import sys as s` or any attribute
  * chain ending in `.sys` (`os.sys.path`), `from sys import path` or `*`,
  * and a name the list is assigned to. A change: any method called on it, an
  * item or slice set or deleted, an augmented assignment, the attribute
- * rebound, the list passed to any call, `site.addsitedir`.
+ * rebound, the list passed to any call but a builtin that only reads it
+ * (`print`, `list`, `len`, ... where the file uses that name only to call
+ * it), `site.addsitedir`.
  */
 const firstPathChange = (t: Flat): number => {
+    // A builtin that only reads its arguments, where the file uses its name for nothing but calls.
+    const calledOnly = new Map<string, boolean>();
+    const reads = (fn: number): boolean => {
+        if (fn < 0 || t.type[fn] !== "identifier" || !READERS.has(textOf(t, fn))) return false;
+        const name = textOf(t, fn);
+        let hit = calledOnly.get(name);
+        if (hit === undefined) {
+            hit = true;
+            for (let x = 0; x < t.count && hit; x++) if (t.type[x] === "identifier" && textOf(t, x) === name && !(t.type[t.parent[x]] === "call" && t.field[x] === "function")) hit = false;
+            calledOnly.set(name, hit);
+        }
+        return hit;
+    };
     const sysNames = new Set(["sys"]);
     const siteNames = new Set(["site"]);
     const pathNames = new Set<string>();
@@ -693,7 +711,7 @@ const firstPathChange = (t: Flat): number => {
             // A method on the list, the list handed to a call (`prepend(sys.path, ...)`), `site.addsitedir`.
             const args = child(t, n, "arguments");
             const passed = args >= 0 && namedChildren(t, args).some((a) => isPath(a) || ((t.type[a] === "keyword_argument" || t.type[a] === "list_splat" || t.type[a] === "parenthesized_expression") && namedChildren(t, a).some(isPath)));
-            if (isPath(obj) || passed || (attr === "addsitedir" && t.type[obj] === "identifier" && siteNames.has(textOf(t, obj)))) found(n);
+            if (isPath(obj) || (passed && !reads(fn)) || (attr === "addsitedir" && t.type[obj] === "identifier" && siteNames.has(textOf(t, obj)))) found(n);
         } else if (ty === "assignment" || ty === "augmented_assignment") {
             const left = child(t, n, "left");
             if (isSysPath(left) || (ty === "augmented_assignment" && isPath(left)) || (left >= 0 && t.type[left] === "subscript" && isPath(child(t, left, "value")))) found(n);
