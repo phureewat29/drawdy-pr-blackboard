@@ -12,7 +12,8 @@
  *    pull request (honojs/hono#5513), its files and the parser's served by a
  *    fake fetch, and checks the investigation board: what is pinned in its
  *    one add call, the camera, the curved strings and their colours,
- *    stepping, Read all and a rebuild. Node has no Worker, so the parser
+ *    the steps, Description, the link names' colours, Read all on the board,
+ *    Home and a rebuild. Node has no Worker, so the parser
  *    worker's script runs on the driver's thread, as where no worker can
  *    start. Then it boots the bundle again, as after a reload, and checks
  *    the board works with the panel never opened and nothing comes from
@@ -184,8 +185,15 @@ try {
     const labels = added.filter((e) => partOf(e) === "label");
     expectThat(adds.length === 1, `the board arrives in one add call: one undo step (got ${adds.length})`);
     expectThat(
-        components.length === 10 && count("pr") === 1 && strings.length === 9 && labels.length === 9 && added.length === 28,
-        `10 cards, 9 strings and 9 labels, one of each per drawn link, nothing else (got ${components.length}, ${strings.length}, ${labels.length} of ${added.length})`
+        components.length === 10 && count("pr") === 1 && strings.length === 9 && labels.length === 8 && added.length === 27,
+        `10 cards, 9 strings and 8 labels, one per drawn link where its word clears, nothing else (got ${components.length}, ${strings.length}, ${labels.length} of ${added.length})`
+    );
+    const pinRect = (pin: string) => components.find((e) => e.meta.prBlackboard.pin === pin)!;
+    const prEl = pinRect("pr");
+    const fetchEl = pinRect("ctx:src/hono-base.ts:484");
+    expectThat(
+        prEl.height === 779 && !("folds" in prEl.meta.prBlackboard) && !String(prEl.schema.children[0].child.srcDoc).includes("Read all") && fetchEl.x === prEl.x + 800 && fetchEl.y === prEl.y,
+        `the PR card shows its whole description, 640 × ${prEl.height}, no fold row, in a column of its own; the code starts 160 right of it, fetch() at the band's top`
     );
     const kinds = strings.map((e) => String(e.meta.prBlackboard.link).split(":")[0]).sort().join(",");
     expectThat(kinds === "calls,calls,calls,calls,context,imports,tests,tests,tests", `the strings: ${kinds}`);
@@ -231,9 +239,13 @@ try {
         "the cards take the theme Drawdy shows (dark), and the PR card's mark records it"
     );
 
-    // Stepping: the PR card first, then #dispatch(); never the unchanged fetch().
+    // A new board lands with the PR card current, its description in the panel; the steps walk the code: #dispatch() first, never fetch().
     const shown = () => callsOf("command:webview:post-message").map((c) => c.req.message).filter((m) => m.type === "view").pop()?.view;
     expectThat(shown()?.hasNext === true && shown()?.tag?.label === "honojs/hono#5513" && shown()?.tag?.colour === "#E36002", `while the PR card is current, › is on, and the tag takes Hono's colour (${JSON.stringify(shown()?.tag)})`);
+    expectThat(
+        shown()?.card?.pin === "pr" && shown()?.current === -1 && shown()?.total === 8 && shown()?.hasPrevious === false && String(shown()?.card?.description).includes("<h3>Behavior change</h3>"),
+        `a new board lands with the PR card current and its whole description in the panel: – / ${shown()?.total}, ‹ off`
+    );
     const stepped = [shown()?.card?.pin];
     const readable = new Set<string>();
     let writes = 0;
@@ -250,8 +262,9 @@ try {
         flights += callsOf("command:camera:fly-to-rect", from).length;
         deselects += callsOf("command:scene:clear-selection", from).length;
     }
-    expectThat(stepped[0] === "pr" && stepped[1] === "src/hono-base.ts:411", `the PR card opens current, and › goes to #dispatch() (${stepped.slice(0, 2).join(" → ")})`);
-    expectThat(new Set(stepped).size === 9 && shown()?.total === 9 && !stepped.includes("ctx:src/hono-base.ts:484"), `nine steps, never the unchanged fetch() (${new Set(stepped).size})`);
+    expectThat(stepped[1] === "src/hono-base.ts:411", `› goes from the PR card to #dispatch(), step 1 (${stepped.slice(0, 2).join(" → ")})`);
+    const steps = stepped.slice(1);
+    expectThat(new Set(steps).size === 8 && shown()?.total === 8 && !steps.includes("ctx:src/hono-base.ts:484") && !steps.includes("pr"), `eight steps, the code only: never the PR card or the unchanged fetch() (${new Set(steps).size})`);
     expectThat(shown()?.hasNext === false && shown()?.hasPrevious === true, "› is disabled on the last step");
     expectThat(popovers === 0 && flights > 0, `› moves the camera where needed and opens no popover (${flights} flights)`);
     expectThat(deselects === 8, `each › clears Drawdy's selection, so no card stays selected away from the camera (${deselects} of 8)`);
@@ -261,7 +274,33 @@ try {
         `cards hiding code offer Read all: toError()'s cut line and both test cards (${[...readable].join(", ")})`
     );
 
-    // Read all opens to the right of compose(), the fourth step, at both window sizes, and ✕ closes it.
+    // The panel names each link in its string's colour.
+    for (let i = 0; i < 5; i++) await tell({ type: "previous" }, 20);
+    const composeCard = shown()?.card;
+    const chips = (composeCard?.links ?? []).flatMap((row: { chips: { link: string; name: string; colour: number | null }[] }) => row.chips);
+    expectThat(
+        composeCard?.name === "compose()" && chips.length === 4 && chips.every((c: { link: string; colour: number | null }) => (c.colour === null ? !colourOf.has(c.link) : STRING_COLOURS[c.colour] === colourOf.get(c.link))),
+        `compose()'s link names take their strings' colours, and hono-base.ts, with no string, none (${chips.map((c: { name: string; colour: number | null }) => `${c.name} ${c.colour}`).join(", ")})`
+    );
+
+    // Description: the PR card current, the camera on it, the steps unchanged.
+    const describing = host.calls.length;
+    await tell({ type: "description" }, 80);
+    expectThat(
+        shown()?.card?.pin === "pr" && shown()?.current === -1 && callsOf("command:camera:fly-to-rect", describing).length === 1 && host.camera.zoom >= 0.8 && host.camera.zoom <= 1,
+        `Description makes the PR card current and flies to it at zoom ${host.camera.zoom.toFixed(2)}`
+    );
+    await tell({ type: "next" }, 40);
+    expectThat(shown()?.card?.pin === "src/hono-base.ts:411" && shown()?.current === 0, "› from the PR card goes to step 1 again, #dispatch()");
+
+    // Read all opens on the board, 24 right of compose(), 720 wide in canvas units, at both window sizes, readable, and ✕ closes it.
+    /** Where a floating element's pane shows on screen: CSS scales it about its middle, which its translation makes up for. */
+    const paneOn = (req: any) => {
+        const pane = req.schema.children[0];
+        const [, tx, ty, scale] = /translate\((-?[\d.]+)px, (-?[\d.]+)px\) scale\(([\d.]+)\)/.exec(pane.styles.transform)!.map(Number);
+        const [w, h] = [pane.styles.width[0], pane.styles.height[0]];
+        return { pane, x: req.position.x + tx + (w / 2) * (1 - scale), y: req.position.y + ty + (h / 2) * (1 - scale), width: w, height: h, scale };
+    };
     for (const size of [
         { width: 1280, height: 800 },
         { width: 1920, height: 1080 },
@@ -269,23 +308,32 @@ try {
         Object.assign(screen, size);
         await tell({ type: "overview" }, 80);
         for (let i = 0; i < 8; i++) await tell({ type: "previous" }, 20);
-        for (let i = 0; i < 3; i++) await tell({ type: "next" }, 40);
+        for (let i = 0; i < 2; i++) await tell({ type: "next" }, 40);
         const from = host.calls.length;
-        await tell({ type: "read-all" }, 500);
+        await tell({ type: "read-all" }, 800);
         const open = callsOf("command:dom:upsert-floating-element", from).pop();
         const card = host.elements.get([...host.elements].find(([, e]) => e.schema.meta?.prBlackboard?.pin === "src/compose.ts:18")![0])!.rect;
-        const right = host.camera.x + (card.x + card.width) * host.camera.zoom;
-        const width = open?.req.schema.styles.width[0];
-        const wanted = size.width === 1920 ? width === 720 : width >= 520 && width <= 720;
-        const [bar, iframe] = open?.req.schema.children ?? [];
+        const { zoom } = host.camera;
+        const right = host.camera.x + (card.x + card.width) * zoom;
+        const on = open ? paneOn(open.req) : null;
+        expectThat(
+            shown()?.card?.pin === "src/compose.ts:18" && !!on && Math.abs(on.x - (right + 24 * zoom)) < 1 && on.width === 720 && Math.abs(on.scale - zoom) < 1e-3 && zoom >= 0.8 && zoom <= 1,
+            `at ${size.width}×${size.height}, Read all opens 24 right of compose() on the board, 720 wide, scaled by the zoom, ${zoom.toFixed(2)}`
+        );
+        const [bar, iframe] = on?.pane.children ?? [];
         const buttons = (bar?.children ?? []).map((b: { domId: string }) => b.domId).join(" ");
         expectThat(
-            shown()?.card?.pin === "src/compose.ts:18" && !!open && open.req.position.x >= Math.round(right) + 24 && wanted,
-            `at ${size.width}×${size.height}, Read all opens right of compose(), ${width} px wide`
+            on?.pane.children.length === 2 && buttons === "pr-blackboard:read-all:handle pr-blackboard:read-all:close" && iframe?.type === "iframe" && iframe.child.srcDoc.includes('<header><span class="name">compose()</span>'),
+            "it opens with the card's own header, a drag handle and ✕ over it, and there is no footer"
         );
+        const panning = host.calls.length;
+        await deliver({ type: "subscription:camera:moved-rapid", subscriptionId: "check", body: { x: host.camera.x - 300, y: host.camera.y, zoom: zoom / 2 } } as never);
+        await wait(40);
+        const moved = callsOf("command:dom:update-floating-element", panning).pop();
+        const after = moved ? paneOn(moved.req) : null;
         expectThat(
-            open?.req.schema.children.length === 2 && buttons === "pr-blackboard:read-all:close" && iframe?.type === "iframe" && iframe.child.srcDoc.includes('<header><span class="name">compose()</span>'),
-            "it opens with the card's own header and ✕ over its right end, and there is no footer"
+            !!after && Math.abs(after.x - (host.camera.x - 300 + (card.x + card.width + 24) * (zoom / 2))) < 1 && Math.abs(after.scale - zoom / 2) < 1e-3,
+            "zoomed out by half and panned, it stays beside its card at half the size"
         );
         const closing = host.calls.length;
         await deliver({ type: "subscription:dom:element-clicked", subscriptionId: "check", body: { domElementId: "pr-blackboard:read-all:close", clientX: 0, clientY: 0 } });
@@ -297,20 +345,20 @@ try {
         expectThat(callsOf("command:dom:remove-floating-element", escaping).length === 1, "Esc in the panel closes it too");
         await tell({ type: "next" }, 40);
         const short = host.calls.length;
-        await tell({ type: "read-all" }, 500);
-        const tall = callsOf("command:dom:upsert-floating-element", short).pop()?.req.schema.children[1].styles.height[0];
-        expectThat(shown()?.card?.name === "toError()" && tall < 200, `Read all on toError(), a short function, is as tall as its page: ${tall} px, not 640`);
+        await tell({ type: "read-all" }, 800);
+        const tall = callsOf("command:dom:upsert-floating-element", short).pop()?.req.schema.children[0].styles.height[0];
+        expectThat(shown()?.card?.name === "toError()" && tall < 200, `Read all on toError(), a short function, is as tall as its page: ${tall} canvas units, not 640`);
         await tell({ type: "close" }, 40);
     }
 
-    // Open another goes back to the start view and keeps the board; a click on one of its cards reads it again.
+    // Home goes back to the start view and keeps the board; a click on one of its cards reads it again.
     const cardCount = () => [...host.elements.values()].filter((e) => e.schema.type === "component").length;
     const before = cardCount();
     await tell({ type: "start" }, 40);
     const startShown = shown()?.phase === "start" && cardCount() === before;
     const [toErrorId, toErrorEl] = [...host.elements].find(([, e]) => e.schema.type === "component" && e.schema.meta?.prBlackboard?.pin === "src/compose.ts:4")!;
     await click([toErrorId], { x: toErrorEl.rect.x + 40, y: toErrorEl.rect.y + 20 }, 80);
-    expectThat(startShown && shown()?.phase === "ready" && shown()?.card?.name === "toError()", "Open another shows the start view and keeps the board; a click on toError() brings the reading view back");
+    expectThat(startShown && shown()?.phase === "ready" && shown()?.card?.name === "toError()", "Home shows the start view and keeps the board; a click on toError() brings the reading view back");
 
     // Rebuild: GitHub read again past the stored copy, the new board where the old PR card stands, then the old board's elements off.
     const ours = () => [...host.elements].filter(([, e]) => e.schema.meta?.prBlackboard).map(([id]) => id);
@@ -351,8 +399,8 @@ try {
     const [composeId, composeAgain] = cardOf("src/compose.ts:18");
     const fold = (composeAgain.schema.meta.prBlackboard.folds as [number, number][])[0];
     const folding = host.calls.length;
-    await click([composeId], { x: composeAgain.rect.x + 100, y: composeAgain.rect.y + fold[0] + 10 }, 700);
-    const page = callsOf("command:dom:upsert-floating-element", folding).pop()?.req.schema.children[1].child.srcDoc ?? "";
+    await click([composeId], { x: composeAgain.rect.x + 100, y: composeAgain.rect.y + fold[0] + 10 }, 1200);
+    const page = callsOf("command:dom:upsert-floating-element", folding).pop()?.req.schema.children[0].children[1].child.srcDoc ?? "";
     expectThat(page.includes(`class="r focus ctx" data-at="${fold[1]}"`) && callsOf("command:kv-storage:get", folding).length > 0, "a fold row opens Read all at its lines from the card's mark, loading the review only then");
     expectThat(callsOf("command:scene:clear-selection", folding).length === 1, "the fold-row click clears Drawdy's selection");
     expectThat(jsdelivr(beforeReload) === 0, `after the reload nothing comes from jsDelivr (${jsdelivr(beforeReload)} requests)`);

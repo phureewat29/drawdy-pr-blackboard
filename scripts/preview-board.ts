@@ -8,26 +8,26 @@
  * its Catmull-Rom spline through `[start, ...bend, end]`, the arrowhead
  * along the last segment, no roughness; a handwriting face stands in for
  * Drawdy's on the labels. Close-ups show the board at reading zoom through
- * the step camera, with the popover where it opens, and the panel in its
- * strip. For each board it prints the links drawn and not, and how often
- * strings cross, against straight strings between the same ends; for each
- * PR card it prints the description's height as Chrome lays it out beside
- * `markdownHeight`'s estimate.
+ * the step camera, with Read all on the board where it opens, and the panel
+ * in its strip. For each board it prints the links drawn and not, and how
+ * often strings cross, against straight strings between the same ends; for
+ * each PR card it prints the description's height as Chrome lays it out
+ * beside `markdownHeight`'s estimate.
  *
  * Usage: node scripts/preview-board.ts [out-dir] [saved-pr.json ...]. Each
  * saved pull request (the fixtures' shape, by absolute path) adds its
  * overview and PR card.
  */
 
-import type { DrawdyElementSchema, ModuleStyling } from "@drawdy/driver-protocol";
+import type { DomElementSchema, DrawdyElementSchema, ModuleStyling } from "@drawdy/driver-protocol";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { nameRect, prCard, readAllOf } from "../src/lib/card.ts";
-import { planBoard, stepsOf, stringCrossings, stringPath, union, type BoardPlan, type PlannedString, type Point, type Rect } from "../src/lib/layout.ts";
+import { STRING_COLOURS, planBoard, stepsOf, stringCrossings, stringPath, union, type BoardPlan, type PlannedString, type Point, type Rect } from "../src/lib/layout.ts";
 import { MARKDOWN_CSS, lexMarkdown, markdownHtml, segments } from "../src/lib/markdown.ts";
 import type { Review } from "../src/lib/model.ts";
-import { VIEW, overviewCamera, placeReadAll, stepCamera, type Camera, type Screen } from "../src/lib/view.ts";
+import { VIEW, overviewBounds, overviewCamera, readAllCamera, readAllRect, stepCamera, usable, type Camera, type Screen } from "../src/lib/view.ts";
 import { themeCss } from "../src/driver/channel.ts";
 import { reviewElements } from "../src/driver/elements.ts";
 import { popoverSchema } from "../src/driver/read-all.ts";
@@ -45,9 +45,10 @@ mkdirSync(OUT, { recursive: true });
 
 type Theme = "light" | "dark";
 const BOARD = { light: { bg: "#f4f4f5", grid: "#e4e4e7" }, dark: { bg: "#18181b", grid: "#222226" } };
+/** ModuleStyling as Drawdy computes it from drawdy.io's deployed tokens (read 2026-10-11): the panel's background is `--surface-elevated`. */
 const STYLING: Record<Theme, ModuleStyling> = {
-    dark: { theme: "dark", background: "#1f1f23", foreground: "rgba(255,255,255,.95)", surface: "#27272a", surface2: "#2e2e33", mutedForeground: "#a1a1aa", primary: "#c5f601", primaryForeground: "#18181b", accent: "#27272a", accentForeground: "#fff", border: "#34343a", input: "#34343a", ring: "#c5f601", destructive: "#ef4444", success: "#22c55e", warning: "#f59e0b", radiusSm: "6px", radiusMd: "8px", radiusLg: "12px" } as unknown as ModuleStyling,
-    light: { theme: "light", background: "#ffffff", foreground: "#18181b", surface: "#ffffff", surface2: "#f4f4f5", mutedForeground: "#71717a", primary: "#b3e000", primaryForeground: "#18181b", accent: "#f4f4f5", accentForeground: "#18181b", border: "#e4e4e7", input: "#e4e4e7", ring: "#9cc400", destructive: "#e5484d", success: "#22c55e", warning: "#f59e0b", radiusSm: "6px", radiusMd: "8px", radiusLg: "12px" } as unknown as ModuleStyling,
+    dark: { theme: "dark", background: "#27272a", foreground: "#fffffff2", surface: "#1f1f23", surface2: "#1f1f23", mutedForeground: "#ffffffb3", primary: "#c5f601", primaryForeground: "#090909", accent: "#e1ff6d", accentForeground: "#090909", border: "#ffffff14", input: "#ffffff1f", ring: "#c5f601", destructive: "#fb3748", success: "#53c683", warning: "#eab308", radiusSm: "4px", radiusMd: "6px", radiusLg: "8px" },
+    light: { theme: "light", background: "#fff", foreground: "#000000f2", surface: "#fff", surface2: "#fafafa", mutedForeground: "#000000b3", primary: "#c5f601", primaryForeground: "#090909", accent: "#7fae00", accentForeground: "#090909", border: "#0000001a", input: "#00000029", ring: "#b3e000", destructive: "#fb3748", success: "#53c683", warning: "#eab308", radiusSm: "4px", radiusMd: "6px", radiusLg: "8px" },
 };
 const HAND = `'Chalkboard SE', 'Bradley Hand', 'Comic Sans MS', cursive`;
 
@@ -108,10 +109,18 @@ const worldHtml = (built: Built, theme: Theme) => {
     return `<svg style="position:absolute;left:0;top:0;overflow:visible" width="1" height="1">${svg.join("")}</svg>${boxes.join("")}${cards.join("")}`;
 };
 
-/** A page showing the board through a camera, with screen-space layers on top. */
-const page = (built: Built, screen: Screen, camera: Camera, theme: Theme, layers: { overlay?: string; chrome?: boolean } = {}) => {
+/**
+ * A page showing the board through a camera, with screen-space layers on
+ * top. `clipped` is drawn on the board, as Read all is, but clipped to the
+ * usable view, where it slides under Drawdy's toolbar and the panel.
+ */
+const page = (built: Built, screen: Screen, camera: Camera, theme: Theme, layers: { overlay?: string; chrome?: boolean; clipped?: string } = {}) => {
     const zoom = camera.zoom;
     const grid = 40 * zoom;
+    const view = usable(screen);
+    const clipped = layers.clipped
+        ? `<div style="position:absolute;left:${view.x}px;top:${view.y}px;width:${view.width}px;height:${view.height}px;overflow:hidden"><div style="position:absolute;left:0;top:0;transform-origin:0 0;transform:scale(${zoom}) translate(${-camera.rect.x}px, ${-(camera.rect.y + view.y / zoom)}px)">${layers.clipped}</div></div>`
+        : "";
     return `<!doctype html><html><head><meta charset="utf-8"><style>
 html, body { margin: 0; width: ${screen.width}px; height: ${screen.height}px; overflow: hidden; background: ${BOARD[theme].bg}; color-scheme: ${theme}; }
 body { background-image: radial-gradient(${BOARD[theme].grid} 1.2px, transparent 1.2px); background-size: ${grid}px ${grid}px; }
@@ -119,14 +128,19 @@ body { background-image: radial-gradient(${BOARD[theme].grid} 1.2px, transparent
 .toolbar { position: absolute; left: 0; right: 0; top: 0; height: ${VIEW.toolbar}px; display: flex; align-items: center; gap: 10px; padding: 0 18px; box-sizing: border-box; font: 13px system-ui; color: ${theme === "dark" ? "#a1a1aa" : "#71717a"}; }
 .minimap { position: absolute; left: 16px; bottom: 18px; width: 156px; height: 134px; border-radius: 10px; box-sizing: border-box; background: ${theme === "dark" ? "#232329" : "#fff"}; border: 1px solid ${theme === "dark" ? "#3f3f46" : "#e4e4e7"}; box-shadow: 0 1px 3px rgba(0,0,0,.2); }
 .toolbar i { width: 34px; height: 34px; border-radius: 9px; background: ${theme === "dark" ? "#27272a" : "#fff"}; box-shadow: 0 1px 3px rgba(0,0,0,.2); }
-</style></head><body><div id="world">${worldHtml(built, theme)}</div>${layers.chrome ? `<div class="toolbar"><i></i><i></i><i></i><i></i><span style="margin-left:auto">usable view below this bar, left of the panel strip</span></div><div class="minimap"></div>` : ""}${layers.overlay ?? ""}</body></html>`;
+</style></head><body><div id="world">${worldHtml(built, theme)}</div>${clipped}${layers.chrome ? `<div class="toolbar"><i></i><i></i><i></i><i></i><span style="margin-left:auto">usable view below this bar, left of the panel strip</span></div><div class="minimap"></div>` : ""}${layers.overlay ?? ""}</body></html>`;
 };
 
-/** The PR Blackboard panel's webview in a 320 × 534 frame, showing `view`; with `focus`, that element has focus once the view is in. */
-const panelFrame = (view: PanelView, theme: Theme, at: Point, focus?: string) => {
+/**
+ * The PR Blackboard panel's webview in a 320 × 534 frame, showing `view`;
+ * with `focus`, that element has focus once the view is in, and with
+ * `click`, that button has been pressed (a held Rebuild).
+ */
+const panelFrame = (view: PanelView, theme: Theme, at: Point, focus?: string, click?: string) => {
+    const then = [click ? `document.getElementById(${JSON.stringify(click)}).click();` : "", focus ? `document.getElementById(${JSON.stringify(focus)}).focus();` : ""].join("");
     const html = webviewHtml(themeCss(STYLING[theme])).replace(
         '<script type="module">',
-        `<script>window.acquireDrawdyApi=()=>({postMessage(){},onMessage(f){setTimeout(()=>{f({type:"view",view:${JSON.stringify(view).replace(/</g, "\\u003c")}});${focus ? `document.getElementById(${JSON.stringify(focus)}).focus();` : ""}});return()=>{}}});</script><script type="module">`
+        `<script>window.acquireDrawdyApi=()=>({postMessage(){},onMessage(f){setTimeout(()=>{f({type:"view",view:${JSON.stringify(view).replace(/</g, "\\u003c")}});${then}});return()=>{}}});</script><script type="module">`
     );
     return `<div style="position:absolute;left:${at.x}px;top:${at.y}px;width:320px;height:534px;border-radius:14px;overflow:hidden;box-shadow:0 10px 40px rgba(0,0,0,.35);border:1px solid ${theme === "dark" ? "#34343a" : "#e4e4e7"}"><iframe srcdoc="${attr(html)}" style="width:320px;height:534px;border:0;display:block"></iframe></div>`;
 };
@@ -148,16 +162,22 @@ const baseView = (review: Review): Omit<PanelView, "phase"> => {
     };
 };
 
-const readingView = (built: Built, pin: string): PanelView => {
-    const { review } = built;
+/** The reading view at `pin`, its link names in their strings' colours from the plan, as the board's marks give them. */
+const readingView = (built: Built, pin: string, more: Partial<PanelView> = {}): PanelView => {
+    const { review, plan } = built;
     const step = stepsOf(review).indexOf(pin);
+    const colourOf = (link: string) => {
+        const s = plan.strings.find((x) => x.link === link);
+        return s ? (STRING_COLOURS as readonly string[]).indexOf(s.style.color) : null;
+    };
     return {
         ...baseView(review),
         phase: "ready",
         current: step,
         hasPrevious: step > 0,
         hasNext: step < stepsOf(review).length - 1,
-        card: currentCardOf(review, review.pins.find((x) => x.id === pin)!),
+        card: currentCardOf(review, review.pins.find((x) => x.id === pin)!, colourOf),
+        ...more,
     };
 };
 
@@ -199,21 +219,18 @@ const schemaHtml = (node: any): string => {
     }
 };
 
-/** Read all where it opens right of `pin`, opened from the panel at the first change. */
-const readAllOverlay = (built: Built, pin: string, camera: Camera, screen: Screen, theme: Theme) => {
+/**
+ * Read all on the board where it opens, 24 right of `pin`, opened from the
+ * panel at the first change, in canvas units: the pane of its schema, the
+ * page scaled with the board. `moved` is where a drag took it.
+ */
+const readAllPane = (built: Built, pin: string, theme: Theme, moved: Point = { x: 0, y: 0 }) => {
     const { review, plan } = built;
-    const p = review.pins.find((x) => x.id === pin)!;
-    const rect = plan.pins.get(pin)!;
-    const toScreen = (x: number, y: number) => ({ x: (x - camera.rect.x) * camera.zoom, y: (y - camera.rect.y) * camera.zoom });
-    const tl = toScreen(rect.x, rect.y);
-    const br = toScreen(rect.x + rect.width, rect.y + rect.height);
-    const page = readAllOf(p, review, theme, null);
-    const spot = placeReadAll({ left: tl.x, right: br.x, top: tl.y }, screen, page.height);
-    const schema = popoverSchema({ ...page, theme, pin }, spot.width, spot.height);
-    return {
-        spot,
-        html: `<div style="position:absolute;left:${spot.x}px;top:${spot.y}px;font-family:system-ui;box-shadow:0 12px 40px rgba(0,0,0,.35);border-radius:12px">${schemaHtml(schema)}</div>`,
-    };
+    const page = readAllOf(review.pins.find((x) => x.id === pin)!, review, theme, null);
+    const at = readAllRect(plan.pins.get(pin)!, page.height(VIEW.readAll.width));
+    const rect = { ...at, x: at.x + moved.x, y: at.y + moved.y };
+    const [pane] = (popoverSchema({ ...page, theme, pin }, rect, { clip: rect, transform: "none" }) as { children: DomElementSchema[] }).children;
+    return { rect, html: `<div style="position:absolute;left:${rect.x}px;top:${rect.y}px;font-family:system-ui">${schemaHtml(pane)}</div>` };
 };
 
 const shots: string[] = [];
@@ -260,15 +277,25 @@ const closeUp = (name: string, boards: Boards, pin: string, screen: Screen, them
     const names = far.map((id) => nameRect(built.plan.pins.get(id)!, built.review.pins.find((p) => p.id === id)!.name));
     const camera = stepCamera(rect, screen, null, linked, names)!;
     const panel = panelFrame(view ?? readingView(built, pin), theme, { x: screen.width - VIEW.panel + 10, y: VIEW.toolbar + 10 });
-    let overlay = panel;
-    let shown = camera;
-    if (readAll) {
-        // Read all pans the camera left first when it needs the room, keeping the zoom.
-        const first = readAllOverlay(built, pin, camera, screen, theme);
-        shown = { ...camera, rect: { ...camera.rect, x: camera.rect.x + first.spot.pan / camera.zoom } };
-        overlay = readAllOverlay(built, pin, shown, screen, theme).html + panel;
-    }
-    shoot(name, page(built, screen, shown, theme, { overlay, chrome: true }), screen, theme);
+    if (!readAll) return shoot(name, page(built, screen, camera, theme, { overlay: panel, chrome: true }), screen, theme);
+    // Read all opens readable: the camera first comes to the card's right 240 and the pane when they aren't in view at 0.8 to 1.
+    const pane = readAllPane(built, pin, theme);
+    const shown = readAllCamera(rect, pane.rect, screen, camera.rect) ?? camera;
+    shoot(name, page(built, screen, shown, theme, { clipped: pane.html, overlay: panel, chrome: true }), screen, theme);
+};
+
+/** Read all with the board zoomed to `zoom` round it, as a reader zooms out, or after a drag of its header by `moved`. */
+const readAllAt = (name: string, boards: Boards, pin: string, screen: Screen, theme: Theme, zoom: number, moved: Point = { x: 0, y: 0 }) => {
+    const built = boards[theme];
+    const pane = readAllPane(built, pin, theme, moved);
+    const around = union([built.plan.pins.get(pin)!, pane.rect]);
+    const view = usable(screen);
+    const camera: Camera = {
+        zoom,
+        rect: { x: around.x + around.width / 2 - view.width / zoom / 2, y: around.y + around.height / 2 - (view.height / zoom) / 2 - view.y / zoom, width: screen.width / zoom, height: screen.height / zoom },
+    };
+    const panel = panelFrame(readingView(built, pin), theme, { x: screen.width - VIEW.panel + 10, y: VIEW.toolbar + 10 });
+    shoot(name, page(built, screen, camera, theme, { clipped: pane.html, overlay: panel, chrome: true }), screen, theme);
 };
 
 /** What the reader sees once the board lands: the overview camera, the PR card current, the panel in its strip. */
@@ -293,7 +320,8 @@ const dragged = (name: string, boards: Boards, pin: string, by: Point, theme: Th
 
 const landed = (name: string, boards: Boards, screen: Screen, theme: Theme) => {
     const built = boards[theme];
-    const camera = overviewCamera(built.plan.bounds, screen);
+    const code = [...built.plan.pins].filter(([id]) => id !== "pr").map(([, r]) => r);
+    const camera = overviewCamera(overviewBounds(code, built.plan.pins.get("pr") ?? null)!, screen);
     const panel = panelFrame(readingView(built, "pr"), theme, { x: screen.width - VIEW.panel + 10, y: VIEW.toolbar + 10 });
     shoot(name, page(built, screen, camera, theme, { overlay: panel, chrome: true }), screen, theme);
 };
@@ -318,32 +346,24 @@ const report = (name: string, built: Built) => {
 };
 
 /**
- * Each description as Chrome lays it out at the PR card's width, whole,
- * beside `markdownHeight`'s estimate, and the blocks the card shows beside
- * the room the card gives them: measured by a script in the page and read
- * back with `--dump-dom`.
+ * Each description as Chrome lays it out on the PR card, at its width, the
+ * whole of it, beside `markdownHeight`'s estimate, which the card's height
+ * holds: measured by a script in the page and read back with `--dump-dom`.
  */
 const measure = (cards: [string, Review][]) => {
     const file = join(OUT, "measure.html");
     const css = `:root{--ink:#111;--ink2:#555;--md-border:#ddd;--md-code-bg:#f6f8fa;--bg:#fff;--bg2:#eee;--md-link:#0969da}*{box-sizing:border-box;margin:0;padding:0}code{font-family:ui-monospace,Menlo,monospace}${MARKDOWN_CSS}`;
-    const blocks = cards
-        .flatMap(([name, review]) => [
-            `<div data-name="${name}" data-part="whole" class="md" style="width:608px">${markdownHtml(lexMarkdown(review.pr.body), "card")}</div>`,
-            `<div data-name="${name}" data-part="card" class="md" style="width:608px">${markdownHtml(prCard(review).tokens, "card")}</div>`,
-        ])
-        .join("");
-    const script = `addEventListener("load",()=>{const out=[...document.querySelectorAll("div.md")].map(d=>[d.dataset.name+" "+d.dataset.part,d.scrollHeight]);document.getElementById("out").textContent=JSON.stringify(out)});`;
+    const blocks = cards.map(([name, review]) => `<div data-name="${name}" class="md" style="width:608px">${markdownHtml(lexMarkdown(review.pr.body), "card")}</div>`).join("");
+    const script = `addEventListener("load",()=>{const out=[...document.querySelectorAll("div.md")].map(d=>[d.dataset.name,d.scrollHeight]);document.getElementById("out").textContent=JSON.stringify(out)});`;
     writeFileSync(file, `<!doctype html><html><head><meta charset="utf-8"><style>${css}</style></head><body><pre id="out"></pre>${blocks}<script>${script}</script></body></html>`);
     // The page is in the output whatever Chrome's exit code.
     const dom = spawnSync(CHROME, ["--headless=new", "--disable-gpu", "--virtual-time-budget=4000", "--dump-dom", `file://${file}`], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).stdout ?? "";
     const measured = new Map<string, number>(JSON.parse((/<pre id="out">([^<]*)<\/pre>/.exec(dom)?.[1] || "[]").replace(/&quot;/g, '"')));
     for (const [name, review] of cards) {
         const m = prCard(review);
-        const [whole, shown] = [measured.get(`${name} whole`) ?? 0, measured.get(`${name} card`) ?? 0];
-        const over = (estimate: number, chrome: number) => (chrome > 0 ? `${Math.round((estimate / chrome - 1) * 100)}% over` : "not measured");
-        console.log(
-            `${name} description: ${whole} measured in Chrome, ${m.estimate} estimated (${over(m.estimate, whole)}); the card shows ${m.tokens.length} blocks, ${shown} measured in its ${m.description} (${over(m.description, shown)})${m.fold === null ? "" : ", then ⋯ Read all"}`
-        );
+        const whole = measured.get(name) ?? 0;
+        const over = whole > 0 ? `${Math.round((m.estimate / whole - 1) * 100)}% over` : "not measured";
+        console.log(`${name} description: ${whole} measured in Chrome, ${m.estimate} estimated (${over}), on a PR card ${m.width} × ${m.height}`);
     }
 };
 
@@ -357,18 +377,30 @@ overview("hono-overview", hono, "light");
 overview("hono-overview-dark", hono, "dark");
 landed("hono-1920-landed", hono, LARGE, "light");
 landed("hono-1920-landed-dark", hono, LARGE, "dark");
+// Description: the PR card current and the camera on it, as a step frames a card.
 closeUp("hono-1920-pr", hono, "pr", LARGE, "light");
-closeUp("hono-1920-pr-read-all", hono, "pr", LARGE, "dark", true);
+closeUp("hono-1280-pr-dark", hono, "pr", SMALL, "dark");
 closeUp("hono-1920-dispatch", hono, "src/hono-base.ts:411", LARGE, "light");
 closeUp("hono-1280-dispatch", hono, "src/hono-base.ts:411", SMALL, "light");
 closeUp("hono-1920-toerror-dark", hono, "src/compose.ts:4", LARGE, "dark");
 closeUp("hono-1920-toerror-read-all-dark", hono, "src/compose.ts:4", LARGE, "dark", true);
 closeUp("hono-1920-compose-read-all", hono, "src/compose.ts:18", LARGE, "light", true);
 closeUp("hono-1280-compose-read-all", hono, "src/compose.ts:18", SMALL, "dark", true);
+// Read all is on the board: zoomed out it shrinks with the cards, and a drag of its header moves it.
+readAllAt("hono-1600-compose-read-all-0.8-light", hono, "src/compose.ts:18", { width: 1600, height: 900 }, "light", 0.8);
+readAllAt("hono-1600-compose-read-all-0.4-dark", hono, "src/compose.ts:18", { width: 1600, height: 900 }, "dark", 0.4);
+readAllAt("hono-1600-compose-read-all-dragged-light", hono, "src/compose.ts:18", { width: 1600, height: 900 }, "light", 0.8, { x: -300, y: 260 });
 closeUp("hono-1920-tests", hono, "test:src/compose.test.ts", LARGE, "light");
 closeUp("hono-1920-hono-test", hono, "test:src/hono.test.ts", LARGE, "light");
 closeUp("hono-1920-bottom-row", hono, "src/hono-base.ts:276", LARGE, "light");
 dragged("hono-dragged", hono, "src/compose.ts:18", { x: 200, y: 0 }, "light");
+
+// A description five times hono's: the PR card grows down its own column, and the board lands framing the code.
+const honoReview = hono.light.review;
+const tall = boardsOf({ ...honoReview, pr: { ...honoReview.pr, body: Array.from({ length: 5 }, (_, i) => `## Part ${i + 1}\n\n${honoReview.pr.body}`).join("\n\n") } });
+report("hono#5513, five descriptions", tall.light);
+overview("tall-overview", tall, "light");
+landed("tall-1600-landed", tall, { width: 1600, height: 900 }, "light");
 
 // excalidraw/excalidraw#12237: the stress case for strings and Markdown.
 const excalidraw = boardsOf(await reviewOf(excalidrawFixture()));
@@ -376,43 +408,50 @@ report("excalidraw#12237", excalidraw.light);
 overview("excalidraw-overview", excalidraw, "light");
 overview("excalidraw-overview-dark", excalidraw, "dark");
 closeUp("excalidraw-1920-pr", excalidraw, "pr", LARGE, "light");
-closeUp("excalidraw-1920-pr-read-all", excalidraw, "pr", LARGE, "dark", true);
 // A tall step pulled toward names up and right: its gutter stays clear of the minimap.
 closeUp("excalidraw-1920-pointer-move-dark", excalidraw, "packages/excalidraw/components/App.tsx:6808", LARGE, "dark");
 closeUp("excalidraw-1280-pointer-move", excalidraw, "packages/excalidraw/components/App.tsx:6808", SMALL, "light");
 landed("excalidraw-1920-landed-dark", excalidraw, LARGE, "dark");
 
-// The panel's states, dark above light; the start view after Open another, its field focused, has a page of its own per theme, since one frame in a page can have focus.
+// The panel's states, dark above light. A state with focus has a page of its own per theme, since one frame in a page can have focus.
 const loadingLines: PanelView["loading"] = [
-    { label: "Reading the pull request", state: "done" },
+    { label: "Reading the PR", state: "done" },
     { label: "Reading 4 changed files", state: "active" },
     { label: "Pinning the cards", state: "todo" },
 ];
 const start: PanelView = { ...baseView(hono.light.review), phase: "start", tag: null, pr: null };
-const pointer = excalidraw.light.review.pins.find((p) => p.name === "isASelectedElement()")!.id;
-const states: PanelView[] = [
-    start,
-    { ...start, error: "Only GitHub pull request links work, like github.com/owner/repo/pull/123." },
-    { ...baseView(hono.light.review), phase: "loading", loading: loadingLines, pr: null },
-    readingView(hono.light, "pr"),
-    readingView(hono.light, "src/compose.ts:18"),
-    readingView(excalidraw.light, pointer),
-    { ...start, error: "This network has used GitHub's 60 requests for this hour. Try again in 12 minutes." },
+const resize = excalidraw.light.review.pins.find((p) => p.name === "maybeHandleResize()")!.id;
+const LIMITED = "This network has used GitHub's 60 requests for this hour. Try again in 12 minutes.";
+const states: [PanelView, string?][] = [
+    [start],
+    [{ ...start, error: "Only GitHub PR links work, like github.com/owner/repo/pull/123." }],
+    [{ ...baseView(hono.light.review), phase: "loading", loading: loadingLines, pr: null }],
+    [readingView(hono.light, "pr")],
+    [readingView(hono.light, "src/hono-base.ts:411")],
+    [readingView(hono.light, "src/compose.ts:18")],
+    [readingView(hono.light, "src/compose.ts:18", { rebuilding: "Reading 4 changed files" })],
+    [readingView(hono.light, "src/compose.ts:18", { rebuildCost: { files: 2188, requests: 23 } }), "rebuild"],
+    [readingView(hono.light, "src/compose.ts:18", { error: LIMITED })],
+    [readingView(excalidraw.light, "pr")],
+    [readingView(excalidraw.light, resize)],
+    [{ ...start, error: LIMITED }],
 ];
-const rows = (["dark", "light"] as Theme[]).map((theme, r) => states.map((view, i) => panelFrame(view, theme, { x: 20 + i * 350, y: 20 + r * 574 })).join("")).join("");
+const rows = (["dark", "light"] as Theme[]).map((theme, r) => states.map(([view, click], i) => panelFrame(view, theme, { x: 20 + i * 350, y: 20 + r * 574 }, undefined, click)).join("")).join("");
 shoot("panel-states", `<!doctype html><html><body style="margin:0;background:#8a8a90;width:${20 + states.length * 350}px;height:1148px">${rows}</body></html>`, { width: 20 + states.length * 350, height: 1148 });
-for (const theme of ["dark", "light"] as Theme[])
-    shoot(
-        `panel-another-${theme}`,
-        `<!doctype html><html><body style="margin:0;background:#8a8a90;width:370px;height:574px">${panelFrame(start, theme, { x: 20, y: 20 }, "start-url")}</body></html>`,
-        { width: 370, height: 574 }
-    );
+const single = (name: string, view: PanelView, theme: Theme, focus?: string) =>
+    shoot(name, `<!doctype html><html><body style="margin:0;background:#8a8a90;width:370px;height:574px">${panelFrame(view, theme, { x: 20, y: 20 }, focus)}</body></html>`, { width: 370, height: 574 });
+for (const theme of ["dark", "light"] as Theme[]) {
+    // Home: the start view, its field focused.
+    single(`panel-home-${theme}`, start, theme, "start-url");
+    // Keyboard focus on Rebuild: its tooltip at once, and the ring that reads on white too.
+    single(`panel-focus-${theme}`, readingView(hono.light, "src/compose.ts:18"), theme, "rebuild");
+}
 
 // A made-up pull request with two threads, a cycle, tests, docs and a description with every Markdown block.
 const synthetic = boardsOf(await reviewOf(twoThreads()));
 report("two threads", synthetic.light);
 overview("synthetic-overview", synthetic, "light");
-closeUp("synthetic-1920-pr", synthetic, "pr", LARGE, "dark", true);
+closeUp("synthetic-1920-pr", synthetic, "pr", LARGE, "dark");
 closeUp("synthetic-1920-thread-2", synthetic, "src/render.ts:12", LARGE, "light");
 
 // A board at the 32-card limit, the PR card counting what it left off.
@@ -429,6 +468,8 @@ for (const path of SAVED) {
     report(name, boards.light);
     overview(`saved-${f.pr.ref.repo}-${f.pr.ref.number}`, boards, "light");
     closeUp(`saved-${f.pr.ref.repo}-${f.pr.ref.number}-pr`, boards, "pr", LARGE, "dark");
+    // The panel as the board lands, the description whole, in each theme.
+    for (const theme of ["dark", "light"] as Theme[]) single(`saved-${f.pr.ref.repo}-${f.pr.ref.number}-panel-${theme}`, readingView(boards[theme], "pr"), theme);
     saved.push([name, boards.light.review]);
 }
 
