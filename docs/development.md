@@ -890,9 +890,8 @@ screen.
 The extension's icon is a picture, generated outside the repository: a
 fanned stack of diff cards tied with a red string and pinned, on deep
 charcoal (request 59). The chalkboard before it read as a face at 20 px:
-two cards over a U of string. `assets/icon.png`, 512 px, is the
-listing's, with a copy in `.github/assets/icon.png` beside the README's
-other images; its 64 px copy, a PNG data URI in `src/shared/app-icon.ts`, is
+two cards over a U of string. `.github/assets/icon.png`, 512 px, beside
+the README's other images, is the listing's; its 64 px copy, a PNG data URI in `src/shared/app-icon.ts`, is
 the 20 px action button's, which Drawdy draws as an image. `npm run icon
 -- <listing.png> <64px.png>` wires in both, so trying another candidate is
 one command. The art is generated full-bleed, then cut to a rounded
