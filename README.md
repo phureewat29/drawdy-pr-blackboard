@@ -7,12 +7,12 @@ agent can open a thousand-line PR in a few minutes, and someone on the team
 still has to read it.
 
 PR Blackboard pins a GitHub PR to your Drawdy board. Each changed function
-becomes a card. Labelled strings run from every call to the function it
-reaches and from every test to the code it covers. The board reads left to
+becomes a card. Labelled lines run from every call to the function it
+reaches, and from every test to the code it covers. The board reads left to
 right, from where the change starts to the code it calls, so you can walk
 through a big PR one card at a time.
 
-![67 PRs waiting for review turn into one board: honojs/hono#5513 opens, every changed function becomes a card, the panel follows the strings, then boards for Python, Go and JavaScript PRs](https://raw.githubusercontent.com/phureewat29/drawdy-pr-blackboard/main/.github/assets/demo.gif)
+![honojs/hono#5513 on the board: step through it card by card, jump along a line from the panel, open the overview, then boards from Python, Go and JavaScript PRs](https://raw.githubusercontent.com/phureewat29/drawdy-pr-blackboard/main/.github/assets/demo.gif)
 
 ## Why a board
 
@@ -22,7 +22,7 @@ together, and on a big PR that takes most of the review.
 
 - **The whole change in one place.** Where the change starts, then what it
   calls, then what that calls, from left to right.
-- **Calls you can follow.** A string runs from each call to the exact
+- **Calls you can follow.** A line runs from each call to the exact
   function it reaches, in whatever file it lives.
 - **Callers included.** Code that didn't change but calls into the change
   gets a card too.
@@ -32,7 +32,7 @@ together, and on a big PR that takes most of the review.
 
 ## How it works
 
-![1. Paste a PR link, or pick an example. 2. PR Blackboard reads the changed files and links the code. 3. Follow the strings, step by step.](https://raw.githubusercontent.com/phureewat29/drawdy-pr-blackboard/main/.github/assets/how-it-works.png)
+![1. Paste a PR link, or pick an example. 2. PR Blackboard reads the changed files and links the code. 3. Follow the lines, step by step.](https://raw.githubusercontent.com/phureewat29/drawdy-pr-blackboard/main/.github/assets/how-it-works.png)
 
 ## Made for
 
@@ -49,27 +49,26 @@ together, and on a big PR that takes most of the review.
 
 - **The PR card**: the title, the author, what changed, and the whole
   description, rendered the way GitHub shows it.
-- **Change cards**: each changed function with its changed lines, and the
-  lines that call other cards marked `→`. **Read all** opens the full code
-  right on the board; drag it anywhere, and it pans and zooms with the
-  board.
-- **Strings**: **calls**, **uses**, **tests** and **imports**. Strings that
-  cross or run close get different colours, so you can follow one across
-  the board. PR Blackboard draws a string only when it can tell exactly
-  where a call goes. It never guesses from a name.
+- **Change cards**: each changed function with its changes, and every call
+  to another card marked `→`. **Read all** opens the full code right on the
+  board; drag it anywhere, and it pans and zooms with the board.
+- **Lines**: **calls**, **uses**, **tests** and **imports**. Lines that cross
+  or run close get different colours, so you can follow one across the
+  board. PR Blackboard draws a line only when it can tell exactly where a
+  call goes. It never guesses from a name.
 
 ## Stepping through
 
 - **›** and **‹**, or the arrow keys, step through the code in board order,
   and the camera follows.
 - For each card, the panel lists what calls it, what it calls and what
-  tests it. Each name takes its string's colour; click one to go there.
+  tests it. Each name takes its line's colour; click one to go there.
 - **Overview** shows the whole board. **Description** goes to the PR card.
   **Home** takes you back to the examples, and your board stays.
   **Rebuild** reads the PR again after new commits.
 
-Strings work for **JavaScript, TypeScript, Python, Go and Rust**. PRs in
-other languages get a card for every change.
+Lines are drawn for **JavaScript, TypeScript, Python, Go and Rust**. PRs
+in other languages get a card for every change.
 
 ## Try it in 30 seconds
 
@@ -78,7 +77,7 @@ other languages get a card for every change.
 2. Paste a link like `github.com/honojs/hono/pull/5513`, or pick one of 15
    examples from Hono, Vite, Node.js, Svelte, Bun, Prometheus, CPython and
    more.
-3. Press **›** and follow the strings.
+3. Press **›** and follow the lines.
 
 ## Good to know
 
@@ -97,7 +96,7 @@ other languages get a card for every change.
 
 ## Permissions
 
-- **Board**: to pin cards and strings, and to find the boards it pinned
+- **Board**: to pin cards and lines, and to find the boards it pinned
   before.
 - **Interface**: to show its panel, its button and the Read all pane.
 - **Storage**: to keep the PRs you open and the language parsers on your
