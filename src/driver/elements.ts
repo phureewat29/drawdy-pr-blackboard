@@ -1,14 +1,13 @@
 /**
- * The board elements for a review, and the mark each carries in its `meta`
- * so PR Blackboard can find them again: after a reload, on a teammate's
- * screen, or when someone clicks one.
+ * The board elements for a review, and the mark each carries in its `meta` so PR Blackboard can find them again:
+ * after a reload, on a teammate's screen, or when someone clicks one.
  */
 
 import type { DomElementSchema, DrawdyElementSchema } from "@drawdy/driver-protocol";
 import { cardHtml, foldsOf, prCardHtml, type Theme } from "../lib/card.ts";
 import * as g from "../lib/guard.ts";
 import { prKey } from "../lib/github.ts";
-import { STRING_COLOURS, type BoardPlan } from "../lib/layout.ts";
+import { STRING_COLOURS, type BoardPlan, type PlannedString, type Rect } from "../lib/layout.ts";
 import type { Review } from "../lib/model.ts";
 
 export const MARK = "prBlackboard";
@@ -56,7 +55,7 @@ const markFor = (review: Pick<Review, "pr">, part: BoardMark["part"], extra: Par
 });
 
 /** A component holding a page of HTML, framed like a card; a dashed frame is drawn by the page itself. */
-const componentSchema = (html: string, width: number, height: number, framed = true): DomElementSchema => ({
+const componentSchema = (html: string, width: number, height: number, framed: boolean): DomElementSchema => ({
     type: "box",
     styles: {
         width: [width, "px"],
@@ -77,18 +76,19 @@ export type ReviewElements = {
     linkIds: Map<string, string>;
 };
 
+const point = (p: { x: number; y: number }): [number, number] => [Math.round(p.x * 10) / 10, Math.round(p.y * 10) / 10];
+
 /**
- * The board's elements in `theme`, the one Drawdy shows the reader who pins
- * it. Nothing is grouped, so a click selects one card. Each card's mark
- * holds what a click needs (name, size, fold rows), and each string's its
- * kind, both cards and colour, so the board works without the review.
- * Strings are curves through their bend points; a drag moves only their ends.
+ * The board's elements in `theme`, the one Drawdy shows the reader who pins it. Nothing is grouped, so a click
+ * selects one card. Each card's mark holds what a click needs (name, size, fold rows), and each string's its kind,
+ * both cards and colour, so the board works without the review. Strings are curves through their bend points; a
+ * drag moves only their ends.
  */
 export const reviewElements = (review: Review, plan: BoardPlan, newId: () => string, theme: Theme): ReviewElements => {
     const pinIds = new Map([...plan.pins.keys()].map((id) => [id, newId()]));
     const linkIds = new Map(plan.strings.map((s) => [s.link, newId()]));
 
-    const cards = [...plan.pins].map(([id, rect]): DrawdyElementSchema => {
+    const card = ([id, rect]: [string, Rect]): DrawdyElementSchema => {
         const pin = review.pins.find((p) => p.id === id)!;
         const pr = id === "pr";
         const html = pr ? prCardHtml(review, theme) : cardHtml(plan.cards.get(id)!, pin, theme);
@@ -107,25 +107,25 @@ export const reviewElements = (review: Review, plan: BoardPlan, newId: () => str
                 }),
             },
         };
+    };
+
+    const arrow = (s: PlannedString): DrawdyElementSchema => ({
+        type: "arrow",
+        drawdyElementId: linkIds.get(s.link)!,
+        color: s.style.color,
+        strokeWidth: s.style.width,
+        strokeDash: s.style.dash,
+        bend: s.bend.map(point),
+        startBinding: { drawdyElementId: pinIds.get(s.from.pin)!, anchorX: s.from.anchorX, anchorY: s.from.anchorY },
+        endBinding: { drawdyElementId: pinIds.get(s.to.pin)!, anchorX: s.to.anchorX, anchorY: s.to.anchorY },
+        meta: { [MARK]: markFor(review, "link", { link: s.link, kind: s.kind, from: s.from.pin, to: s.to.pin, colour: (STRING_COLOURS as readonly string[]).indexOf(s.style.color) }) },
     });
 
-    const point = (p: { x: number; y: number }): [number, number] => [Math.round(p.x * 10) / 10, Math.round(p.y * 10) / 10];
-    const strings = plan.strings.flatMap((s): DrawdyElementSchema[] => [
-        {
-            type: "arrow",
-            drawdyElementId: linkIds.get(s.link)!,
-            color: s.style.color,
-            strokeWidth: s.style.width,
-            strokeDash: s.style.dash,
-            bend: s.bend.map(point),
-            startBinding: { drawdyElementId: pinIds.get(s.from.pin)!, anchorX: s.from.anchorX, anchorY: s.from.anchorY },
-            endBinding: { drawdyElementId: pinIds.get(s.to.pin)!, anchorX: s.to.anchorX, anchorY: s.to.anchorY },
-            meta: { [MARK]: markFor(review, "link", { link: s.link, kind: s.kind, from: s.from.pin, to: s.to.pin, colour: (STRING_COLOURS as readonly string[]).indexOf(s.style.color) }) },
-        },
-        ...(s.label
+    const label = (s: PlannedString): DrawdyElementSchema[] =>
+        s.label
             ? [
                   {
-                      type: "text" as const,
+                      type: "text",
                       drawdyElementId: newId(),
                       x: s.label.x,
                       y: s.label.y,
@@ -135,7 +135,7 @@ export const reviewElements = (review: Review, plan: BoardPlan, newId: () => str
                       meta: { [MARK]: markFor(review, "label", { link: s.link, pin: s.from.pin }) },
                   },
               ]
-            : []),
-    ]);
-    return { elements: [...cards, ...strings], pinIds, linkIds };
+            : [];
+
+    return { elements: [...[...plan.pins].map(card), ...plan.strings.flatMap((s) => [arrow(s), ...label(s)])], pinIds, linkIds };
 };

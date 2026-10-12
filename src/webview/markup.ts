@@ -1,7 +1,7 @@
 /** The panel's static markup and styles. Colours come from Drawdy's theme vars, which load before this sheet. */
 
 import { segmentsHtml } from "../lib/markdown.ts";
-import { icon } from "../shared/icons.ts";
+import { icon, type IconName } from "../shared/icons.ts";
 import { SUGGESTIONS } from "../shared/suggestions.ts";
 
 const escapeHtml = (text: string) => text.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
@@ -12,7 +12,7 @@ html, body { margin: 0; height: 100%; }
 body {
     --hover: color-mix(in srgb, var(--drawdy-foreground) 7%, transparent);
     --shade: color-mix(in srgb, var(--drawdy-foreground) 16%, transparent);
-    /* Drawdy's lime for what turns, drawn toward the text colour so it reads on white too (3.1:1), and stays lime on dark. */
+    /* Drawdy's lime drawn toward the text colour, so a turning mark reads on white too (3.1:1) and stays lime on dark. */
     --turning: color-mix(in oklab, var(--drawdy-primary) 70%, var(--drawdy-foreground));
     /* Drawdy's warning amber fills a warning's mark; drawn toward the text colour, it strokes one that reads on white (3.3:1). */
     --amber: var(--drawdy-warning);
@@ -29,7 +29,6 @@ button { cursor: pointer; }
 .mono, code, .tag, input { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 section { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 
-/* The paste field, at the top of the start view. */
 .field { position: relative; flex: none; }
 .field svg { position: absolute; left: 10px; top: 9px; width: 14px; height: 14px; color: var(--drawdy-muted-foreground); pointer-events: none; }
 .field input { display: block; width: 100%; height: 32px; padding: 0 10px 0 30px; font-size: 12px; background: var(--drawdy-surface); border: 1px solid var(--drawdy-border); border-radius: var(--drawdy-radius-md); outline: none; }
@@ -37,16 +36,14 @@ section { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .field input:focus { border-color: var(--drawdy-ring); box-shadow: 0 0 0 1px var(--drawdy-ring); }
 .error { flex: none; margin: 0; padding: 8px 10px; border-radius: var(--drawdy-radius-md); background: color-mix(in srgb, var(--drawdy-destructive) 14%, transparent); font-size: 12.5px; line-height: 17px; }
 
-/* A pull request's owner/repo#number. An example project's tag takes its colour, --c; any other repo's stays neutral. */
+/* An example project's tag takes its colour, --c; any other repo's stays neutral. */
 .tag { margin: 0; padding: 0 6px; border: 1px solid var(--drawdy-border); border-radius: 999px; font-size: 11px; line-height: 16px; color: var(--drawdy-muted-foreground); white-space: nowrap; }
 .tag.hue { color: color-mix(in oklab, var(--c) 60%, var(--drawdy-foreground)); border-color: color-mix(in oklab, var(--c) 40%, transparent); background: color-mix(in oklab, var(--c) 10%, transparent); }
 code { padding: 0 3px; border-radius: 4px; font-size: 11.5px; line-height: 1; background: color-mix(in srgb, currentColor 10%, transparent); }
 
-/* Example rows, no heading: the tag on its own line, then the title. */
 .prs { list-style: none; margin: 0 -8px; padding: 0 0 8px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; align-content: start; min-height: 0; overflow-y: auto; }
 .prs button { width: 100%; display: grid; justify-items: start; gap: 4px; padding: 6px 8px; border: 0; border-radius: 8px; background: transparent; text-align: left; font-size: 13px; color: var(--drawdy-foreground); overflow-wrap: break-word; }
 .prs button:hover { background: var(--hover); }
-/* A big pull request says what it costs, after its tag. */
 .note { font: 11px/16px ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--drawdy-muted-foreground); }
 .prs button:focus-visible, #links button:focus-visible { outline-offset: -2px; }
 /* Shadows only while there is more to scroll. */
@@ -61,10 +58,8 @@ code { padding: 0 3px; border-radius: 4px; font-size: 11.5px; line-height: 1; ba
 
 #start { padding: 14px 14px 0; gap: 10px; }
 
-/* Loading, as a CI job: the tag, the steps, then the annotations, scrolling when they outgrow the panel. On a failure the toolbar comes, Home and Try again. */
 .load-body { flex: 1; min-height: 0; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 14px; }
 .load-body > .tag { align-self: flex-start; }
-/* A step: its mark, its words (a muted note after them), and at its right a count or the time it took; its rows under its words. */
 .steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
 .steps > li { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; column-gap: 10px; color: var(--drawdy-muted-foreground); }
 .steps > li:not(.todo) { color: var(--drawdy-foreground); }
@@ -74,11 +69,10 @@ code { padding: 0 3px; border-radius: 4px; font-size: 11.5px; line-height: 1; ba
 .rows { min-height: 0; overflow: hidden; list-style: none; margin: 0; padding: 0; }
 .rows > li { display: grid; grid-template-columns: 12px minmax(0, 1fr); column-gap: 8px; align-items: center; margin-top: 4px; font-size: 12px; line-height: 16px; color: var(--drawdy-muted-foreground); }
 .rows > li.done, .rows > li.active, .rows > li.warning, .rows > li.failed { color: var(--drawdy-foreground); }
-/* A file by its path, its folder muted: the panel cuts a path too long for the row at its start (fitPath), so the file's name stays whole. */
+/* fitPath cuts a path too long for its row at its start, so the file's name stays whole. */
 .file { min-width: 0; overflow: hidden; white-space: nowrap; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11.5px; }
 .file .dir, .rows > li.todo .file { color: var(--drawdy-muted-foreground); }
 .rows > li.more { display: block; padding-left: 20px; }
-/* Lucide marks. A step's: circle to do, loader-circle turning, circle-check done (a lime disc, a dark tick), triangle-alert done with a warning (an amber triangle, a dark mark), circle-x failed (a red disc, a white cross). A row's are lighter and still, only its step turns: circle, circle-dot under way, check, triangle-alert and x, stroked. */
 .steps svg { width: 16px; height: 16px; margin-top: 1px; color: var(--drawdy-border); }
 .rows svg { width: 12px; height: 12px; margin: 0; }
 .steps .active > svg, .line svg { color: var(--turning); animation: spin .8s linear infinite; }
@@ -93,7 +87,6 @@ code { padding: 0 3px; border-radius: 4px; font-size: 11.5px; line-height: 1; ba
 .rows .done > svg { color: var(--drawdy-muted-foreground); }
 .rows .warning > svg { color: var(--amber-ink); }
 .rows .failed > svg { color: var(--drawdy-destructive); }
-/* CI annotations: each a mark, a short title and a plain detail line. Warnings share one frame under a row that counts them and opens or shuts them, a rule between each; a failure is the open's error box, never shut. */
 .annotations { display: grid; gap: 8px; }
 .annotations > div:empty { display: none; }
 .warnings { border: 1px solid var(--drawdy-border); border-radius: var(--drawdy-radius-md); overflow: hidden; }
@@ -103,7 +96,7 @@ code { padding: 0 3px; border-radius: 4px; font-size: 11.5px; line-height: 1; ba
 .summary svg { width: 16px; height: 16px; }
 .summary svg:last-child { color: var(--drawdy-muted-foreground); }
 .warnings.open .summary svg:last-child { transform: rotate(180deg); }
-/* The list slides open and shut as the step rows do, and while shut is gone from the page's reading order. */
+/* Shut, the list is gone from the page's reading order too. */
 .warnings-wrap { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .14s ease-in; }
 .warnings.open .warnings-wrap { grid-template-rows: 1fr; transition: grid-template-rows .18s ease-out; }
 .warnings-list { min-height: 0; overflow: hidden; visibility: hidden; transition: visibility 0s .14s; }
@@ -116,7 +109,7 @@ code { padding: 0 3px; border-radius: 4px; font-size: 11.5px; line-height: 1; ba
 .annotation .title { font-weight: 600; }
 .annotation .detail { font-size: 12px; line-height: 17px; color: var(--drawdy-muted-foreground); }
 .annotation .detail:empty { display: none; }
-/* A step's rows slide open as it starts, once it has run a moment, and shut as it ends: their height only, never a fade, which a busy board can leave half drawn. */
+/* A step's rows slide open and shut by their height only, never a fade, which a busy board can leave half drawn. */
 .rows-wrap { animation: open .18s ease-out .2s both; }
 .rows-wrap.closing { animation: shut .14s ease-in both; }
 @keyframes open { from { grid-template-rows: 0fr; } }
@@ -125,7 +118,7 @@ code { padding: 0 3px; border-radius: 4px; font-size: 11.5px; line-height: 1; ba
 @media (prefers-reduced-motion: reduce) { .steps svg, .line svg, .rows-wrap { animation: none !important; } .warnings-wrap, .warnings-list { transition: none !important; } }
 .sr { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
-/* Reading: the pull request, the current card (it scrolls), then the toolbar with every control. The one column never grows past the panel, whatever the description holds. */
+/* The one column never grows past the panel, whatever the description holds. */
 #ready { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; grid-template-columns: minmax(0, 1fr); }
 /* The toolbar keeps the last row while the card block above it is hidden. */
 #ready > .tools { grid-row: 3; }
@@ -161,37 +154,30 @@ code { padding: 0 3px; border-radius: 4px; font-size: 11.5px; line-height: 1; ba
 #links { flex: 0 1 auto; min-height: 0; overflow-y: auto; margin: 8px -14px 0; padding: 0 14px 12px; display: grid; grid-template-columns: max-content minmax(0, 1fr); column-gap: 10px; align-content: start; }
 .kind { font-size: 12px; line-height: 24px; color: var(--drawdy-muted-foreground); }
 #links button { justify-self: start; max-width: calc(100% + 6px); margin-left: -6px; padding: 3px 6px; border: 0; border-radius: 6px; background: transparent; text-align: left; font-size: 12px; overflow-wrap: anywhere; text-decoration: underline; text-decoration-color: var(--drawdy-border); text-underline-offset: 3px; }
-/* A name with a string on the board takes its colour, as --string-0 to 7 in its style: the board's hue, readable on the panel. No fill on hover, so that colour reads on the panel's own background. */
+/* No fill on hover, so the string's colour reads on the panel's own background. */
 #links button:hover { text-decoration-color: currentColor; }
-/* At the PR card: who opened it and how big it is, then the whole description, which scrolls like the links. */
 .about { flex: none; margin: 0; font-size: 11.5px; line-height: 16px; color: var(--drawdy-muted-foreground); }
-/* What the board can't show, as the loading view said it: kept at the PR card. */
 #pr-notes { flex: none; margin-top: 10px; }
 /* A long URL or word wraps; code blocks and tables scroll sideways on their own. */
 #pr-body { flex: 0 1 auto; min-height: 0; overflow-y: auto; margin: 8px -14px 0; padding: 0 14px 14px; overflow-wrap: anywhere; }
 #pr-body .none { color: var(--drawdy-muted-foreground); font-style: italic; }
 
-/* The toolbar: Home and Rebuild, Overview and Description, then the steps, Next at the right. A line above it shows a rebuild's progress, its cost or its error. */
 .tools { padding: 8px 14px; border-top: 1px solid var(--drawdy-border); }
 .tools .error, .line { margin: 0 0 8px; }
 .line { display: flex; align-items: center; gap: 8px; font-size: 12px; line-height: 16px; color: var(--drawdy-muted-foreground); }
 .line svg { flex: none; width: 16px; height: 16px; }
-/* A rebuild's step too long for the line ends in an ellipsis. */
 .line.busy span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bar { display: flex; align-items: center; gap: 4px; }
-/* Icon buttons: no frame until hovered; the house's left edge lines up with the text above. */
+/* Icon buttons have no frame until hovered; the house's left edge lines up with the text above. */
 .icon { width: 30px; height: 30px; display: grid; place-items: center; margin: 0; padding: 0; border: 0; border-radius: var(--drawdy-radius-md); background: transparent; color: var(--drawdy-muted-foreground); }
 .icon svg { width: 16px; height: 16px; }
 .icon:hover:not(:disabled) { background: var(--hover); color: var(--drawdy-foreground); }
 #home { margin-left: -7px; }
-/* A rule between leaving or rebuilding the board and moving round it. */
 .sep { width: 1px; height: 16px; margin: 0 4px; background: var(--shade); }
-/* What the panel explains now: the description (a bar under its button) or a step (its number). */
 .icon[aria-current="true"] { color: var(--drawdy-foreground); }
 .icon[aria-current="true"]::before { content: ""; position: absolute; left: 7px; right: 7px; bottom: 2px; height: 2px; border-radius: 1px; background: currentColor; }
-/* Rebuild pressed once on a pull request that costs more than 2 requests: held down until the second press. */
+/* Rebuild held after its first press, until the second. */
 #rebuild.armed { background: var(--shade); color: var(--drawdy-foreground); }
-/* A tooltip above each button: after a moment under the pointer, at once on keyboard focus. */
 [data-tip] { position: relative; }
 [data-tip]::after { content: attr(data-tip); position: absolute; bottom: calc(100% + 8px); left: 0; z-index: 1; padding: 3px 8px; border-radius: var(--drawdy-radius-sm); background: var(--drawdy-foreground); color: var(--drawdy-background); font: 11.5px/16px ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity .1s; }
 .step[data-tip]::after { left: auto; right: 0; }
@@ -199,7 +185,7 @@ code { padding: 0 3px; border-radius: 4px; font-size: 11.5px; line-height: 1; ba
 [data-tip]:focus-visible::after { opacity: 1; transition-delay: 0s; }
 `;
 
-/** GitHub's Markdown styles (`MARKDOWN_CSS`, which loads before this) fitted to the panel: 13 px text, smaller headings and gaps, code and tables that scroll sideways. */
+/** GitHub's Markdown styles (`MARKDOWN_CSS`, which loads before this) fitted to the panel: 13 px text, smaller headings and gaps. */
 export const PANEL_MD_CSS = `
 #pr-body { --ink: var(--drawdy-foreground); --ink2: var(--drawdy-muted-foreground); --bg: var(--drawdy-background); --bg2: var(--drawdy-surface2); font-size: 13px; line-height: 20px; }
 #pr-body :is(p, blockquote, ul, ol, table, pre, details) { margin-bottom: 12px; }
@@ -222,9 +208,23 @@ const exampleRows = SUGGESTIONS.map((s) => {
     return `<li><button type="button" data-url="${s.url}" data-label="${escapeHtml(s.label)}" title="${escapeHtml(s.url)}">${tag}<span>${segmentsHtml(s.title)}</span></button></li>`;
 }).join("");
 
-/** A frame of warnings: one row that counts them and opens or closes the list under it, which the panel fills. */
+/** A frame of warnings: one row that counts them and opens or shuts the list under it, which the panel fills. */
 const warningsGroup = (list: string) =>
     `<div class="warnings" hidden><button class="summary" type="button" aria-expanded="false" aria-controls="${list}">${icon("triangle-alert", 16)}<span></span>${icon("chevron-down", 16)}</button><div class="warnings-wrap"><div id="${list}" class="warnings-list"></div></div></div>`;
+
+/** A toolbar button: a Lucide icon, named for a screen reader and in its tooltip. */
+const toolButton = (id: string, className: string, label: string, tip: string, name: IconName) =>
+    `<button id="${id}" class="${className}" type="button" aria-label="${label}" data-tip="${tip}">${icon(name, 16)}</button>`;
+
+const homeButton = (id: string) => toolButton(id, "icon", "Home", "Home: open another PR", "house");
+
+/** The Lucide marks the panel clones for a step's state, and the lighter, still ones for a row's. */
+const MARKS = { todo: "circle", active: "loader-circle", done: "circle-check", warning: "triangle-alert", failed: "circle-x" } as const;
+const ROW_MARKS = { todo: "circle", active: "circle-dot", done: "check", warning: "triangle-alert", failed: "x" } as const;
+const markTemplates = [
+    ...Object.entries(MARKS).map(([state, name]) => `<template id="mark-${state}">${icon(name, 16)}</template>`),
+    ...Object.entries(ROW_MARKS).map(([state, name]) => `<template id="row-${state}">${icon(name, 12)}</template>`),
+].join("\n    ");
 
 export const PANEL_BODY = `
 <section id="start" hidden>
@@ -241,21 +241,12 @@ export const PANEL_BODY = `
     <p id="load-status" class="sr" aria-live="polite"></p>
     <div id="load-tools" class="tools" hidden>
         <nav class="bar" aria-label="PR">
-            <button id="load-home" class="icon" type="button" aria-label="Home" data-tip="Home: open another PR">${icon("house", 16)}</button>
+            ${homeButton("load-home")}
             <span class="spacer"></span>
             <button id="retry" class="btn" type="button">Try again</button>
         </nav>
     </div>
-    <template id="mark-todo">${icon("circle", 16)}</template>
-    <template id="mark-active">${icon("loader-circle", 16)}</template>
-    <template id="mark-done">${icon("circle-check", 16)}</template>
-    <template id="mark-warning">${icon("triangle-alert", 16)}</template>
-    <template id="mark-failed">${icon("circle-x", 16)}</template>
-    <template id="row-todo">${icon("circle", 12)}</template>
-    <template id="row-active">${icon("circle-dot", 12)}</template>
-    <template id="row-done">${icon("check", 12)}</template>
-    <template id="row-warning">${icon("triangle-alert", 12)}</template>
-    <template id="row-failed">${icon("x", 12)}</template>
+    ${markTemplates}
 </section>
 <section id="ready" hidden>
     <div id="pr" class="pr">
@@ -274,15 +265,15 @@ export const PANEL_BODY = `
         <p id="tools-line" class="line" role="status" hidden></p>
         <p id="tools-error" class="error" role="alert" hidden></p>
         <nav class="bar" aria-label="PR">
-            <button id="home" class="icon" type="button" aria-label="Home" data-tip="Home: open another PR">${icon("house", 16)}</button>
-            <button id="rebuild" class="icon" type="button" aria-label="Rebuild" data-tip="Rebuild this board from GitHub">${icon("refresh-cw", 16)}</button>
+            ${homeButton("home")}
+            ${toolButton("rebuild", "icon", "Rebuild", "Rebuild this board from GitHub", "refresh-cw")}
             <span class="sep"></span>
-            <button id="overview" class="icon" type="button" aria-label="Overview" data-tip="Overview: the whole board">${icon("scan", 16)}</button>
-            <button id="description" class="icon" type="button" aria-label="Description" data-tip="Description">${icon("file-text", 16)}</button>
+            ${toolButton("overview", "icon", "Overview", "Overview: the whole board", "scan")}
+            ${toolButton("description", "icon", "Description", "Description", "file-text")}
             <span class="spacer"></span>
-            <button id="previous" class="btn step" type="button" aria-label="Previous card" data-tip="Previous (←)">${icon("chevron-left", 16)}</button>
+            ${toolButton("previous", "btn step", "Previous card", "Previous (←)", "chevron-left")}
             <span id="position" class="mono" aria-live="polite"></span>
-            <button id="next" class="btn step" type="button" aria-label="Next card" data-tip="Next (→)">${icon("chevron-right", 16)}</button>
+            ${toolButton("next", "btn step", "Next card", "Next (→)", "chevron-right")}
         </nav>
     </div>
 </section>

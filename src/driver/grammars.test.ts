@@ -1,17 +1,12 @@
 import { describe, expect, it } from "@jest/globals";
 import { fakeFetch } from "../test/fake-fetch.ts";
-import { fakeHost } from "../test/fake-host.ts";
+import { fakeHost, keptStorage } from "../test/fake-host.ts";
 import { wasmBytes } from "../test/parser.ts";
 import { createGrammars, languagesOf, PINS } from "./grammars.ts";
 
-/** A host whose kv-storage keeps what it is given, as Drawdy's IndexedDB does. */
 const storage = () => {
     const kept = new Map<string, unknown>();
-    const host = fakeHost(undefined, {
-        "command:kv-storage:get": (req) => (kept.has(req.key) ? { got: kept.get(req.key) } : {}),
-        "command:kv-storage:set": (req) => void kept.set(req.key, req.payload),
-    });
-    return { host, kept };
+    return { host: fakeHost(undefined, keptStorage(kept)), kept };
 };
 
 const jsdelivr = (requests: string[]) => requests.filter((url) => url.startsWith("https://cdn.jsdelivr.net/"));

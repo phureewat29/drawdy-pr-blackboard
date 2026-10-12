@@ -1,9 +1,9 @@
 /**
- * Reads public pull requests from GitHub without signing in.
+ * Reads public PRs from GitHub without signing in.
  *
  * Two hosts answer cross-origin requests from Drawdy's worker: the REST API
  * (60 requests an hour per IP without a token) and raw.githubusercontent.com
- * (file contents, outside that quota). A pull request's `.diff` URL sends no
+ * (file contents, outside that quota). A PR's `.diff` URL sends no
  * CORS headers, so the diff comes from the files endpoint instead.
  */
 
@@ -54,16 +54,16 @@ const RAW = "https://raw.githubusercontent.com";
 /** GitHub's files endpoint stops at 3000 files. */
 const MAX_FILES = 3000;
 const PAGE = 100;
-/** File list pages in flight at once: a 2,188-file pull request takes 22. */
+/** File list pages in flight at once: a 2,188-file PR takes 22. */
 const PAGES_AT_ONCE = 4;
 
-/** How many requests a pull request's file list takes. */
+/** How many requests a PR's file list takes. */
 export const pageCount = (changedFiles: number): number => Math.max(1, Math.ceil(Math.min(changedFiles, MAX_FILES) / PAGE));
 
 const NAME = /^[A-Za-z0-9_.-]+$/;
 
 /**
- * Reads a pull request reference from what a user pastes: a GitHub link
+ * Reads a PR reference from what a user pastes: a GitHub link
  * (any tab of the PR, with or without the scheme) or `owner/repo#123`.
  */
 export const parsePrUrl = (text: string): PrRef | null => {
@@ -76,7 +76,7 @@ export const parsePrUrl = (text: string): PrRef | null => {
     return Number.isSafeInteger(number) && number > 0 ? { owner: m[1], repo: m[2], number } : null;
 };
 
-/** `owner/repo#123`, the key PR Blackboard files a pull request under. */
+/** `owner/repo#123`, the key PR Blackboard files a PR under. */
 export const prKey = (ref: PrRef): string => `${ref.owner}/${ref.repo}#${ref.number}`.toLowerCase();
 
 export const prLabel = (ref: PrRef): string => `${ref.owner}/${ref.repo}#${ref.number}`;
@@ -164,10 +164,10 @@ export const createGithub = (fetch: Fetch): Github => {
         return res.json();
     };
 
-    const repoPath = (ref: PrRef) => `${API}/repos/${ref.owner}/${ref.repo}/pulls/${ref.number}`;
+    const pullUrl = (ref: PrRef) => `${API}/repos/${ref.owner}/${ref.repo}/pulls/${ref.number}`;
 
     const pr = async (ref: PrRef): Promise<PrInfo> => {
-        const raw = await getJson(repoPath(ref));
+        const raw = await getJson(pullUrl(ref));
         const p = g.parse(pullShape, raw);
         if (!p) return fail({ kind: "http", status: 200 }, "PR Blackboard can't read the PR GitHub returned");
         const state: PrState = p.merged || p.merged_at ? "merged" : p.state === "closed" ? "closed" : p.draft ? "draft" : "open";
@@ -187,7 +187,7 @@ export const createGithub = (fetch: Fetch): Github => {
     };
 
     const page = async (ref: PrRef, n: number): Promise<PrFile[]> => {
-        const raw = await getJson(`${repoPath(ref)}/files?per_page=${PAGE}&page=${n}`);
+        const raw = await getJson(`${pullUrl(ref)}/files?per_page=${PAGE}&page=${n}`);
         return (Array.isArray(raw) ? raw : []).flatMap((item) => {
             const f = g.parse(fileShape, item);
             if (!f) return [];

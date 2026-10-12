@@ -5,7 +5,7 @@ import type { PrFile } from "./github.ts";
 import { stepsOf } from "./layout.ts";
 import { LIMITS, type Review } from "./model.ts";
 
-/** A pull request of a few files, each one hunk, with the head texts given. */
+/** A PR of a few files, each one hunk, with the head texts given. */
 const small = (heads: Record<string, string>, patches: Record<string, string>) => {
     const { pr } = honoFixture();
     const files: PrFile[] = Object.entries(patches).map(([path, patch]) => ({
@@ -85,7 +85,7 @@ describe("buildReview on hono#5513", () => {
     });
 });
 
-describe("buildReview on made-up pull requests", () => {
+describe("buildReview on made-up PRs", () => {
     it("finds two threads, breaks a cycle, and sends lone changes and unlinked docs to the bottom row", async () => {
         const two = await reviewOf(twoThreads());
         const name = (id: string) => two.pins.find((x) => x.id === id)!.name;
@@ -174,7 +174,7 @@ describe("Python, Go and Rust", () => {
         expect(review.pins.find((p) => p.kind === "test")!.lane).toBe("under");
     });
 
-    it("count a module the read tier found but didn't take, over READ.chars, so a module two roots hold makes no string (review 2's P16)", async () => {
+    it("count a module the read tier found but didn't take, over READ.chars, so a module two roots hold makes no string", async () => {
         const main = "from core import thing\n\ndef run():\n    thing()\n";
         const lib = "def thing():\n    pass\n";
         const raw = new Map([

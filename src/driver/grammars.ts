@@ -1,9 +1,7 @@
 /**
- * The parser's files: the tree-sitter runtime and the grammars a pull
- * request needs, downloaded once from jsDelivr at pinned versions and kept
- * in kv-storage, each checked against the SHA-256 written here before it
- * reaches WebAssembly. Only the driver reaches kv-storage, so the parser
- * worker asks it for them (`parser.ts`).
+ * The parser's files: the tree-sitter runtime and the grammars a PR needs, downloaded once from jsDelivr at pinned
+ * versions and kept in kv-storage, each checked against the SHA-256 written here before it reaches WebAssembly.
+ * Only the driver reaches kv-storage, so the parser worker asks it for them (`parser.ts`).
  */
 
 import type { Fetch } from "../lib/github.ts";
@@ -44,17 +42,14 @@ export const languagesOf = (grammars: readonly Grammar[]): { parser: string; cod
 
 export type Grammars = {
     /**
-     * A file's checked bytes: from storage, else from jsDelivr, calling
-     * `downloading` before the first byte comes over the network. `words`
-     * name what failed (`TypeScript parser`). Rejects in words; a failure is
-     * forgotten, so the next open tries again.
+     * A file's checked bytes: from storage, else from jsDelivr, calling `downloading` before it downloads. `words` name what failed
+     * (`TypeScript parser`). Rejects in words; a failure is forgotten, so the next open tries again.
      */
     bytes: (name: ParserFile, words: string, downloading: () => void) => Promise<Uint8Array>;
 };
 
 export const createGrammars = (deps: { ddp: Ddp; fetch: Fetch }): Grammars => {
     const { ddp, fetch } = deps;
-    // The files this session has checked.
     const checked = new Map<ParserFile, Promise<Uint8Array>>();
 
     const fromStorage = async (name: ParserFile): Promise<Uint8Array | null> => {
@@ -64,24 +59,21 @@ export const createGrammars = (deps: { ddp: Ddp; fetch: Fetch }): Grammars => {
         return sha256(data) === PINS[name].sha256 ? data : null;
     };
     const download = async (name: ParserFile, words: string): Promise<Uint8Array> => {
-        const failed = inWords(`Couldn't download the ${words} from cdn.jsdelivr.net. Try again.`);
+        const { url, sha256: pinned } = PINS[name];
+        const failed = (why: string) => {
+            console.warn(`[pr-blackboard] ${url}: ${why}`);
+            return inWords(`Couldn't download the ${words} from cdn.jsdelivr.net. Try again.`);
+        };
         let res: Response;
         try {
-            res = await fetch(PINS[name].url);
+            res = await fetch(url);
         } catch (err) {
-            console.warn(`[pr-blackboard] ${PINS[name].url}: ${err instanceof Error ? err.message : String(err)}`);
-            throw failed;
+            throw failed(err instanceof Error ? err.message : String(err));
         }
-        if (!res.ok) {
-            console.warn(`[pr-blackboard] ${PINS[name].url}: HTTP ${res.status}`);
-            throw failed;
-        }
+        if (!res.ok) throw failed(`HTTP ${res.status}`);
         const data = new Uint8Array(await res.arrayBuffer());
         const got = sha256(data);
-        if (got !== PINS[name].sha256) {
-            console.warn(`[pr-blackboard] ${PINS[name].url}: SHA-256 ${got}, pinned ${PINS[name].sha256}`);
-            throw failed;
-        }
+        if (got !== pinned) throw failed(`SHA-256 ${got}, pinned ${pinned}`);
         await ddp.tryCall("command:kv-storage:set", { key: `wasm:${name}`, payload: { sha256: got, blob: new Blob([data]) } });
         return data;
     };

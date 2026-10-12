@@ -11,7 +11,7 @@
  */
 
 import { build } from "esbuild";
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -45,13 +45,7 @@ export const WORKER_SCRIPT = \`${literal}\`;
 /** Writes the script, or with `--check` exits non-zero when it is behind its sources. */
 const main = async () => {
     const wanted = await workerScriptFile();
-    const current = (() => {
-        try {
-            return readFileSync(SCRIPT_FILE, "utf8");
-        } catch {
-            return "";
-        }
-    })();
+    const current = existsSync(SCRIPT_FILE) ? readFileSync(SCRIPT_FILE, "utf8") : "";
     if (process.argv.includes("--check")) {
         console.log(current === wanted ? "src/worker/script.ts is current" : "src/worker/script.ts is behind its sources: run npm run worker");
         process.exit(current === wanted ? 0 : 1);

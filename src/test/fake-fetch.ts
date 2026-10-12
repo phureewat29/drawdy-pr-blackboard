@@ -1,16 +1,16 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { PINS } from "../driver/grammars.ts";
+import { readSaved } from "./fixture.ts";
 import { WASM } from "./parser.ts";
 
 /**
- * GitHub and jsDelivr for a pull request saved in the fixtures' shape, by
- * file: the API's two answers, raw.githubusercontent.com from its `raw`
- * (every other path a 404), and the pinned wasm files from the exact-version
+ * GitHub and jsDelivr for a PR saved in the fixtures' shape (`readSaved`): the API's two answers,
+ * raw.githubusercontent.com from its `raw`, every other path a 404, and the pinned wasm files from the exact-version
  * devDependencies. Records every URL asked for; any other host fails.
  */
 export const fakeFetch = (file: string) => {
-    const saved = JSON.parse(readFileSync(file.startsWith("/") ? file : join(import.meta.dirname, "../lib/fixtures", file), "utf8"));
+    const saved = readSaved(file);
     const requests: string[] = [];
     const raw = `https://raw.githubusercontent.com/${saved.pull.head.repo.full_name}/${saved.pull.head.sha}/`;
     const wasm = new Map(Object.entries(PINS).map(([name, pin]) => [pin.url as string, join(import.meta.dirname, "../../node_modules", WASM[name as keyof typeof WASM])]));

@@ -109,7 +109,7 @@ describe("panel", () => {
         expect(document.querySelector("form, header, label")).toBeNull();
     });
 
-    it("lists the 14 vetted pull requests in the operator's order, each its tag in its project's colour on a line of its own, then its title, and none a cost", () => {
+    it("lists the 14 vetted pull requests in their order, each its tag in its project's colour on a line of its own, then its title, and none a cost", () => {
         panel.show(startView);
         const rows = [...document.querySelectorAll<HTMLButtonElement>("#try button")];
         expect(rows.map((b) => b.querySelector(".tag")!.textContent)).toEqual([

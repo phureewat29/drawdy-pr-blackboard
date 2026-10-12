@@ -1,17 +1,12 @@
 import { segments } from "../lib/markdown.ts";
 
 /**
- * Pull requests from well-known projects to open as examples: hono's
- * first, as its board shows the strings calmly, then the rest in the
- * operator's order. Each is merged, by the
- * project's creator or a member of its core team, and draws strings on its
- * board: keep it so when changing one.
- * Each opens with the usual 2 GitHub requests; a bigger one, such as Bun's
- * 2,188-file rewrite at 23 of the 60 an hour, stays off the list.
- * Their titles ship here exactly as GitHub's API gives them, split on
- * backticks as the panel shows them, so the start view costs no GitHub
- * request. Each project's tag takes its colour: its brand's where it stays
- * clear of the rows beside it, else a free hue.
+ * PRs from well-known projects to open as examples: hono's first, as its board shows the strings calmly. Each is
+ * merged, by the project's creator or a member of its core team, and draws strings on its board: keep it so when
+ * changing one. Each opens with the usual 2 GitHub requests; a bigger one, such as Bun's 2,188-file rewrite at 23 of
+ * the 60 an hour, stays off the list. Their titles ship exactly as GitHub's API gives them, so the start view costs
+ * no GitHub request. Each project's tag takes its brand's colour where it stays clear of the rows beside it, else a
+ * free hue.
  */
 export const SUGGESTIONS = (
     [
@@ -37,6 +32,6 @@ export const SUGGESTIONS = (
     colour,
 }));
 
-/** The tag colour of a pull request's project, by its `owner/repo#number`: an example project's, else none. */
+/** The tag colour of a PR's project, by its `owner/repo#number`: an example project's, else none. */
 export const projectColour = (label: string): string | null =>
     SUGGESTIONS.find((s) => s.label.split("#")[0].toLowerCase() === label.split("#")[0].toLowerCase())?.colour ?? null;

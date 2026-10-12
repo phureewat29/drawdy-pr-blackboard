@@ -167,7 +167,7 @@ describe("the files read", () => {
         expect(changedSources([added, big, parsed, changed("src/Small.kt")]).map((f) => f.path)).toEqual(["src/New.kt", "src/Big.java", "src/Small.kt"]);
     });
 
-    it("on a big pull request, are the largest changes in its main languages, spread across top-level directories, tooling folders aside", () => {
+    it("on a big PR, are the largest changes in its main languages, spread across top-level directories, tooling folders aside", () => {
         const files = [
             ...Array.from({ length: 30 }, (_, i) => changed(`src/core/f${i}.rs`, 100 + i)),
             ...Array.from({ length: 30 }, (_, i) => changed(`packages/js/f${i}.rs`, 50 + i)),

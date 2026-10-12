@@ -10,6 +10,7 @@
  */
 
 import { Language, Parser, Query, type Tree } from "../vendor/web-tree-sitter.ts";
+import { memoize, pushTo } from "./fp.ts";
 import { TAGS } from "./tags.ts";
 
 // The vendored file is untyped JavaScript: its classes are values, so their instances get names here.
@@ -47,18 +48,26 @@ export type Syntax = {
     parse: (path: string, text: string) => Flat | null;
 };
 
+/** A fact read once per parsed tree. */
+export const perTree = <V>(read: (t: Flat) => V): ((t: Flat) => V) => memoize(read, { cache: new WeakMap() });
+
+const GRAMMARS: ReadonlyMap<string, Grammar> = new Map<string, Grammar>([
+    ["tsx", "tsx"],
+    ["ts", "typescript"],
+    ["mts", "typescript"],
+    ["cts", "typescript"],
+    ["js", "javascript"],
+    ["jsx", "javascript"],
+    ["mjs", "javascript"],
+    ["cjs", "javascript"],
+    ["py", "python"],
+    ["go", "go"],
+    ["rs", "rust"],
+    ["java", "java"],
+]);
+
 /** Which grammar reads a file, by extension; null when none applies. */
-export const grammarOf = (path: string): Grammar | null => {
-    const ext = path.split(".").pop()?.toLowerCase() ?? "";
-    if (ext === "tsx") return "tsx";
-    if (ext === "ts" || ext === "mts" || ext === "cts") return "typescript";
-    if (ext === "js" || ext === "jsx" || ext === "mjs" || ext === "cjs") return "javascript";
-    if (ext === "py") return "python";
-    if (ext === "go") return "go";
-    if (ext === "rs") return "rust";
-    if (ext === "java") return "java";
-    return null;
-};
+export const grammarOf = (path: string): Grammar | null => GRAMMARS.get(path.split(".").pop()?.toLowerCase() ?? "") ?? null;
 
 /**
  * The share of a file's text in ERROR and MISSING nodes above which the
@@ -67,12 +76,12 @@ export const grammarOf = (path: string): Grammar | null => {
  * variance); React's Flow files, which broke the parser's links, measure
  * 3.2 % and 100 %.
  */
-export const MAX_ERROR_SHARE = 0.02;
+const MAX_ERROR_SHARE = 0.02;
 
 const LEADING_COMMENTS = /^(?:\s*(?:\/\/[^\n]*|\/\*[\s\S]*?\*\/))*/;
 
 /** Whether a parsed file can be trusted: no `@flow` pragma in its leading comments, and few errors. */
-export const readable = (t: Flat): boolean => !/@flow\b/.test(LEADING_COMMENTS.exec(t.text)![0]) && t.errors <= t.text.length * MAX_ERROR_SHARE;
+const readable = (t: Flat): boolean => !/@flow\b/.test(LEADING_COMMENTS.exec(t.text)![0]) && t.errors <= t.text.length * MAX_ERROR_SHARE;
 
 let runtime: Promise<void> | null = null;
 
@@ -153,10 +162,7 @@ const repairCallSignatures = (text: string): string => {
 const flatten = (tree: ParseTree, text: string, lang: Lang, captures: { name: string; node: { id: number; startIndex: number } }[] | null): Flat => {
     // The captured nodes by where they start, so only a node starting there is asked for its id.
     const wanted = new Map<number, { id: number; capture: string }[]>();
-    for (const c of captures ?? []) {
-        const at = c.node.startIndex;
-        wanted.set(at, [...(wanted.get(at) ?? []), { id: c.node.id, capture: c.name }]);
-    }
+    for (const c of captures ?? []) pushTo(wanted, c.node.startIndex, { id: c.node.id, capture: c.name });
     const tags: { capture: string; node: number }[] = [];
     const fieldNames = lang.fields;
     const types = lang.types;
@@ -176,16 +182,13 @@ const flatten = (tree: ParseTree, text: string, lang: Lang, captures: { name: st
     let errors = 0;
     const grow = () => {
         cap *= 2;
-        const g8 = (a: Uint8Array) => { const b = new Uint8Array(cap); b.set(a); return b; };
-        const g32 = (a: Uint32Array) => { const b = new Uint32Array(cap); b.set(a); return b; };
-        const gi = (a: Int32Array) => { const b = new Int32Array(cap); b.set(a); return b; };
-        named = g8(named);
-        inError = g8(inError);
-        start = g32(start);
-        end = g32(end);
-        parent = gi(parent);
-        first = gi(first);
-        next = gi(next);
+        named = resized(named, new Uint8Array(cap));
+        inError = resized(inError, new Uint8Array(cap));
+        start = resized(start, new Uint32Array(cap));
+        end = resized(end, new Uint32Array(cap));
+        parent = resized(parent, new Int32Array(cap));
+        first = resized(first, new Int32Array(cap));
+        next = resized(next, new Int32Array(cap));
     };
     const c = tree.walk();
     let count = 0;
@@ -253,6 +256,12 @@ const flatten = (tree: ParseTree, text: string, lang: Lang, captures: { name: st
     const lineStarts = [0];
     for (let i = 0; i < text.length; i++) if (text.charCodeAt(i) === 10) lineStarts.push(i + 1);
     return { text, count, type, field, named, start, end, parent, first, next, lineStarts, errors, ...(captures ? { tags } : {}) };
+};
+
+/** `to`, holding `from`'s values first. */
+const resized = <A extends Uint8Array | Uint32Array | Int32Array>(from: A, to: A): A => {
+    to.set(from);
+    return to;
 };
 
 export const children = (t: Flat, n: number): number[] => {

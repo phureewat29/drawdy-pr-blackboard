@@ -2,7 +2,7 @@ import { describe, expect, it } from "@jest/globals";
 import { readFileSync } from "node:fs";
 import { planBoard } from "../lib/layout.ts";
 import { fakeFetch } from "../test/fake-fetch.ts";
-import { fakeHost } from "../test/fake-host.ts";
+import { fakeHost, keptStorage } from "../test/fake-host.ts";
 import { excalidrawFixture, honoFixture, reviewOf } from "../test/fixture.ts";
 import { connectSource } from "../test/parser.ts";
 import { serve, unreadCount } from "../worker/serve.ts";
@@ -11,14 +11,7 @@ import { workerScriptFile, SCRIPT_FILE } from "../../scripts/worker.ts";
 import { createParser, onThisThread, type Connect, type ParserProgress } from "./parser.ts";
 import { quiet } from "./progress.ts";
 
-/** A host whose kv-storage keeps what it is given. */
-const storage = () => {
-    const kept = new Map<string, unknown>();
-    return fakeHost(undefined, {
-        "command:kv-storage:get": (req) => (kept.has(req.key) ? { got: kept.get(req.key) } : {}),
-        "command:kv-storage:set": (req) => void kept.set(req.key, req.payload),
-    });
-};
+const storage = () => fakeHost(undefined, keptStorage());
 
 /** A built board as JSON, its plan's maps as entries. */
 const json = (value: unknown) => JSON.stringify(value, (_key, v: unknown) => (Object.prototype.toString.call(v) === "[object Map]" ? [...(v as Map<unknown, unknown>)] : v));

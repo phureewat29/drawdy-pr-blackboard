@@ -7,58 +7,70 @@
  * bottom-left corner, so the current card keeps clear of that too.
  */
 
-import { clamp } from "./fp.ts";
-import { union, type Point, type Rect, type Size } from "./layout.ts";
+import { clamp, sortBy } from "./fp.ts";
+import { union, type Point, type Rect, type Size } from "./layout/geometry.ts";
 
+/**
+ * The view's measures, in screen px but for `room` and `readAll`, in canvas
+ * units. Documented here rather than on each field, as `LAYOUT` is.
+ *
+ * - `panel`: the panel's strip on the right, as measured on drawdy.io:
+ *   Drawdy's 58 px button rail, the 320 px panel and a margin.
+ * - `minimap`: Drawdy's minimap in the bottom-left corner, as measured on
+ *   drawdy.io, with a 24 px margin.
+ * - `room`: kept on each side of a card framed alone, while zoom allows.
+ * - `margin`: kept around what the camera frames.
+ * - `minZoom`: code is 12.5 px on a card, so the camera never goes further
+ *   out than this.
+ * - `readAll`: Read all on the board, `gap` right of its card, `width` wide,
+ *   as tall as its page up to `maxHeight`; it opens with the card's right
+ *   `keep` in view. Its header, `header` high less the `close` room for `✕`
+ *   on its right, is the drag handle, and a drag leaves at least `grip` px
+ *   of it on screen.
+ */
 export const VIEW = {
     toolbar: 64,
-    /** The panel's strip on the right, as measured on drawdy.io: Drawdy's 58 px button rail, the 320 px panel and a margin. */
     panel: 392,
-    /** Drawdy's minimap in the bottom-left corner, as measured on drawdy.io, with a 24 px margin. */
     minimap: { width: 196, height: 168 },
-    /** Canvas room kept on each side of a card framed alone, while zoom allows. */
     room: 160,
-    /** Screen room kept around what the camera frames. */
     margin: 24,
-    /** Code is 12.5 px on a card, so the camera never goes further out than this. */
     minZoom: 0.8,
     maxZoom: 1,
     flightMs: 450,
-    /**
-     * Read all on the board, in canvas units: `gap` right of its card, `width` wide, as tall as its page up to
-     * `maxHeight`; it opens with the card's right `keep` in view. Its header, `header` high less the `✕` room on its
-     * right, is the drag handle, and a drag leaves at least `grip` px of it on screen.
-     */
     readAll: { gap: 24, width: 720, maxHeight: 640, keep: 240, header: 56, close: 56, grip: 120 },
 } as const;
 
 export type Screen = { width: number; height: number };
 export type Camera = { rect: Rect; zoom: number };
 
+/** Slack for rounding in zoom and size comparisons. */
+const EPSILON = 1e-6;
+
 /** The usable view, in screen pixels. */
 export const usable = (screen: Screen): Rect => ({ x: 0, y: VIEW.toolbar, width: Math.max(1, screen.width - VIEW.panel), height: Math.max(1, screen.height - VIEW.toolbar) });
 
+/** The canvas point at the usable view's top-left corner, and the zoom. */
+type Frame = { x: number; y: number; zoom: number };
+
 /**
- * The canvas rect to fly to so that, at `zoom`, the usable view's top-left
- * corner shows canvas point (`x`, `y`). Its shape is the screen's, so
- * fitting it lands exactly on that zoom.
+ * The canvas rect to fly to so that, at its zoom, the usable view's top-left
+ * corner shows the frame's point. Its shape is the screen's, so fitting it
+ * lands exactly on that zoom.
  */
-const screenRect = (screen: Screen, zoom: number, x: number, y: number): Rect => ({
-    x,
-    y: y - VIEW.toolbar / zoom,
-    width: screen.width / zoom,
-    height: screen.height / zoom,
+const cameraOf = (screen: Screen, { x, y, zoom }: Frame): Camera => ({
+    rect: { x, y: y - VIEW.toolbar / zoom, width: screen.width / zoom, height: screen.height / zoom },
+    zoom,
 });
 
 /** The zoom at which `r` fits the usable view with `VIEW.margin` around it, at most 1. */
 const fitZoom = (r: Rect, view: Rect) => Math.min(VIEW.maxZoom, (view.width - 2 * VIEW.margin) / r.width, (view.height - 2 * VIEW.margin) / r.height);
 
+/** The frame that centres `r` in the usable view at `zoom`. */
+const centred = (r: Rect, view: Rect, zoom: number): Frame => ({ x: r.x - (view.width / zoom - r.width) / 2, y: r.y - (view.height / zoom - r.height) / 2, zoom });
+
 /** Where a frame `size` long may start and still hold the stretch from `start`, `length` long, whole with `margin`. */
 const range = (start: number, length: number, size: number, margin: number) => ({ lo: start + length + margin - size, hi: start - margin });
 const within = (v: number, r: { lo: number; hi: number }) => clamp(v, r.lo, r.hi);
-
-/** The canvas point at the usable view's top-left corner, and the zoom. */
-type Frame = { x: number; y: number; zoom: number };
 
 /** How much of `card`, in canvas units squared, the minimap covers in `frame`. */
 const covered = (card: Rect, frame: Frame, view: Rect) => {
@@ -67,7 +79,7 @@ const covered = (card: Rect, frame: Frame, view: Rect) => {
     const top = bottom - VIEW.minimap.height / frame.zoom;
     const across = Math.min(card.x + card.width, frame.x + w) - Math.max(card.x, frame.x);
     const down = Math.min(card.y + card.height, bottom) - Math.max(card.y, top);
-    return across > 1e-6 && down > 1e-6 ? across * down : 0;
+    return across > EPSILON && down > EPSILON ? across * down : 0;
 };
 
 /**
@@ -87,86 +99,90 @@ const clearOfMinimap = (frame: Frame, card: Rect, keep: Rect, view: Rect, topFix
     return (topFixed ? [right] : [right, up]).sort((a, b) => covered(card, a, view) - covered(card, b, view) || moved(a) - moved(b))[0];
 };
 
-const cameraOf = (screen: Screen, frame: Frame): Camera => ({ rect: screenRect(screen, frame.zoom, frame.x, frame.y), zoom: frame.zoom });
-
-/** The frame that centres `r` in the usable view at `zoom`. */
-const centred = (r: Rect, view: Rect, zoom: number): Frame => ({ x: r.x - (view.width / zoom - r.width) / 2, y: r.y - (view.height / zoom - r.height) / 2, zoom });
-
-/** Whether `r` shows whole in the usable part of `viewport`, at zoom 0.8 or closer, clear of the minimap. */
-const shows = (r: Rect, screen: Screen, viewport: Rect) => {
+/** Whether `r` lies whole in the usable part of `viewport`, the canvas rect the screen shows. */
+const inView = (r: Rect, screen: Screen, viewport: Rect): boolean => {
     const zoom = screen.width / viewport.width;
-    const view = usable(screen);
-    return (
-        zoom >= VIEW.minZoom - 1e-6 &&
-        r.x >= viewport.x &&
-        r.x + r.width <= viewport.x + view.width / zoom &&
-        r.y >= viewport.y + VIEW.toolbar / zoom &&
-        r.y + r.height <= viewport.y + viewport.height &&
-        covered(r, { x: viewport.x, y: viewport.y + VIEW.toolbar / zoom, zoom }, view) === 0
-    );
+    return r.x >= viewport.x && r.x + r.width <= viewport.x + usable(screen).width / zoom && r.y >= viewport.y + VIEW.toolbar / zoom && r.y + r.height <= viewport.y + viewport.height;
 };
 
-/**
- * The camera for a step, or null when the card already shows whole at zoom
- * 0.8 or closer, clear of the minimap. Two rules, in turn:
- *
- * 1. The card and the cards its drawn strings join (`linked`), framed
- *    together, when they fit at zoom 0.8 or closer and the card can clear
- *    the minimap with all of them still whole.
- * 2. The card alone, at the largest zoom from 0.8 to 1 that leaves 160 of
- *    room each side; when none does, the room shrinks until the card fits
- *    at 0.8. A card is centred when shorter than the view, else its top
- *    sits 24 px below the toolbar. Then the frame moves, as little as it
- *    can, to take in the names of the joined cards (`names`), nearest
- *    first, each one that fits with the card at zoom 0.8 or closer. When
- *    the nearest doesn't fit, the frame still moves toward it as far as
- *    the card, kept whole, allows.
- *
- * Last, the frame moves back the least it takes for the minimap to clear
- * the card, which wins over the names.
- */
-export const stepCamera = (card: Rect, screen: Screen, viewport: Rect | null, linked: readonly Rect[] = [], names: readonly Rect[] = []): Camera | null => {
-    if (viewport && shows(card, screen, viewport)) return null;
-    const view = usable(screen);
+/** Whether `r` shows whole in the usable view, at zoom 0.8 or closer, clear of the minimap. */
+const shows = (r: Rect, screen: Screen, viewport: Rect) => {
+    const zoom = screen.width / viewport.width;
+    return zoom >= VIEW.minZoom - EPSILON && inView(r, screen, viewport) && covered(r, { x: viewport.x, y: viewport.y + VIEW.toolbar / zoom, zoom }, usable(screen)) === 0;
+};
+
+/** Rule 1: the card and the cards its strings join (`linked`), framed together, when they fit at 0.8 or closer and the card clears the minimap. */
+const groupFrame = (card: Rect, linked: readonly Rect[], view: Rect): Frame | null => {
     const group = union([card, ...linked]);
     if (linked.length > 0 && fitZoom(group, view) >= VIEW.minZoom) {
         const frame = clearOfMinimap(centred(group, view, fitZoom(group, view)), card, group, view, false);
-        if (covered(card, frame, view) === 0) return cameraOf(screen, frame);
+        if (covered(card, frame, view) === 0) return frame;
     }
+    return null;
+};
+
+/**
+ * Rule 2's zoom: the largest from 0.8 to 1 that leaves `VIEW.room` each
+ * side of the card, else the room shrinks until the card fits at 0.8. Then
+ * the names of the joined cards, nearest first, each one that fits with the
+ * card at 0.8 or closer. A tall card keeps its top under the toolbar, so a
+ * name counts only within the stretch of the card in view.
+ */
+const takeInNames = (card: Rect, names: readonly Rect[], view: Rect) => {
     let zoom = clamp(Math.min(view.width / (card.width + 2 * VIEW.room), (view.height - 2 * VIEW.margin) / card.height), VIEW.minZoom, VIEW.maxZoom);
     const tall = card.height * zoom > view.height - 2 * VIEW.margin;
     const room = { width: view.width - 2 * VIEW.margin, height: view.height - 2 * VIEW.margin };
-    // A tall card keeps its top under the toolbar, so a name counts only within the stretch of the card in view.
-    const fits = (r: Rect, z: number) => r.width * z <= room.width + 1e-6 && (tall ? r.y >= card.y && r.y + r.height <= card.y + room.height / z : r.height * z <= room.height + 1e-6);
+    const fits = (r: Rect, z: number) => r.width * z <= room.width + EPSILON && (tall ? r.y >= card.y && r.y + r.height <= card.y + room.height / z : r.height * z <= room.height + EPSILON);
     const centre = (r: Rect) => ({ x: r.x + r.width / 2, y: r.y + r.height / 2 });
     const distance = (r: Rect) => Math.hypot(centre(r).x - centre(card).x, centre(r).y - centre(card).y);
     let shown = card;
     const left: Rect[] = [];
-    for (const name of [...names].sort((a, b) => distance(a) - distance(b))) {
+    for (const name of sortBy(names, distance)) {
         const wanted = union([shown, name]);
         const z = Math.min(zoom, room.width / wanted.width, tall ? Infinity : room.height / wanted.height);
-        if (z < VIEW.minZoom - 1e-6 || !fits(wanted, z)) {
+        if (z < VIEW.minZoom - EPSILON || !fits(wanted, z)) {
             left.push(name);
             continue;
         }
         shown = wanted;
         zoom = z;
     }
+    return { zoom, tall, shown, nearestLeft: left[0] as Rect | undefined };
+};
+
+/**
+ * Rule 2's frame: the card centred when shorter than the view, else its top
+ * `VIEW.margin` below the toolbar, moved as little as it takes to show
+ * `shown`, the card and the names taken in. A name left out still draws the
+ * frame its way, as far as those allow.
+ */
+const cardFrame = (card: Rect, view: Rect, { zoom, tall, shown, nearestLeft }: ReturnType<typeof takeInNames>): Frame => {
     const width = view.width / zoom;
     const height = view.height / zoom;
     const margin = VIEW.margin / zoom;
-    // A name that doesn't fit still draws the frame its way, as far as the card and the names in view allow.
-    const nearest = left[0];
     const keepX = range(shown.x, shown.width, width, margin);
     let x = within(card.x - (width - card.width) / 2, keepX);
-    if (nearest) x = within(within(x, range(nearest.x, nearest.width, width, margin)), keepX);
+    if (nearestLeft) x = within(within(x, range(nearestLeft.x, nearestLeft.width, width, margin)), keepX);
     let y = card.y - margin;
     if (!tall) {
         const keepY = range(shown.y, shown.height, height, margin);
         y = within(card.y - (height - card.height) / 2, keepY);
-        if (nearest) y = within(within(y, range(nearest.y, nearest.height, height, margin)), keepY);
+        if (nearestLeft) y = within(within(y, range(nearestLeft.y, nearestLeft.height, height, margin)), keepY);
     }
-    return cameraOf(screen, clearOfMinimap({ x, y, zoom }, card, card, view, tall));
+    return { x, y, zoom };
+};
+
+/**
+ * The camera for a step, or null when the card already shows whole at zoom 0.8 or closer, clear of the minimap: rule 1 when it
+ * holds, else rule 2; last, the frame moves back the least it takes for the minimap to clear the card, which wins over the names.
+ */
+export const stepCamera = (card: Rect, screen: Screen, viewport: Rect | null, linked: readonly Rect[] = [], names: readonly Rect[] = []): Camera | null => {
+    if (viewport && shows(card, screen, viewport)) return null;
+    const view = usable(screen);
+    const group = groupFrame(card, linked, view);
+    if (group) return cameraOf(screen, group);
+    const taken = takeInNames(card, names, view);
+    return cameraOf(screen, clearOfMinimap(cardFrame(card, view, taken), card, card, view, taken.tall));
 };
 
 /** The overview: `bounds` centred at the zoom that fits it, at most 1. */
@@ -175,18 +191,14 @@ export const overviewCamera = (bounds: Rect, screen: Screen): Camera => {
     return cameraOf(screen, centred(bounds, view, fitZoom(bounds, view)));
 };
 
-/**
- * What the overview frames: the code cards whole, and the PR card from its
- * top down to the lowest code card, so a long description runs on below
- * the frame instead of shrinking the board.
- */
+/** What the overview frames: the code cards whole, and the PR card down to the lowest code card, so a long description runs on below. */
 export const overviewBounds = (code: readonly Rect[], pr: Rect | null): Rect | null => {
     if (code.length === 0) return pr;
     const bounds = union(code);
     return pr ? union([bounds, { ...pr, height: clamp(bounds.y + bounds.height - pr.y, 0, pr.height) }]) : bounds;
 };
 
-/** Read all on the board, in canvas units: 24 right of its card, top level with it, 720 wide and as tall as its page, up to 640. */
+/** Read all on the board, in canvas units, as tall as its page. */
 export const readAllRect = (card: Rect, pageHeight: number): Rect => ({
     x: card.x + card.width + VIEW.readAll.gap,
     y: card.y,
@@ -195,25 +207,17 @@ export const readAllRect = (card: Rect, pageHeight: number): Rect => ({
 });
 
 /**
- * The camera that makes Read all readable as it opens, or null when it
- * already is: the zoom 0.8 to 1, and the card's right 240 and the pane
- * whole in the usable view. Otherwise they are centred at the largest zoom
- * from 0.8 to 1 that fits them; when not even 0.8 does, their top-left
- * corner shows.
+ * The camera that makes Read all readable as it opens, or null when it is: zoom 0.8 to 1, the card's right `keep` and the pane whole
+ * in view. Else both are centred at the largest zoom from 0.8 to 1 that fits them; when not even 0.8 does, their top-left shows.
  */
 export const readAllCamera = (card: Rect, pane: Rect, screen: Screen, viewport: Rect | null): Camera | null => {
     const keep = Math.min(VIEW.readAll.keep, card.width);
     const wanted = union([{ x: card.x + card.width - keep, y: card.y, width: keep, height: Math.min(card.height, pane.height) }, pane]);
-    const view = usable(screen);
     if (viewport) {
         const zoom = screen.width / viewport.width;
-        const inside =
-            wanted.x >= viewport.x &&
-            wanted.x + wanted.width <= viewport.x + view.width / zoom &&
-            wanted.y >= viewport.y + VIEW.toolbar / zoom &&
-            wanted.y + wanted.height <= viewport.y + viewport.height;
-        if (inside && zoom >= VIEW.minZoom - 1e-6 && zoom <= VIEW.maxZoom + 1e-6) return null;
+        if (inView(wanted, screen, viewport) && zoom >= VIEW.minZoom - EPSILON && zoom <= VIEW.maxZoom + EPSILON) return null;
     }
+    const view = usable(screen);
     const zoom = clamp(fitZoom(wanted, view), VIEW.minZoom, VIEW.maxZoom);
     const frame = centred(wanted, view, zoom);
     const margin = VIEW.margin / zoom;
@@ -225,11 +229,8 @@ export const readAllCamera = (card: Rect, pane: Rect, screen: Screen, viewport: 
 };
 
 /**
- * Read all as Drawdy draws it: a box the size of the usable view, at its
- * corner, which clips the pane so it never covers Drawdy's toolbar or the
- * panel, and in it the pane, laid out `size` large, its top-left at `at`
- * on screen, scaled by `zoom`. CSS scales a box about its middle, so the
- * translation makes up for that.
+ * Read all as Drawdy draws it: clipped to the usable view, so it never covers the toolbar or the panel, laid out `size` large and
+ * scaled by `zoom` with its top-left at `at`. CSS scales a box about its middle, so the translation makes up for that.
  */
 export const readAllFrame = (at: Point, zoom: number, size: Size, screen: Screen): { clip: Rect; transform: string } => {
     const clip = usable(screen);
@@ -239,11 +240,8 @@ export const readAllFrame = (at: Point, zoom: number, size: Size, screen: Screen
 };
 
 /**
- * Where a dragged Read all's top-left may go on screen, its header
- * `header` px large there: the header's top no higher than Drawdy's
- * toolbar's foot and its bottom on screen, and at least 120 px of it left
- * of the panel's strip and right of the screen's left edge, so it can
- * always be grabbed again.
+ * Where a dragged Read all's top-left may go, its header `header` large on screen: the header's top no higher than the toolbar's
+ * foot, its bottom on screen, and `grip` px of it clear of the panel and the screen's left edge, so it can be grabbed again.
  */
 export const dragLimit = (at: Point, header: Size, screen: Screen): Point => {
     const view = usable(screen);

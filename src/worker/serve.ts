@@ -1,14 +1,11 @@
 /**
- * The parser worker: reads, parses and links a pull request into its review
- * and its board's plan, off Drawdy's driver worker, which every extension
- * shares. The driver sends the pull request and its file list; the worker
- * reads the files from raw.githubusercontent.com itself, and asks the driver
- * for the parser's files, which only the driver can keep and check
- * (`driver/grammars.ts`).
+ * The parser worker: reads, parses and links a PR into its review and its board's plan, off Drawdy's driver worker,
+ * which every extension shares. The driver sends the PR and its file list; the worker reads the files from
+ * raw.githubusercontent.com itself, and asks the driver for the parser's files, which only the driver can keep and
+ * check (`driver/grammars.ts`).
  *
- * `serve` takes the worker's global scope, or a stand-in for it: where a
- * worker can't start, the driver runs the same script on its own thread
- * (`driver/parser.ts`), and the tests run this module as it is.
+ * `serve` takes the worker's global scope, or a stand-in for it: where a worker can't start, the driver runs the
+ * same script on its own thread (`driver/parser.ts`), and the tests run this module as it is.
  */
 
 import { createGithub, type Fetch, type PrFile, type PrInfo } from "../lib/github.ts";
@@ -38,7 +35,7 @@ export type FromWorker =
     | { type: "followed"; id: number; files: number }
     /** The review as the driver keeps it (`compact`), and its board's plan. */
     | { type: "done"; id: number; review: Review; plan: BoardPlan }
-    /** `parser`: the parser itself couldn't start or load a grammar, rather than a pull request it couldn't read. */
+    /** `parser`: the parser itself couldn't start or load a grammar, rather than a PR it couldn't read. */
     | { type: "failed"; id: number; message: string; parser: boolean };
 
 /** What the worker uses of its global scope. */
@@ -52,9 +49,8 @@ export type WorkerScope = {
 const SLICE = Math.min(READ.code, READ.tests);
 
 /**
- * How many changed files the read tier would read whole but for its limits
- * (`READ`). `changedSources` keeps every file of a list within them, so the
- * list cut into slices of 40 gives each slice's whole.
+ * How many changed files the read tier would read whole but for its limits (`READ`). `changedSources` keeps every
+ * file of a list within them, so the list cut into slices of 40 gives each slice's whole.
  */
 export const unreadCount = (files: readonly PrFile[]): number => {
     let all = 0;
@@ -75,7 +71,7 @@ const parserError = (err: unknown): Error => {
 export const serve = (scope: WorkerScope, start: (runtime: Uint8Array) => Promise<Syntax> = createSyntax): void => {
     const github = createGithub((url, init) => scope.fetch(url, init));
 
-    // The parser's files, each asked of the driver once per load, and answered by its ask's number.
+    // The parser's files are asked of the driver once per load, and answered by the ask's number.
     let asks = 0;
     const answers = new Map<number, (bytes: Uint8Array | null) => void>();
     const fileOf = (name: ParserFile): Promise<Uint8Array> =>
@@ -121,11 +117,7 @@ export const serve = (scope: WorkerScope, start: (runtime: Uint8Array) => Promis
         }
     };
 
-    /**
-     * `read` and `parse` for one pull request, telling the driver as each
-     * changed file is read and parsed, in reading order, and how many other
-     * files have been read.
-     */
+    /** `read` and `parse` for one PR, telling the driver as each changed file is read and parsed, in reading order, and how many other files have been read. */
     const reporting = (id: number, changed: readonly string[], read: Read): { read: Read; parse: Parse } => {
         const order = new Map(changed.map((path, i) => [path, i]));
         const outcomes: ("done" | "long" | "missing" | undefined)[] = [];

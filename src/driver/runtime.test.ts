@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it, jest } from "@jest/globals";
-import type { DriverCommandIssuer, DriverSubscriptionEvent, ModuleStyling } from "@drawdy/driver-protocol";
+import type { DriverSubscriptionEvent, ModuleStyling } from "@drawdy/driver-protocol";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { projectColour } from "../shared/suggestions.ts";
@@ -9,9 +9,11 @@ import { fakeFetch } from "../test/fake-fetch.ts";
 import { fakeHost } from "../test/fake-host.ts";
 import { STRING_COLOURS } from "../lib/layout.ts";
 import { Lexer } from "../vendor/marked.ts";
-import { createRuntime, rebuildCostOf } from "./runtime.ts";
+import { rebuildCostOf } from "./panel-view.ts";
+import { createRuntime } from "./runtime.ts";
 
 const fakeGithub = fakeFetch("hono-5513.json").fetch;
+const HONO = "https://github.com/honojs/hono/pull/5513";
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -34,15 +36,8 @@ const boot = async (options: { panel?: boolean; extra?: Record<string, (req: any
         "command:dom:create-action-button": () => ({ created: true }),
         ...options.extra,
     });
-    const issueCommand = (async (request: { type: string; req?: unknown }) => {
-        try {
-            return { ...request, res: { value: await host.ddp.call(request.type as never, request.req as never) } };
-        } catch (err) {
-            return { ...request, res: { error: { type: "runtime", message: String(err) } } };
-        }
-    }) as unknown as DriverCommandIssuer;
     const runtime = createRuntime({
-        issueCommand,
+        issueCommand: host.issueCommand,
         manifest: { driverId: "a.pr-blackboard", driverName: "PR Blackboard", driverVersion: "0", permissions: [] } as never,
         styling: host.styling as ModuleStyling,
         generateId: (() => {
@@ -58,23 +53,31 @@ const boot = async (options: { panel?: boolean; extra?: Record<string, (req: any
     };
     if (options.panel !== false) await openPanel();
     const view = (): PanelView => host.calls.filter((c) => c.type === "command:webview:post-message" && c.req.message.type === "view").pop()!.req.message.view;
+    const flew = () => host.calls.some((c) => c.type === "command:camera:fly-to-rect");
+    /** Opens hono#5513 from the panel, and waits for its board to land: the camera's one flight. */
+    const openHono = async (ms?: number) => {
+        await message({ type: "open", url: HONO });
+        await until(flew, ms);
+    };
     const click = (ids: string[], at: { x: number; y: number }) =>
         handle({ type: "subscription:scene:click", subscriptionId: "t", body: { drawdyElementIds: ids, cursor: { canvasSpace: at, domSpace: at } } } as unknown as DriverSubscriptionEvent);
-    return { host, handle, message, view, click, openPanel };
+    return { host, handle, message, view, click, openPanel, openHono };
 };
 
 /** The ids and rects of a pinned board's cards, by pin id. */
 const cardsOf = (host: ReturnType<typeof fakeHost>) =>
     new Map([...host.elements].filter(([, e]) => e.schema.type === "component").map(([id, e]) => [e.schema.meta.prBlackboard.pin as string, { id, rect: e.rect, mark: e.schema.meta.prBlackboard }]));
 
+// GitHub and jsDelivr serve the saved hono#5513, unless a test serves its own.
+const realFetch = globalThis.fetch;
+beforeAll(() => {
+    globalThis.fetch = fakeGithub as typeof fetch;
+});
+afterAll(() => {
+    globalThis.fetch = realFetch;
+});
+
 describe("the runtime on hono#5513", () => {
-    const realFetch = globalThis.fetch;
-    beforeAll(() => {
-        globalThis.fetch = fakeGithub as typeof fetch;
-    });
-    afterAll(() => {
-        globalThis.fetch = realFetch;
-    });
 
     it("registers its button and no context menu", async () => {
         const { host } = await boot();
@@ -88,10 +91,9 @@ describe("the runtime on hono#5513", () => {
             if (url.startsWith("https://cdn.jsdelivr.net/")) await wait(60);
             return fakeGithub(url);
         }) as typeof fetch;
-        const { host, message, view } = await boot();
+        const { host, view, openHono } = await boot();
         const from = host.calls.length;
-        await message({ type: "open", url: "https://github.com/honojs/hono/pull/5513" });
-        await until(() => host.calls.some((c) => c.type === "command:camera:fly-to-rect"));
+        await openHono();
         globalThis.fetch = fakeGithub as typeof fetch;
         const types = host.calls.slice(from).map((c) => c.type);
         const add = types.indexOf("command:scene:add-drawdy-elements");
@@ -119,8 +121,7 @@ describe("the runtime on hono#5513", () => {
 
     it("picks up a board already pinned with the PR card current, as after pinning", async () => {
         const first = await boot();
-        await first.message({ type: "open", url: "https://github.com/honojs/hono/pull/5513" });
-        await until(() => first.host.calls.some((c) => c.type === "command:camera:fly-to-rect"));
+        await first.openHono();
         // A reload: a new runtime over the same board; the reader opens the panel.
         const { host, openPanel, view } = await boot({ panel: false });
         for (const [id, e] of first.host.elements) host.elements.set(id, e);
@@ -132,9 +133,8 @@ describe("the runtime on hono#5513", () => {
     });
 
     it("closes Read all on Esc in the panel", async () => {
-        const { host, message, view } = await boot();
-        await message({ type: "open", url: "https://github.com/honojs/hono/pull/5513" });
-        await until(() => host.calls.some((c) => c.type === "command:camera:fly-to-rect"));
+        const { host, message, view, openHono } = await boot();
+        await openHono();
         await message({ type: "next" });
         await until(() => view().current === 0);
         await message({ type: "read-all" });
@@ -148,18 +148,10 @@ describe("the runtime on hono#5513", () => {
 });
 
 describe("the reading view on hono#5513", () => {
-    const realFetch = globalThis.fetch;
-    beforeAll(() => {
-        globalThis.fetch = fakeGithub as typeof fetch;
-    });
-    afterAll(() => {
-        globalThis.fetch = realFetch;
-    });
 
     const opened = async (extra: Record<string, (req: any) => unknown> = {}) => {
         const booted = await boot({ extra });
-        await booted.message({ type: "open", url: "https://github.com/honojs/hono/pull/5513" });
-        await until(() => booted.host.calls.some((c) => c.type === "command:camera:fly-to-rect"));
+        await booted.openHono();
         return booted;
     };
 
@@ -218,28 +210,19 @@ describe("the reading view on hono#5513", () => {
 });
 
 describe("the runtime and GitHub", () => {
-    const realFetch = globalThis.fetch;
-    beforeAll(() => {
-        globalThis.fetch = fakeGithub as typeof fetch;
-    });
-    afterAll(() => {
-        globalThis.fetch = realFetch;
-    });
 
     it("says which links work when one isn't a GitHub pull request, in the start view, the only place errors show", async () => {
-        const { host, message, view } = await boot();
+        const { message, view, openHono } = await boot();
         await message({ type: "open", url: "https://gitlab.com/a/b/-/merge_requests/1" });
         expect(view()).toMatchObject({ phase: "start", error: "Only GitHub PR links work, like github.com/owner/repo/pull/123." });
-        await message({ type: "open", url: "https://github.com/honojs/hono/pull/5513" });
-        await until(() => host.calls.some((c) => c.type === "command:camera:fly-to-rect"));
+        await openHono();
         await message({ type: "open", url: "not a link" });
         expect(view()).toMatchObject({ phase: "start", error: expect.stringMatching(/^Only GitHub/) });
     });
 
     it("goes back to the start view on Home, Read all closed and the board kept, and a click on one of its cards reads it again", async () => {
-        const { host, message, view, click } = await boot();
-        await message({ type: "open", url: "https://github.com/honojs/hono/pull/5513" });
-        await until(() => host.calls.some((c) => c.type === "command:camera:fly-to-rect"));
+        const { host, message, view, click, openHono } = await boot();
+        await openHono();
         await message({ type: "next" });
         await until(() => view().card?.pin !== "pr");
         await message({ type: "read-all" });
@@ -259,21 +242,19 @@ describe("the runtime and GitHub", () => {
     });
 
     it("flies to a pull request already on the board at its head commit, silently, and pins nothing more", async () => {
-        const { host, message, view } = await boot();
-        await message({ type: "open", url: "https://github.com/honojs/hono/pull/5513" });
-        await until(() => host.calls.some((c) => c.type === "command:camera:fly-to-rect"));
+        const { host, message, view, openHono } = await boot();
+        await openHono();
         const adds = () => host.calls.filter((c) => c.type === "command:scene:add-drawdy-elements").length;
         const flights = () => host.calls.filter((c) => c.type === "command:camera:fly-to-rect").length;
         const before = flights();
-        await message({ type: "open", url: "https://github.com/honojs/hono/pull/5513" });
+        await message({ type: "open", url: HONO });
         await until(() => flights() > before);
         expect([adds(), view().phase, view().error]).toEqual([1, "ready", null]);
     });
 
     it("works from the board after a reload with the panel never opened: a fold row opens Read all, a label follows its string", async () => {
         const first = await boot();
-        await first.message({ type: "open", url: "https://github.com/honojs/hono/pull/5513" });
-        await until(() => first.host.calls.some((c) => c.type === "command:camera:fly-to-rect"));
+        await first.openHono();
         // A reload: a new runtime over the same board, the panel never opened.
         const { host, click } = await boot({ panel: false });
         for (const [id, e] of first.host.elements) host.elements.set(id, e);
@@ -298,8 +279,7 @@ describe("the runtime and GitHub", () => {
 
     it("picks up the board with the card last clicked current when the panel opens", async () => {
         const first = await boot();
-        await first.message({ type: "open", url: "https://github.com/honojs/hono/pull/5513" });
-        await until(() => first.host.calls.some((c) => c.type === "command:camera:fly-to-rect"));
+        await first.openHono();
         const { host, click, openPanel, view } = await boot({ panel: false });
         for (const [id, e] of first.host.elements) host.elements.set(id, e);
         const compose = cardsOf(host).get("src/compose.ts:18")!;
@@ -311,8 +291,7 @@ describe("the runtime and GitHub", () => {
 
     it("says why on the loading view, at its failed step, when the panel opens on a board it can't pick up", async () => {
         const first = await boot();
-        await first.message({ type: "open", url: "https://github.com/honojs/hono/pull/5513" });
-        await until(() => first.host.calls.some((c) => c.type === "command:camera:fly-to-rect"));
+        await first.openHono();
         // A teammate with no copy of the review, on a network GitHub is limiting.
         globalThis.fetch = (async () => new Response("{}", { status: 403, headers: { "x-ratelimit-remaining": "0" } })) as typeof fetch;
         try {
@@ -336,7 +315,7 @@ describe("the runtime and GitHub", () => {
         globalThis.fetch = (async (url: string) => (url.startsWith("https://cdn.jsdelivr.net/") ? new Response("", { status: 503 }) : net.fetch(url))) as typeof fetch;
         try {
             const { host, message, view } = await boot();
-            await message({ type: "open", url: "https://github.com/honojs/hono/pull/5513" });
+            await message({ type: "open", url: HONO });
             await until(() => view().annotations.some((a) => a.level === "failure"));
             expect(view()).toMatchObject({ phase: "loading", error: null, annotations: [{ level: "failure", title: "Download failed", detail: "Couldn't download the TypeScript parser from cdn.jsdelivr.net. Try again." }] });
             expect(view().loading.map((l) => `${l.key} ${l.state}`)).toEqual(["pr done", "parser failed", "files todo", "link todo", "pin todo"]);
@@ -364,9 +343,8 @@ describe("the runtime and GitHub", () => {
             return new Response(await res.text(), { headers: { "x-ratelimit-limit": "60", "x-ratelimit-remaining": url.includes("/files") ? "3" : "4", "x-ratelimit-reset": String(reset) } });
         }) as typeof fetch;
         try {
-            const { host, message, view } = await boot();
-            await message({ type: "open", url: "https://github.com/honojs/hono/pull/5513" });
-            await until(() => host.calls.some((c) => c.type === "command:camera:fly-to-rect"));
+            const { host, view, openHono } = await boot();
+            await openHono();
             const loading: PanelView[] = host.calls.filter((c) => c.type === "command:webview:post-message" && c.req.message.view?.phase === "loading").map((c) => c.req.message.view);
             const warned = loading.find((v) => v.annotations.length > 0)!;
             expect(warned.annotations.map((a) => a.title)).toEqual(["3 GitHub requests left"]);
@@ -381,10 +359,6 @@ describe("the runtime and GitHub", () => {
 describe("rebuilding a board", () => {
     /** An open and a rebuild each read and parse the pull request. */
     const SLOW = 30_000;
-    const realFetch = globalThis.fetch;
-    afterAll(() => {
-        globalThis.fetch = realFetch;
-    });
 
     /**
      * hono#5513 opened from a fake GitHub whose requests are counted; `answer`
@@ -407,8 +381,7 @@ describe("rebuilding a board", () => {
         let made: ReturnType<typeof fakeHost> | null = null;
         const booted = await boot({ extra: options.extra?.(() => made!) });
         made = booted.host;
-        await booted.message({ type: "open", url: "https://github.com/honojs/hono/pull/5513" });
-        await until(() => booted.host.calls.some((c) => c.type === "command:camera:fly-to-rect"), SLOW);
+        await booted.openHono(SLOW);
         const api = () => net.requests.filter((url) => url.startsWith("https://api.github.com/")).length;
         const jsdelivr = () => net.requests.filter((url) => url.startsWith("https://cdn.jsdelivr.net/")).length;
         return {
@@ -645,8 +618,7 @@ describe("rebuilding a board", () => {
                 ? new Response(JSON.stringify({ ...saved.pull, head: { ...saved.pull.head, sha: answering } }), { headers: { "x-ratelimit-remaining": "57" } })
                 : net.fetch(url.replace(answering, head))) as typeof fetch;
         const first = await boot();
-        await first.message({ type: "open", url: "https://github.com/honojs/hono/pull/5513" });
-        await until(() => first.host.calls.some((c) => c.type === "command:camera:fly-to-rect"), SLOW);
+        await first.openHono(SLOW);
         // The same commit, and new commits since: either way the newer board, added last, 3,000 to the right, is the one read.
         for (const sha of [head, "f".repeat(40)]) {
             answering = sha;
@@ -689,10 +661,6 @@ describe("rebuilding a board", () => {
 });
 
 describe("the description, lexed once", () => {
-    const realFetch = globalThis.fetch;
-    afterAll(() => {
-        globalThis.fetch = realFetch;
-    });
 
     it("is lexed once on this thread for the board, the panel, the steps and Description", async () => {
         const saved = JSON.parse(readFileSync(join(import.meta.dirname, "../lib/fixtures/hono-5513.json"), "utf8"));
@@ -704,9 +672,8 @@ describe("the description, lexed once", () => {
             url === pulls ? new Response(JSON.stringify({ ...saved.pull, body: `${saved.pull.body}\n\n${marker}` }), { headers: { "x-ratelimit-remaining": "57" } }) : net.fetch(url)) as typeof fetch;
         const blocks = jest.spyOn(Lexer.prototype, "blockTokens");
         try {
-            const { host, message, view } = await boot();
-            await message({ type: "open", url: "https://github.com/honojs/hono/pull/5513" });
-            await until(() => host.calls.some((c) => c.type === "command:camera:fly-to-rect"), 30_000);
+            const { message, view, openHono } = await boot();
+            await openHono(30_000);
             expect((view().card as { description: string }).description).toContain(marker);
             for (const type of ["next", "previous", "description", "start"]) await message({ type });
             await wait(50);

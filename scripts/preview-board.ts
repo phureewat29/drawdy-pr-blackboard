@@ -24,14 +24,15 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { nameRect, prCard, readAllOf } from "../src/lib/card.ts";
-import { STRING_COLOURS, planBoard, stepsOf, stringCrossings, stringPath, union, type BoardPlan, type PlannedString, type Point, type Rect } from "../src/lib/layout.ts";
+import { STRING_COLOURS, planBoard, stepsOf, union, type BoardPlan, type PlannedString, type Point, type Rect } from "../src/lib/layout.ts";
+import { crossingsAmong, stringCrossings, stringPath } from "../src/lib/layout/bends.ts";
 import { MARKDOWN_CSS, lexMarkdown, markdownHtml, segments } from "../src/lib/markdown.ts";
 import type { Review } from "../src/lib/model.ts";
 import { VIEW, overviewBounds, overviewCamera, readAllCamera, readAllRect, stepCamera, usable, type Camera, type Screen } from "../src/lib/view.ts";
 import { themeCss } from "../src/driver/channel.ts";
 import { reviewElements } from "../src/driver/elements.ts";
 import { popoverSchema } from "../src/driver/read-all.ts";
-import { currentCardOf } from "../src/driver/runtime.ts";
+import { currentCardOf } from "../src/driver/panel-view.ts";
 import { warningsOf } from "../src/driver/warnings.ts";
 import { webviewHtml } from "../src/driver/webview-html.ts";
 import { projectColour } from "../src/shared/suggestions.ts";
@@ -46,7 +47,7 @@ mkdirSync(OUT, { recursive: true });
 
 type Theme = "light" | "dark";
 const BOARD = { light: { bg: "#f4f4f5", grid: "#e4e4e7" }, dark: { bg: "#18181b", grid: "#222226" } };
-/** ModuleStyling as Drawdy computes it from drawdy.io's deployed tokens (read 2026-10-11): the panel's background is `--surface-elevated`. */
+/** ModuleStyling as Drawdy computes it from drawdy.io's deployed tokens: the panel's background is `--surface-elevated`. */
 const STYLING: Record<Theme, ModuleStyling> = {
     dark: { theme: "dark", background: "#27272a", foreground: "#fffffff2", surface: "#1f1f23", surface2: "#1f1f23", mutedForeground: "#ffffffb3", primary: "#c5f601", primaryForeground: "#090909", accent: "#e1ff6d", accentForeground: "#090909", border: "#ffffff14", input: "#ffffff1f", ring: "#c5f601", destructive: "#fb3748", success: "#53c683", warning: "#eab308", radiusSm: "4px", radiusMd: "6px", radiusLg: "8px" },
     light: { theme: "light", background: "#fff", foreground: "#000000f2", surface: "#fff", surface2: "#fafafa", mutedForeground: "#000000b3", primary: "#c5f601", primaryForeground: "#090909", accent: "#7fae00", accentForeground: "#090909", border: "#0000001a", input: "#00000029", ring: "#b3e000", destructive: "#fb3748", success: "#53c683", warning: "#eab308", radiusSm: "4px", radiusMd: "6px", radiusLg: "8px" },
@@ -261,14 +262,18 @@ const shoot = (name: string, html: string, screen: Screen, theme: Theme = "light
     shots.push(png);
 };
 
+/** A screen 2400 px wide, at most `maxHeight` tall, and the camera that shows `b` whole on it, centred, 40 px clear. */
+const wholeView = (b: Rect, maxHeight = Infinity): { screen: Screen; camera: Camera } => {
+    const width = 2400;
+    const height = Math.round(Math.min(maxHeight, (width * (b.height + 160)) / (b.width + 160)));
+    const zoom = Math.min((width - 80) / b.width, (height - 80) / b.height);
+    return { screen: { width, height }, camera: { zoom, rect: { x: b.x - (width / zoom - b.width) / 2, y: b.y - (height / zoom - b.height) / 2, width: width / zoom, height: height / zoom } } };
+};
+
 const overview = (name: string, boards: Boards, theme: Theme) => {
     const built = boards[theme];
-    const b = built.plan.bounds;
-    const width = 2400;
-    const height = Math.round(Math.min(2400, (width * (b.height + 160)) / (b.width + 160)));
-    const zoom = Math.min((width - 80) / b.width, (height - 80) / b.height);
-    const camera: Camera = { zoom, rect: { x: b.x - (width / zoom - b.width) / 2, y: b.y - (height / zoom - b.height) / 2, width: width / zoom, height: height / zoom } };
-    shoot(name, page(built, { width, height }, camera, theme), { width, height }, theme);
+    const { screen, camera } = wholeView(built.plan.bounds, 2400);
+    shoot(name, page(built, screen, camera, theme), screen, theme);
 };
 
 const closeUp = (name: string, boards: Boards, pin: string, screen: Screen, theme: Theme, readAll = false, view?: PanelView) => {
@@ -300,7 +305,6 @@ const readAllAt = (name: string, boards: Boards, pin: string, screen: Screen, th
     shoot(name, page(built, screen, camera, theme, { clipped: pane.html, overlay: panel, chrome: true }), screen, theme);
 };
 
-/** What the reader sees once the board lands: the overview camera, the PR card current, the panel in its strip. */
 /**
  * The board after a reader drags one card: Drawdy moves the ends of its
  * strings and keeps their bends, which DDP 1.3 can't change (3.3.4).
@@ -312,14 +316,11 @@ const dragged = (name: string, boards: Boards, pin: string, by: Point, theme: Th
     const rects = new Map(built.rects).set(id, { ...r, x: r.x + by.x, y: r.y + by.y });
     const elements = built.elements.map((e) => (e.type === "component" && e.drawdyElementId === id ? { ...e, x: r.x + by.x, y: r.y + by.y } : e));
     const moved: Built = { ...built, elements, rects };
-    const b = union([built.plan.bounds, rects.get(id)!]);
-    const width = 2400;
-    const height = Math.round((width * (b.height + 160)) / (b.width + 160));
-    const zoom = Math.min((width - 80) / b.width, (height - 80) / b.height);
-    const camera: Camera = { zoom, rect: { x: b.x - (width / zoom - b.width) / 2, y: b.y - (height / zoom - b.height) / 2, width: width / zoom, height: height / zoom } };
-    shoot(name, page(moved, { width, height }, camera, theme), { width, height }, theme);
+    const { screen, camera } = wholeView(union([built.plan.bounds, rects.get(id)!]));
+    shoot(name, page(moved, screen, camera, theme), screen, theme);
 };
 
+/** What the reader sees once the board lands: the overview camera, the PR card current, the panel in its strip. */
 const landed = (name: string, boards: Boards, screen: Screen, theme: Theme) => {
     const built = boards[theme];
     const code = [...built.plan.pins].filter(([id]) => id !== "pr").map(([, r]) => r);
@@ -337,7 +338,7 @@ const report = (name: string, built: Built) => {
     const { plan, review } = built;
     const paths = plan.strings;
     const lines = plan.strings.map((x) => ({ start: x.start, end: x.end, path: [x.start, x.end] }));
-    const count = (list: Pick<PlannedString, "start" | "end" | "path">[]) => list.reduce((n, a, i) => n + list.slice(i + 1).reduce((m, b) => m + stringCrossings(a, b), 0), 0);
+    const count = (list: Pick<PlannedString, "start" | "end" | "path">[]) => crossingsAmong(list, stringCrossings);
     const crossing = plan.strings.flatMap((a, i) => plan.strings.slice(i + 1).filter((b) => stringCrossings(a, b) > 0).map((b) => [a, b] as const));
     const alike = crossing.filter(([a, b]) => a.style.color === b.style.color);
     const fromOne = alike.filter(([a, b]) => a.from.pin === b.from.pin).length;

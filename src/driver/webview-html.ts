@@ -3,18 +3,13 @@ import { webviewMain } from "../webview/main.ts";
 import { PANEL_BODY, PANEL_CSS, PANEL_MD_CSS } from "../webview/markup.ts";
 import { createPanel } from "../webview/panel.ts";
 
-/**
- * Makes a script safe to inline in <script>: nothing in it may close the
- * element or open the HTML parser's escaped-script states.
- */
+/** Makes a script safe to inline in <script>: nothing in it may close the element or open the HTML parser's escaped-script states. */
 const inlineSafe = (js: string): string =>
     js.replace(/<\/script/gi, "<\\/script").replace(/<!--/g, "\\x3C!--").replace(/<script/gi, "\\x3Cscript");
 
 /**
- * The webview's script: each webview function is serialized on its own and
- * wired together by `webviewMain`. Writing the webview as typed functions
- * (rather than a separate bundle) keeps the extension a single plain build,
- * which is what Drawdy's marketplace pipeline produces.
+ * The webview's script: each webview function is serialized on its own and wired together by `webviewMain`. Typed
+ * functions rather than a separate bundle keep the extension one plain build, which is what Drawdy's marketplace makes.
  */
 export const webviewScript = (): string =>
     [`const createPanel = ${createPanel.toString()};`, `(${webviewMain.toString()})({ createPanel });`].join("\n");

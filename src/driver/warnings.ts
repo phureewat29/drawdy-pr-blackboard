@@ -16,7 +16,7 @@ import type { Quota } from "./quota.ts";
 const warning = (title: string, detail: string): Annotation => ({ level: "warning", title, detail });
 
 /** At this many GitHub requests left or fewer, the loading view and the PR card say so. */
-export const LOW_QUOTA = 10;
+const LOW_QUOTA = 10;
 
 /**
  * The limits the words name: `LIMITS.cards` in lib/model.ts and `READ` in

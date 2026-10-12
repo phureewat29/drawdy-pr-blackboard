@@ -1,16 +1,20 @@
-import type { ModuleStyling } from "@drawdy/driver-protocol";
+import type { DriverCommandIssuer, ModuleStyling } from "@drawdy/driver-protocol";
 import type { Ddp } from "../driver/ddp.ts";
 import { catmullRomSpline } from "../lib/curve.ts";
 import { pathRect, type Rect } from "../lib/layout.ts";
 
 type Stored = { schema: any; rect: Rect };
 
+/** Handlers for a kv-storage that keeps what it is given, Blobs included, as Drawdy's IndexedDB does. */
+export const keptStorage = (kept = new Map<string, unknown>()): Record<string, (req: any) => unknown> => ({
+    "command:kv-storage:get": (req) => (kept.has(req.key) ? { got: kept.get(req.key) } : {}),
+    "command:kv-storage:set": (req) => void kept.set(req.key, req.payload),
+});
+
 /**
- * A stand-in for Drawdy's host, enough for the navigator: it keeps the
- * elements added to it, works out where bound strings run (through their
- * bend points), answers rect queries, and keeps a camera that
- * `fly-to-rect` moves. Every call is recorded; any command it doesn't
- * know fails.
+ * A stand-in for Drawdy's host: it keeps the elements added to it, works out where bound strings run (through their
+ * bend points), answers rect queries, and keeps a camera that `fly-to-rect` moves. Every call is recorded; any
+ * command it doesn't know fails.
  */
 export const fakeHost = (screen = { width: 1600, height: 1000 }, extra: Record<string, (req: any) => unknown> = {}) => {
     const elements = new Map<string, Stored>();
@@ -96,8 +100,17 @@ export const fakeHost = (screen = { width: 1600, height: 1000 }, extra: Record<s
         return handler(req);
     };
     const ddp = { driverId: "test", call, tryCall: (type: string, req?: unknown) => call(type, req).catch(() => null) } as unknown as Ddp;
+    /** Drawdy's command channel over this host, as a driver's `activate` gets it: a command that throws answers with a protocol error. */
+    const issueCommand = (async (request: { type: string; req?: unknown }) => {
+        try {
+            return { ...request, res: { value: await call(request.type, request.req) } };
+        } catch (err) {
+            const type = (err as { cause?: { type?: string } })?.cause?.type ?? "runtime";
+            return { ...request, res: { error: { type, message: err instanceof Error ? err.message : String(err) } } };
+        }
+    }) as unknown as DriverCommandIssuer;
     /** Where a string runs now, as Drawdy draws it. */
     const pathOf = (id: string) => curve(elements.get(id)!.schema);
     const styling = { theme: "dark", primary: "#c5f601", foreground: "#fff", border: "#333", surface: "#222", surface2: "#2a2a2a" } as ModuleStyling;
-    return { ddp, calls, elements, camera, screen, styling, add, pathOf, remove: (id: string) => elements.delete(id) };
+    return { ddp, issueCommand, calls, elements, camera, screen, styling, add, pathOf, remove: (id: string) => elements.delete(id) };
 };

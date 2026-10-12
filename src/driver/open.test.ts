@@ -1,7 +1,7 @@
 import { describe, expect, it } from "@jest/globals";
 import { createGithub } from "../lib/github.ts";
 import { fakeFetch } from "../test/fake-fetch.ts";
-import { fakeHost } from "../test/fake-host.ts";
+import { fakeHost, keptStorage } from "../test/fake-host.ts";
 import { connectSource } from "../test/parser.ts";
 import { loadReview } from "./open.ts";
 import { createParser } from "./parser.ts";
@@ -13,10 +13,7 @@ const HONO = { owner: "honojs", repo: "hono", number: 5513 };
 /** loadReview on hono#5513 through a fake fetch, with a kv-storage that keeps what it is given. */
 const setup = (fetch = fakeFetch("hono-5513.json")) => {
     const kept = new Map<string, unknown>();
-    const host = fakeHost(undefined, {
-        "command:kv-storage:get": (req) => (kept.has(req.key) ? { got: kept.get(req.key) } : {}),
-        "command:kv-storage:set": (req) => void kept.set(req.key, req.payload),
-    });
+    const host = fakeHost(undefined, keptStorage(kept));
     const deps = (net = fetch.fetch) => ({ github: createGithub(net), store: createStore(host.ddp), parser: createParser({ ddp: host.ddp, fetch: net, connect: connectSource }) });
     const steps: string[] = [];
     const progress: Progress = {

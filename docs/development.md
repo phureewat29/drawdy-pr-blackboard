@@ -24,7 +24,7 @@ npm run build          # dist/a-pr-blackboard.drawdyx
 npm run preview        # serve the marketplace build on :5174
 npm run preview:board  # render a board to PNG (needs Google Chrome)
 npm run worker         # bundle the parser worker into src/worker/script.ts
-npm run icon -- <listing.png> <64px.png>
+npm run icon -- <512px.png> <256px.png> <64px.png>
 ```
 
 ## How it works
@@ -57,8 +57,9 @@ Opening a PR runs one pipeline of pure functions in `src/lib/`:
 5. **Review** (`model.ts`): a card per changed function, links labelled
    `calls`, `uses`, `imports`, `tests` or `context`, and at most 32 cards per
    board, the PR card included. What's left off is counted on the PR card.
-6. **Plan** (`layout.ts`, `card.ts`): columns left to right from callers to
-   callees, then curved lines routed around the cards.
+6. **Plan** (`layout.ts` and `layout/`, `card.ts` and `card/`): columns
+   left to right from callers to callees, then curved lines routed around
+   the cards, labelled and coloured.
 7. **Pin** (`driver/open.ts`): one add call, so one undo removes the board.
 
 Steps 2 to 6 run in the parser worker, so a big PR doesn't stall Drawdy.
@@ -71,15 +72,21 @@ does it on save). `npm run check` fails when the script is behind.
 ```
 src/
   index.ts        driver entry
-  driver/         runtime, panel channel, open, parser download, navigator,
-                  Read all, camera, storage, loading steps and warnings
+  driver/         runtime, opener, rebuilder, navigator, Read all, the
+                  panel's view and channel, parser download, camera,
+                  storage, loading steps and warnings
   worker/         the parser worker and its generated script
   webview/        the panel
   shared/         driver ⇄ panel protocol, the examples, icons
   lib/            the pure core: GitHub, reading, parsing, linking, review,
                   layout, cards, Markdown
-  lib/langs/      rule tables for Python, Go, Rust and Java; jdk.ts is
-                  generated
+  lib/langs/      rule tables for Python, Go, Rust and Java, a folder
+                  each; java/jdk.ts is generated
+  lib/facts/      JavaScript and TypeScript facts: units, scopes, imports, sites
+  lib/linker/     what each JS/TS expression, type and member is known to be
+  lib/model/      the review: changed lines, threads, cards, links, the card limit
+  lib/layout/     the plan's stages: columns, routes, strings, labels, colours
+  lib/card/       a card's grid and rows, its HTML, the PR card, Read all
   lib/fixtures/   saved PRs for the tests
   vendor/         marked and web-tree-sitter
   test/           fakes and fixtures for the tests

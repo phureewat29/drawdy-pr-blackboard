@@ -1,3 +1,10 @@
+/**
+ * Read all, the one popover: a pane on the board, 24 right of its card and 720 wide in canvas units, that pans and
+ * zooms with the cards. A floating element sits in screen space, so each camera move places it again from the
+ * move's camera. On open it learns where the canvas sits on screen and subscribes to camera moves and window
+ * resizes; it unsubscribes on close. Its header is a drag handle that moves its place on the board.
+ */
+
 import type { DomElementSchema } from "@drawdy/driver-protocol";
 import { PALETTES, type ReadAllPage, type Theme } from "../lib/card.ts";
 import { serial, sleep } from "../lib/fp.ts";
@@ -8,22 +15,19 @@ import { fly, screenOf, viewportOf } from "./camera.ts";
 import type { Ddp } from "./ddp.ts";
 
 const POPOVER_ID = "pr-blackboard:read-all";
-/** The pane inside the clip, by an id of its own, so Drawdy keeps the same element, iframe and all, from one schema to the next. */
+/** The pane inside the clip has an id of its own, so Drawdy keeps the same element, iframe and all, from one schema to the next. */
 const PANE_ID = "pr-blackboard:read-all:pane";
 const BUTTON_SIZE = 32;
 const ICON_SIZE = 16;
 /** From the pane's top and right edges to `✕`: level with the middle of the page's 56 px header. */
 const BUTTON_INSET = 12;
 
-/** Read all's one button, Lucide `x`, by the DOM id its clicks arrive with. */
+/** Read all's close button, by the DOM id its clicks arrive with. */
 export const CLOSE_BUTTON = "pr-blackboard:read-all:close";
 /** Read all's header, its drag handle, by the DOM id its drags arrive with. */
 export const DRAG_HANDLE = "pr-blackboard:read-all:handle";
 
-/**
- * What Read all shows, in the theme the cards were pinned in: a card's
- * header, then the code, or why it couldn't load.
- */
+/** What Read all shows, in the theme the cards were pinned in: a card's header, then the code, or why it couldn't load. */
 export type PopoverContent = ReadAllPage & { theme: Theme; pin: string };
 
 /** Where the camera is: a `camera:moved-rapid` body, or `camera:get-info`. */
@@ -32,12 +36,14 @@ type CameraAt = { x: number; y: number; zoom: number };
 /** A `dom:drag` body: the pointer where the drag started, moved to, or let go. */
 type Drag = { type: "dragStart" | "dragging" | "dragEnd"; domElementId: string; position: { canvasSpace: Point } };
 
+type Colours = (typeof PALETTES)[Theme];
+
 export type Popover = {
     /** Opens Read all beside `card`, a rect on the canvas, or replaces what it shows. */
     open: (card: Rect, content: PopoverContent) => Promise<void>;
-    /** Keeps Read all on the board while the camera moves, from a `camera:moved-rapid` body. */
+    /** Places Read all again after a camera move. */
     follow: (camera: CameraAt) => void;
-    /** Moves Read all with a drag of its header, from a `dom:drag` body. */
+    /** Moves Read all with a drag of its header. */
     drag: (event: Drag) => void;
     /** Clips Read all to the usable view again after the window changed size. */
     resize: (screen: Screen) => void;
@@ -46,7 +52,7 @@ export type Popover = {
     shown: () => PopoverContent | null;
 };
 
-const closeButton = (colours: Record<string, string>): DomElementSchema => ({
+const closeButton = (colours: Colours): DomElementSchema => ({
     type: "button",
     domId: CLOSE_BUTTON,
     styles: {
@@ -63,7 +69,7 @@ const closeButton = (colours: Record<string, string>): DomElementSchema => ({
 });
 
 /** The header left of `✕`, a box of its own over the page's header: Drawdy reports drags by an element's id. Its transform draws it above the iframe. */
-const dragHandle = (colours: Record<string, string>, width: number, grabbing: boolean): DomElementSchema => ({
+const dragHandle = (colours: Colours, width: number, grabbing: boolean): DomElementSchema => ({
     type: "box",
     domId: DRAG_HANDLE,
     styles: {
@@ -77,13 +83,11 @@ const dragHandle = (colours: Record<string, string>, width: number, grabbing: bo
 });
 
 /**
- * Read all as Drawdy draws it: a box over the usable view that clips it, so
- * it slides under Drawdy's toolbar and the panel as the cards do, and in
- * it the pane, laid out at its size in canvas units and scaled by the zoom
- * (`readAllFrame`), 1 px frame and all. The pane holds the page in an
- * iframe, and over its header the drag handle and `✕`, schema elements,
- * since only those report drags and clicks: they come first, in a row of
- * no height, and their transforms draw them above the iframe.
+ * Read all as Drawdy draws it: a box over the usable view that clips it, so it slides under Drawdy's toolbar and the
+ * panel as the cards do, and in it the pane, laid out at its size in canvas units and scaled by the zoom
+ * (`readAllFrame`). The pane holds the page in an iframe, and over its header the drag handle and `✕`, schema
+ * elements since only those report drags and clicks: they come first, in a row of no height, and their transforms
+ * draw them above the iframe.
  */
 export const popoverSchema = (content: PopoverContent, size: Size, frame: { clip: Rect; transform: string }, grabbing = false): DomElementSchema => {
     const colours = PALETTES[content.theme];
@@ -125,15 +129,6 @@ export const popoverSchema = (content: PopoverContent, size: Size, frame: { clip
     };
 };
 
-/**
- * Read all, the one popover: a pane on the board, 24 right of its card,
- * 720 wide in canvas units, which pans and zooms with the cards. A floating
- * element sits in screen space, so on each camera move it is placed again
- * from the move's camera, scaled by its zoom. On open it learns where the
- * canvas sits on screen (one `camera:get-info` and one `canvas-to-screen`)
- * and subscribes to camera moves and window resizes; it unsubscribes on
- * close. Its header is a drag handle that moves its place on the board.
- */
 export const createPopover = (deps: { ddp: Ddp }): Popover => {
     const { ddp } = deps;
     let content: PopoverContent | null = null;
@@ -149,6 +144,7 @@ export const createPopover = (deps: { ddp: Ddp }): Popover => {
 
     const toScreen = (p: Point): Point => ({ x: offset.x + camera.x + p.x * camera.zoom, y: offset.y + camera.y + p.y * camera.zoom });
 
+    /** Learns the camera, the window and where the canvas sits on screen: one `get-info` and one `canvas-to-screen`. */
     const learn = async (at: Point) => {
         const [info, corner, size] = await Promise.all([
             ddp.tryCall("command:camera:get-info"),
@@ -162,7 +158,7 @@ export const createPopover = (deps: { ddp: Ddp }): Popover => {
         return true;
     };
 
-    /** The floating element for Read all as it stands: the clip at the usable view's corner, the pane in it. */
+    /** The floating element as it stands: the clip at the usable view's corner, the pane in it. */
     const placement = (shown: PopoverContent, at: Rect) => {
         const frame = readAllFrame(toScreen(at), camera.zoom, at, screen);
         return { domId: POPOVER_ID, position: { x: frame.clip.x, y: frame.clip.y }, schema: popoverSchema(shown, at, frame, dragging !== null) };
@@ -182,24 +178,21 @@ export const createPopover = (deps: { ddp: Ddp }): Popover => {
     // Opening, replacing and closing run one at a time, so a page that took longer to open never lands over a newer one.
     const queue = serial();
 
-    /**
-     * Opens Read all readable: when the zoom is outside 0.8 to 1, or the
-     * card's right 240 and the pane don't fit the usable view, the camera
-     * first flies to them (`readAllCamera`). A new page for the card
-     * already shown keeps the pane where it is, dragged or not.
-     */
+    /** When the zoom is outside 0.8 to 1, or the card's right 240 and the pane don't fit the usable view, the camera first flies to them. */
+    const bringIntoView = async (card: Rect, wanted: Rect) => {
+        const [size, viewport] = await Promise.all([screenOf(ddp), viewportOf(ddp)]);
+        const flight = readAllCamera(card, wanted, size, viewport);
+        if (!flight) return;
+        await fly(ddp, flight);
+        await sleep(VIEW.flightMs + 20);
+    };
+
+    /** Opens Read all readable. A new page for the card already shown keeps the pane where it is, dragged or not. */
     const show = async (card: Rect, next: PopoverContent) => {
         const wanted = readAllRect(card, next.height(VIEW.readAll.width));
         const kept = content?.pin === next.pin ? pane : null;
         const at = kept ? { ...kept, height: wanted.height } : wanted;
-        if (!kept) {
-            const [size, viewport] = await Promise.all([screenOf(ddp), viewportOf(ddp)]);
-            const flight = readAllCamera(card, wanted, size, viewport);
-            if (flight) {
-                await fly(ddp, flight);
-                await sleep(VIEW.flightMs + 20);
-            }
-        }
+        if (!kept) await bringIntoView(card, wanted);
         if (!(await learn(at))) return;
         // Overlay, not Drawdy's popover kind: that one stays where it first opened, and avoids collisions.
         await ddp.call("command:dom:upsert-floating-element", { ...placement(next, at), barrierDismissible: false, asPopover: false });

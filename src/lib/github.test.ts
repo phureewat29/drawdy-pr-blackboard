@@ -16,7 +16,7 @@ describe("parsePrUrl", () => {
         expect(parsePrUrl(text)).toBeNull();
     });
 
-    it("files pull requests under one key whatever the case, which reads back as the pull request", () => {
+    it("files PRs under one key whatever the case, which reads back as the PR", () => {
         expect(prKey({ owner: "HonoJS", repo: "Hono", number: 1 })).toBe("honojs/hono#1");
         expect(parsePrUrl(prKey({ owner: "HonoJS", repo: "Hono", number: 1 }))).toEqual({ owner: "honojs", repo: "hono", number: 1 });
     });
@@ -39,7 +39,7 @@ const pull = {
 };
 
 describe("createGithub", () => {
-    it("reads a pull request, with its state and the repository its commits live in", async () => {
+    it("reads a PR, with its state and the repository its commits live in", async () => {
         const github = createGithub(async () => new Response(JSON.stringify(pull), { headers: { "x-ratelimit-remaining": "41" } }));
         const pr = await github.pr({ owner: "a", repo: "b", number: 9 });
         expect(pr).toMatchObject({ state: "merged", author: "ada", headRepo: "fork/b", body: "", changedFiles: 150 });
@@ -99,7 +99,7 @@ describe("createGithub", () => {
         expect(explainGithub(failure!, Date.now())).toMatch(/^This network has used GitHub's 60 requests for this hour\. Try again in 1[12] minutes\.$/);
     });
 
-    it("treats a missing pull request as possibly private", async () => {
+    it("treats a missing PR as possibly private", async () => {
         const github = createGithub(async () => new Response("{}", { status: 404 }));
         const failure = githubFailure(await github.pr({ owner: "a", repo: "b", number: 9 }).catch((e: unknown) => e));
         expect(explainGithub(failure!)).toBe("GitHub can't find this PR. Check the link: PR Blackboard opens public PRs only.");

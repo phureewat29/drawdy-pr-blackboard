@@ -12,6 +12,7 @@
  */
 
 import type { FileFacts, Unit, UnitKind } from "./facts.ts";
+import { pushTo } from "./fp.ts";
 import { lineOf, prevSibling, textOf, type Flat } from "./syntax.ts";
 
 export type ScopeKind = "module" | "function" | "class" | "block";
@@ -157,7 +158,34 @@ export const scopeAround = (f: GFile, n: number): GScope => {
     return s.node === n && n !== 0 ? (s.parent ?? f.module) : s;
 };
 
+/** Reads a file with its language's rules. */
+export const indexFile = (path: string, t: Flat, rules: LangRules): GFile => {
+    const { units, unitByNode, labels } = unitsOf(path, t, rules);
+    const scopes = scopesOf(t, rules);
+    const scopeAt = (n: number): GScope => scopes.all[scopes.enclosing[n]];
+    const bindingNodes = bindNames(t, rules, scopes, unitByNode);
+    joinNonlocalWrites(scopes.all);
+    const { members, bases } = membersOf(t, rules, units);
+    const imports = rules.imports(t);
+    const sites = sitesOf(t, rules, imports, bindingNodes, scopeAt);
+    const importScope = new Map(imports.map((i) => [i, scopeAt(i.stmt)]));
+    return { path, rules, flat: t, units, labels, module: scopes.module, scopes: scopes.all, scopeOfNode: scopes.scopeOfNode, enclosing: scopes.enclosing, sites, imports, importScope, members, bases, unitByNode };
+};
+
 const KIND_ORDER: Record<UnitKind, number> = { class: 0, type: 1, namespace: 2, function: 3, method: 4, value: 5 };
+
+/** The definitions a file's units come from, in document order, an outer one before those it holds: `tags.scm`'s (the latest kind where two capture one node) and the rule table's own. */
+const definitionsOf = (t: Flat, rules: LangRules): { r: UnitRule & { node: number }; start: number; end: number }[] => {
+    const found = new Map<number, UnitRule & { node: number }>();
+    for (const c of t.tags ?? []) {
+        const r = rules.unit(t, c.capture, c.node);
+        if (!r) continue;
+        const prev = found.get(c.node);
+        if (!prev || KIND_ORDER[r.kind] > KIND_ORDER[prev.kind]) found.set(c.node, { ...r, node: c.node });
+    }
+    for (const r of rules.extraUnits?.(t) ?? []) if (!found.has(r.node)) found.set(r.node, r);
+    return [...found.values()].map((r) => ({ r, start: t.start[r.outer], end: Math.max(t.end[r.outer], t.end[r.node]) })).sort((a, b) => a.start - b.start || b.end - a.end);
+};
 
 /** The first line of the comments right above a node, with no blank line between. */
 const docStartOf = (t: Flat, n: number): number => {
@@ -170,6 +198,15 @@ const docStartOf = (t: Flat, n: number): number => {
     return first;
 };
 
+/** `path:nameLine`, as `facts.ts` names units; two on one line take their names, then a count. */
+const uniqueId = (ids: Set<string>, path: string, nameLine: number, name: string): string => {
+    let id = `${path}:${nameLine}`;
+    if (ids.has(id)) id = `${path}:${nameLine}:${name}`;
+    for (let k = 2; ids.has(id); k++) id = `${path}:${nameLine}:${name}:${k}`;
+    ids.add(id);
+    return id;
+};
+
 /**
  * The units of a file from its `tags.scm` definitions and the rule table:
  * functions, classes and types at any depth outside a function body, and
@@ -178,15 +215,6 @@ const docStartOf = (t: Flat, n: number): number => {
  * joins its unit.
  */
 const unitsOf = (path: string, t: Flat, rules: LangRules): { units: Unit[]; unitByNode: Map<number, Unit>; labels: Map<string, string> } => {
-    const found = new Map<number, UnitRule & { node: number }>();
-    for (const c of t.tags ?? []) {
-        const r = rules.unit(t, c.capture, c.node);
-        if (!r) continue;
-        const prev = found.get(c.node);
-        if (!prev || KIND_ORDER[r.kind] > KIND_ORDER[prev.kind]) found.set(c.node, { ...r, node: c.node });
-    }
-    for (const r of rules.extraUnits?.(t) ?? []) if (!found.has(r.node)) found.set(r.node, r);
-    const all = [...found.values()].map((r) => ({ r, start: t.start[r.outer], end: Math.max(t.end[r.outer], t.end[r.node]) })).sort((a, b) => a.start - b.start || b.end - a.end);
     const units: Unit[] = [];
     const unitByNode = new Map<number, Unit>();
     const ids = new Set<string>();
@@ -195,7 +223,7 @@ const unitsOf = (path: string, t: Flat, rules: LangRules): { units: Unit[]; unit
     const open: Unit[] = [];
     // The unit made last and the node it last took in, which a continuing definition may join.
     let last: { unit: Unit; node: number; parent: Unit | undefined } | null = null;
-    for (const { r, start, end } of all) {
+    for (const { r, start, end } of definitionsOf(t, rules)) {
         while (open.length > 0 && !(open[open.length - 1].start <= start && end <= open[open.length - 1].end)) open.pop();
         const parent = open[open.length - 1];
         if (parent && (parent.kind === "function" || parent.kind === "method")) continue;
@@ -208,30 +236,24 @@ const unitsOf = (path: string, t: Flat, rules: LangRules): { units: Unit[]; unit
             continue;
         }
         const nameStart = t.start[r.nameNode];
-        const kind: UnitKind = r.kind === "function" && parent && (parent.kind === "class" || parent.kind === "type") ? "method" : r.kind;
+        const nameLine = lineOf(t, nameStart);
         const u: Unit = {
-            id: "",
+            id: uniqueId(ids, path, nameLine, name),
             path,
             name,
             qname: parent ? `${parent.qname}.${name}` : name,
-            kind,
+            kind: r.kind === "function" && parent && (parent.kind === "class" || parent.kind === "type") ? "method" : r.kind,
             start,
             end,
             startLine: lineOf(t, start),
             endLine: lineOf(t, Math.max(start, end - 1)),
-            nameLine: lineOf(t, nameStart),
+            nameLine,
             docLine: lineOf(t, docStartOf(t, r.outer)),
             nameStart,
             ...(parent ? { parent: parent.id } : {}),
             node: r.node,
             valueNode: r.node,
         };
-        // `path:nameLine`, as `facts.ts` names units; two on one line take their names, then a count.
-        let id = `${path}:${u.nameLine}`;
-        if (ids.has(id)) id = `${path}:${u.nameLine}:${name}`;
-        for (let k = 2; ids.has(id); k++) id = `${path}:${u.nameLine}:${name}:${k}`;
-        u.id = id;
-        ids.add(id);
         units.push(u);
         unitByNode.set(r.node, u);
         if (parent) parentOf.set(u, parent);
@@ -242,27 +264,32 @@ const unitsOf = (path: string, t: Flat, rules: LangRules): { units: Unit[]; unit
     return { units, unitByNode, labels };
 };
 
-/** Reads a file with its language's rules. */
-export const indexFile = (path: string, t: Flat, rules: LangRules): GFile => {
-    const { units, unitByNode, labels } = unitsOf(path, t, rules);
+/** A file's scopes: the module first, then each node's that opens one, and the innermost scope around each node by scope id. */
+type Scopes = { module: GScope; all: GScope[]; scopeOfNode: Map<number, GScope>; enclosing: Int32Array };
 
+/** The scopes a file's nodes open; a node's scope is its nearest ancestor's that opens one, or the one around that where the rules read the node outside (`outside`). */
+const scopesOf = (t: Flat, rules: LangRules): Scopes => {
     const module: GScope = { id: 0, node: 0, kind: "module", parent: null, names: new Map() };
-    const scopes: GScope[] = [module];
+    const all: GScope[] = [module];
     const scopeOfNode = new Map<number, GScope>([[0, module]]);
-    // The innermost scope around each node, from the nearest ancestor that opens one.
     const enclosing = new Int32Array(t.count);
     for (let n = 1; n < t.count; n++) {
         const kind = rules.scope(t, n);
         if (!kind) {
-            enclosing[n] = rules.outside?.(t, n) ? (scopes[enclosing[t.parent[n]]].parent?.id ?? 0) : enclosing[t.parent[n]];
+            enclosing[n] = rules.outside?.(t, n) ? (all[enclosing[t.parent[n]]].parent?.id ?? 0) : enclosing[t.parent[n]];
             continue;
         }
-        const s: GScope = { id: scopes.length, node: n, kind, parent: scopes[enclosing[t.parent[n]]], names: new Map() };
-        scopes.push(s);
+        const s: GScope = { id: all.length, node: n, kind, parent: all[enclosing[t.parent[n]]], names: new Map() };
+        all.push(s);
         scopeOfNode.set(n, s);
         enclosing[n] = s.id;
     }
-    const scopeAt = (n: number): GScope => scopes[enclosing[n]];
+    return { module, all, scopeOfNode, enclosing };
+};
+
+/** Binds each name the rules emit, in tree order, and gives the tokens that bind: a name token that binds is no reference, except after `global` or `nonlocal`. */
+const bindNames = (t: Flat, rules: LangRules, { module, all, enclosing }: Scopes, unitByNode: ReadonlyMap<number, Unit>): Set<number> => {
+    const scopeAt = (n: number): GScope => all[enclosing[n]];
     const outerScopeAt = (n: number): GScope => {
         const s = scopeAt(n);
         return s.node === n ? (s.parent ?? module) : s;
@@ -272,39 +299,37 @@ export const indexFile = (path: string, t: Flat, rules: LangRules): GFile => {
         while (x && x.kind !== "function" && x.kind !== "module") x = x.parent;
         return x ?? module;
     };
-
-    // Bindings, in tree order. A name token that binds is no reference, except after `global` or `nonlocal`.
     const bindingNodes = new Set<number>();
-    for (let n = 1; n < t.count; n++) {
-        rules.binds(t, n, (nameNode, kind, opts = {}) => {
-            const name = opts.name ?? textOf(t, nameNode);
-            if (!name) return;
-            if (kind !== "global" && kind !== "nonlocal") bindingNodes.add(nameNode);
-            let scope = kind === "def" || kind === "type" ? outerScopeAt(opts.unitNode ?? t.parent[nameNode]) : scopeAt(nameNode);
-            if (opts.to === "function") scope = functionScopeOf(scope);
-            if (opts.to === "module") scope = module;
-            // After `global x`, x binds at module level (Python).
-            if (kind !== "global" && scope !== module && functionScopeOf(scope).names.get(name)?.some((b) => b.kind === "global")) scope = module;
-            const unit = opts.unitNode !== undefined ? unitByNode.get(opts.unitNode) : undefined;
-            const b: GBinding = {
-                name,
-                node: nameNode,
-                kind,
-                scope,
-                ...(unit ? { unit } : {}),
-                ...(opts.import ? { import: opts.import } : {}),
-                ...(opts.typeNode !== undefined && opts.typeNode >= 0 ? { typeNode: opts.typeNode } : {}),
-                ...(opts.init !== undefined && opts.init >= 0 ? { init: opts.init } : {}),
-                ...(opts.initResult !== undefined ? { initResult: opts.initResult } : {}),
-                // A module's names are seen in the whole module: Go's package-level `var`.
-                ...(opts.from !== undefined && scope !== module ? { from: opts.from } : {}),
-            };
-            const list = scope.names.get(name);
-            if (list) list.push(b);
-            else scope.names.set(name, [b]);
+    const emit: Emit = (nameNode, kind, opts = {}) => {
+        const name = opts.name ?? textOf(t, nameNode);
+        if (!name) return;
+        if (kind !== "global" && kind !== "nonlocal") bindingNodes.add(nameNode);
+        let scope = kind === "def" || kind === "type" ? outerScopeAt(opts.unitNode ?? t.parent[nameNode]) : scopeAt(nameNode);
+        if (opts.to === "function") scope = functionScopeOf(scope);
+        if (opts.to === "module") scope = module;
+        // After `global x`, x binds at module level (Python).
+        if (kind !== "global" && scope !== module && functionScopeOf(scope).names.get(name)?.some((b) => b.kind === "global")) scope = module;
+        const unit = opts.unitNode !== undefined ? unitByNode.get(opts.unitNode) : undefined;
+        pushTo(scope.names, name, {
+            name,
+            node: nameNode,
+            kind,
+            scope,
+            ...(unit ? { unit } : {}),
+            ...(opts.import ? { import: opts.import } : {}),
+            ...(opts.typeNode !== undefined && opts.typeNode >= 0 ? { typeNode: opts.typeNode } : {}),
+            ...(opts.init !== undefined && opts.init >= 0 ? { init: opts.init } : {}),
+            ...(opts.initResult !== undefined ? { initResult: opts.initResult } : {}),
+            // A module's names are seen in the whole module: Go's package-level `var`.
+            ...(opts.from !== undefined && scope !== module ? { from: opts.from } : {}),
         });
-    }
-    // A function that declares `nonlocal x` writes the x of the function around it that binds x (Python): its writes join that x's bindings.
+    };
+    for (let n = 1; n < t.count; n++) rules.binds(t, n, emit);
+    return bindingNodes;
+};
+
+/** A function that declares `nonlocal x` writes the x of the function around it that binds x (Python): its writes join that x's bindings. */
+const joinNonlocalWrites = (scopes: readonly GScope[]) => {
     for (const s of scopes) {
         for (const [name, bs] of s.names) {
             if (!bs.some((b) => b.kind === "nonlocal")) continue;
@@ -312,18 +337,17 @@ export const indexFile = (path: string, t: Flat, rules: LangRules): GFile => {
             let target = s.parent;
             while (target && !(target.kind === "function" && target.names.get(name)?.some((b) => b.kind !== "nonlocal" && b.kind !== "global"))) target = target.parent;
             if (!target || writes.length === 0) continue;
-            s.names.set(
-                name,
-                bs.filter((b) => !writes.includes(b))
-            );
+            s.names.set(name, bs.filter((b) => !writes.includes(b)));
             for (const b of writes) {
                 b.scope = target;
                 target.names.get(name)!.push(b);
             }
         }
     }
+};
 
-    // Class members: the units directly inside a class-like unit.
+/** Each class-like unit's members, the units right inside it, and its base type expressions. */
+const membersOf = (t: Flat, rules: LangRules, units: readonly Unit[]): { members: Map<string, Members>; bases: Map<string, number[]> } => {
     const members = new Map<string, Members>();
     const bases = new Map<string, number[]>();
     for (const u of units) {
@@ -334,14 +358,13 @@ export const indexFile = (path: string, t: Flat, rules: LangRules): GFile => {
     }
     for (const u of units) {
         const m = u.parent ? members.get(u.parent) : undefined;
-        if (!m) continue;
-        const named = m.get(u.name);
-        if (named) named.push(u);
-        else m.set(u.name, [u]);
+        if (m) pushTo(m, u.name, u);
     }
+    return { members, bases };
+};
 
-    // Sites: every identifier that may refer to a declaration.
-    const imports = rules.imports(t);
+/** Every identifier that may refer to a declaration, then each import of a name, which refers to it: `from x import f`, `use a::f`. */
+const sitesOf = (t: Flat, rules: LangRules, imports: readonly GImport[], bindingNodes: ReadonlySet<number>, scopeAt: (n: number) => GScope): GSite[] => {
     const importNodes = new Set(imports.map((i) => i.node));
     const sites: GSite[] = [];
     for (let n = 0; n < t.count; n++) {
@@ -359,11 +382,9 @@ export const indexFile = (path: string, t: Flat, rules: LangRules): GFile => {
             scope: scopeAt(n),
         });
     }
-    // An import of a name refers to it: `from x import f`, `use a::f`.
     for (const i of imports) {
         if (i.name === null || i.name === "*" || i.node < 0) continue;
         sites.push({ node: i.node, start: t.start[i.node], line: lineOf(t, t.start[i.node]), name: i.name, shape: "bare", receiver: -1, ref: "import", scope: scopeAt(i.node) });
     }
-    const importScope = new Map(imports.map((i) => [i, scopeAt(i.stmt)]));
-    return { path, rules, flat: t, units, labels, module, scopes, scopeOfNode, enclosing, sites, imports, importScope, members, bases, unitByNode };
+    return sites;
 };

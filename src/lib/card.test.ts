@@ -1,7 +1,10 @@
 import { beforeAll, describe, expect, it } from "@jest/globals";
 import { excalidrawFixture, honoFixture, reviewOf } from "../test/fixture.ts";
 import { twoThreads } from "../test/synthetic.ts";
-import { CARD, cardHtml, changedSpan, declarationRows, foldAt, foldsOf, headerName, linkGroups, pinCard, prCard, prCardHtml, readAllOf, unpinnedText, type CardModel, type Row } from "./card.ts";
+import { CARD, cardHtml, foldAt, foldsOf, linkGroups, pinCard, prCard, prCardHtml, readAllOf, unpinnedText, type CardModel, type Row } from "./card.ts";
+import { headerName } from "./card/grid.ts";
+import { changedSpan } from "./card/lines.ts";
+import { declarationRows } from "./card/rows.ts";
 import type { Review } from "./model.ts";
 import { blocksHeight, lexMarkdown, markdownBlocks } from "./markdown.ts";
 
@@ -92,7 +95,7 @@ describe("header names", () => {
         expect(readAllOf(p, { ...review, files: [] }, "light", null).html).toContain('<span class="name">ModelContextServerProtocolConfigFlow.async_step_user()</span>');
     });
 
-    it("widen a Python, Go or Rust card to fit its whole name, up to 880, so a short type stays (design round 2)", () => {
+    it("widen a Python, Go, Rust or Java card to fit its whole name, up to 880, so a short type stays", () => {
         const sized = (name: string, path: string) => pinCard({ ...pin("toError()"), name, path, head: [], from: 1, to: 1 }, { files: [], links: [] });
         const rust = sized("Printer::print_semicolon_if_needed()", "src/js_printer/lib.rs");
         expect(rust.width).toBe(Math.ceil((36 * 9.2) / 0.52 + 28) + 1);

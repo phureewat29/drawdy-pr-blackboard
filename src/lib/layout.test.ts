@@ -3,7 +3,10 @@ import { reviewElements } from "../driver/elements.ts";
 import { excalidrawFixture, honoFixture, reviewOf } from "../test/fixture.ts";
 import { crowded, syntheticPr, twoThreads } from "../test/synthetic.ts";
 import { catmullRomSpline, distanceToPath, inflate, nearRun, pathHits } from "./curve.ts";
-import { LAYOUT, STRING_COLOURS, STRING_TEXT, hooks, planBoard, shiftPlan, stepsOf, stringCrossings, textRect, throughBends, type BoardPlan, type PlannedString, type Point, type Rect } from "./layout.ts";
+import { STRING_COLOURS, STRING_TEXT, planBoard, shiftPlan, stepsOf, type BoardPlan, type PlannedString, type Point, type Rect } from "./layout.ts";
+import { crossingsAmong, hooks, stringCrossings, throughBends } from "./layout/bends.ts";
+import { LAYOUT } from "./layout/constants.ts";
+import { textRect } from "./layout/geometry.ts";
 import type { Review } from "./model.ts";
 
 const overlaps = (a: Rect, b: Rect) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
@@ -346,7 +349,7 @@ describe("planBoard on excalidraw#12237", () => {
         review = await reviewOf(excalidrawFixture());
         plan = planBoard(review);
     });
-    const count = (paths: Pick<PlannedString, "start" | "end" | "path">[]) => paths.reduce((n, a, i) => n + paths.slice(i + 1).reduce((m, b) => m + stringCrossings(a, b), 0), 0);
+    const count = (paths: Pick<PlannedString, "start" | "end" | "path">[]) => crossingsAmong(paths, stringCrossings);
 
     it("crosses its strings no more often than straight lines between the same ends would", () => {
         const straight = plan.strings.map((s) => ({ start: s.start, end: s.end, path: [s.start, s.end] }));

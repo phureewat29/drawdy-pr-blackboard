@@ -8,12 +8,12 @@
  * indentation, not a parser: declarations are found by shape (`function x`,
  * `const x = (`, a method inside a class, `def`, `func`, `fn`), and a
  * declaration runs until the code returns to its indentation. That holds for
- * formatted code in the common languages, which is what pull requests carry.
- * A name says nothing about which declaration it means, so these cards draw
- * no strings.
+ * formatted code in the common languages, which is what PRs carry. A name
+ * says nothing about which declaration it means, so these cards draw no
+ * strings.
  */
 
-import type { DiffLine, Hunk } from "./diff.ts";
+import { addedLines, allLines, type DiffLine, type Hunk } from "./diff.ts";
 import type { Language } from "./language.ts";
 
 export type DeclKind = "function" | "method" | "class" | "type" | "value" | "namespace";
@@ -30,7 +30,7 @@ type Decl = {
 };
 
 export type ChangedSymbol = {
-    /** `path:line`, unique within a pull request: the line its name is on. */
+    /** `path:line`, unique within a PR: the line its name is on. */
     id: string;
     path: string;
     lang: Language;
@@ -150,30 +150,7 @@ const C_FAMILY: Pattern[] = [
     { re: /^\s*(?:(?:public|private|protected|internal|static|final|virtual|override|async|abstract|synchronized|inline|extern|const|unsafe)\s+)*[\w<>\[\],.?*&: ]+\s+\*?(\w+)\s*\([^;]*$/, kind: "function" },
 ];
 
-const patternsFor = (lang: Language): Pattern[] => {
-    switch (lang) {
-        case "ts":
-        case "js":
-            return JS;
-        case "py":
-            return PY;
-        case "go":
-            return GO;
-        case "rs":
-            return RS;
-        case "rb":
-            return RB;
-        case "java":
-        case "kt":
-        case "swift":
-        case "cs":
-        case "php":
-        case "c":
-            return C_FAMILY;
-        default:
-            return [];
-    }
-};
+const PATTERNS: Partial<Record<Language, Pattern[]>> = { ts: JS, js: JS, py: PY, go: GO, rs: RS, rb: RB, java: C_FAMILY, kt: C_FAMILY, swift: C_FAMILY, cs: C_FAMILY, php: C_FAMILY, c: C_FAMILY };
 
 /** A Go label, which gofmt puts at column 0 inside a function: `loop:`. */
 const GO_LABEL = /^[A-Za-z_]\w*:\s*$/;
@@ -200,7 +177,7 @@ const extentEnd = (lines: readonly string[], start: number, lang: Language): num
 
 /** Every declaration in a file, with its extent. */
 export const findDecls = (lines: readonly string[], lang: Language): Decl[] => {
-    const patterns = patternsFor(lang);
+    const patterns = PATTERNS[lang] ?? [];
     if (patterns.length === 0) return [];
     const decls: Decl[] = [];
     // Containers in the order found; one that has ended leaves once it is the last.
@@ -262,9 +239,7 @@ const OWNER_SEPARATOR: Partial<Record<Language, string>> = { py: ".", go: ".", r
 
 /**
  * A card's name for a declaration. A Python, Go or Rust method takes its
- * type's name, `Server.Start()`, `GetAddrInfoRequest::then()`: a package has
- * many a `then()`. A Rust class is an impl block. JavaScript and TypeScript
- * name a method alone.
+ * type's name (`Server.Start()`): a package has many a `then()`.
  */
 export const labelOf = (decl: Pick<Decl, "name" | "kind" | "parent">, lang?: Language): string => {
     const separator = lang && OWNER_SEPARATOR[lang];
@@ -297,36 +272,45 @@ const documented = (lines: readonly string[], starts: ReadonlyMap<number, Decl>,
     return null;
 };
 
-/** Each line's innermost declaration: the shortest that holds it, the first found on a tie. */
-const innermostByLine = (decls: readonly Decl[], count: number): (Decl | null)[] => {
-    const out: (Decl | null)[] = new Array(count + 1).fill(null);
-    for (const d of decls) {
-        for (let line = d.start; line <= Math.min(d.end, count); line++) {
-            const best = out[line];
-            if (best === null || d.end - d.start < best.end - best.start) out[line] = d;
+/** For each line up to `count`, the item whose span holds it and is shortest, the first on a tie. */
+export const innermostByLine = <T>(items: readonly T[], count: number, span: (item: T) => readonly [number, number]): (T | undefined)[] => {
+    const best: (T | undefined)[] = new Array(count + 1).fill(undefined);
+    const size: number[] = [];
+    for (const item of items) {
+        const [from, to] = span(item);
+        for (let line = from; line <= Math.min(to, count); line++) {
+            if (best[line] !== undefined && to - from >= size[line]) continue;
+            best[line] = item;
+            size[line] = to - from;
         }
     }
-    return out;
+    return best;
 };
 
-/**
- * The declarations a file's diff changes, in line order, plus the changes
- * that sit outside every declaration.
- */
+/** A declaration's changed lines summed up: their span, as head positions, and how many each side has. */
+export const changeSpan = (lines: readonly DiffLine[]): Pick<ChangedSymbol, "from" | "to" | "add" | "del"> => {
+    const ats = lines.map((l) => l.at);
+    return {
+        from: ats.reduce((a, b) => Math.min(a, b)),
+        to: ats.reduce((a, b) => Math.max(a, b)),
+        add: lines.filter((l) => l.t === "add").length,
+        del: lines.filter((l) => l.t === "del").length,
+    };
+};
+
+/** The declarations a file's diff changes, in line order, and the changes outside every declaration. */
 export const changedSymbols = (
     path: string,
     lang: Language,
     head: readonly string[] | null,
     hunks: readonly Hunk[]
 ): { symbols: ChangedSymbol[]; loose: LooseChange[] } => {
-    const changed = hunks.flatMap((h) => h.lines).filter((l) => l.t !== "ctx");
+    const changed = allLines(hunks).filter((l) => l.t !== "ctx");
     if (!head) return { symbols: [], loose: looseRuns(path, changed) };
     const decls = findDecls(head, lang);
-    const starts = new Map<number, Decl>();
-    for (const d of decls) if (!starts.has(d.start)) starts.set(d.start, d);
-    const innermost = innermostByLine(decls, head.length);
-    const added = new Set(changed.filter((l) => l.t === "add").map((l) => l.n!));
-    const owner = new Map<Decl, DiffLine[]>();
+    const starts = new Map(decls.map((d) => [d.start, d]));
+    const innermost = innermostByLine(decls, head.length, (d) => [d.start, d.end]);
+    const linesOf = new Map(decls.map((d) => [d, [] as DiffLine[]]));
     const loose: DiffLine[] = [];
     let previous: { line: DiffLine; target: Decl | null } | null = null;
     for (const l of changed) {
@@ -338,34 +322,26 @@ export const changedSymbols = (
                 : undefined
             : ((isComment(text, lang) || /^\s*@/.test(text) ? documented(head, starts, l.at, lang) : null) ?? innermost[l.at] ?? null);
         if (target === undefined) continue;
-        if (target) {
-            const owned = owner.get(target);
-            if (owned) owned.push(l);
-            else owner.set(target, [l]);
-        } else loose.push(l);
+        if (target) linesOf.get(target)!.push(l);
+        else loose.push(l);
         previous = { line: l, target };
     }
-    const symbols = [...owner.entries()]
-        .sort(([a], [b]) => a.start - b.start)
-        .map(([d, lines]): ChangedSymbol => {
-            const ats = lines.map((l) => l.at);
-            return {
-                id: `${path}:${d.start}`,
-                path,
-                lang,
-                name: d.name,
-                label: labelOf(d, lang),
-                kind: d.kind,
-                ...(d.parent ? { parent: d.parent } : {}),
-                status: added.has(d.start) ? "new" : "changed",
-                start: d.start,
-                end: d.end,
-                from: ats.reduce((a, b) => Math.min(a, b)),
-                to: ats.reduce((a, b) => Math.max(a, b)),
-                add: lines.filter((l) => l.t === "add").length,
-                del: lines.filter((l) => l.t === "del").length,
-            };
-        });
+    const added = addedLines(changed);
+    const symbols = decls
+        .filter((d) => linesOf.get(d)!.length > 0)
+        .map((d): ChangedSymbol => ({
+            id: `${path}:${d.start}`,
+            path,
+            lang,
+            name: d.name,
+            label: labelOf(d, lang),
+            kind: d.kind,
+            ...(d.parent ? { parent: d.parent } : {}),
+            status: added.has(d.start) ? "new" : "changed",
+            start: d.start,
+            end: d.end,
+            ...changeSpan(linesOf.get(d)!),
+        }));
     return { symbols, loose: looseRuns(path, loose) };
 };
 

@@ -7,7 +7,8 @@ import { VIEW } from "../lib/view.ts";
 import { fakeHost } from "../test/fake-host.ts";
 import { honoFixture, reviewOf } from "../test/fixture.ts";
 import { MARK, markOf, reviewElements } from "./elements.ts";
-import { createNavigator, indexOf } from "./navigator.ts";
+import { indexOf } from "./board.ts";
+import { createNavigator } from "./navigator.ts";
 import { CLOSE_BUTTON, DRAG_HANDLE, createPopover } from "./read-all.ts";
 
 let hono: Review;

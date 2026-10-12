@@ -24,6 +24,64 @@ export const WORKER_SCRIPT = `"use strict";
     }
     return 0;
   });
+  var groupBy = (xs, key) => {
+    var _a11;
+    const groups = /* @__PURE__ */ Object.create(null);
+    for (const x2 of xs) (groups[_a11 = key(x2)] ?? (groups[_a11] = [])).push(x2);
+    return groups;
+  };
+  var mapValues = (record, fn) => {
+    const out2 = /* @__PURE__ */ Object.create(null);
+    for (const k2 of Object.keys(record)) out2[k2] = fn(record[k2]);
+    return out2;
+  };
+  var partition = (xs, test) => {
+    const pass = [];
+    const fail2 = [];
+    for (const x2 of xs) (test(x2) ? pass : fail2).push(x2);
+    return [pass, fail2];
+  };
+  var sumBy = (xs, value) => {
+    let total = 0;
+    for (const x2 of xs) total += value(x2);
+    return total;
+  };
+  var sum = (xs) => sumBy(xs, (x2) => x2);
+  var minBy = (xs, value) => {
+    if (xs.length === 0) return void 0;
+    let best = xs[0];
+    let least = value(best);
+    for (let i2 = 1; i2 < xs.length; i2++) {
+      const v2 = value(xs[i2]);
+      if (v2 < least) {
+        best = xs[i2];
+        least = v2;
+      }
+    }
+    return best;
+  };
+  var pushTo = (map, key, value) => {
+    const values = map.get(key);
+    if (values) values.push(value);
+    else map.set(key, [value]);
+  };
+  var memoize = (fn, { cache = /* @__PURE__ */ new Map() } = {}) => (key) => {
+    if (cache.has(key)) return cache.get(key);
+    const value = fn(key);
+    cache.set(key, value);
+    return value;
+  };
+  var once = (fn) => {
+    let done = false;
+    let value;
+    return () => {
+      if (!done) {
+        value = fn();
+        done = true;
+      }
+      return value;
+    };
+  };
   var limiter = (size) => {
     let running = 0;
     const waiting = [];
@@ -109,9 +167,9 @@ export const WORKER_SCRIPT = `"use strict";
       if (!res.ok) return fail({ kind: "http", status: res.status }, \`GET \${url}: \${res.status}\`);
       return res.json();
     };
-    const repoPath = (ref) => \`\${API}/repos/\${ref.owner}/\${ref.repo}/pulls/\${ref.number}\`;
+    const pullUrl = (ref) => \`\${API}/repos/\${ref.owner}/\${ref.repo}/pulls/\${ref.number}\`;
     const pr = async (ref) => {
-      const raw2 = await getJson(repoPath(ref));
+      const raw2 = await getJson(pullUrl(ref));
       const p = parse(pullShape, raw2);
       if (!p) return fail({ kind: "http", status: 200 }, "PR Blackboard can't read the PR GitHub returned");
       const state = p.merged || p.merged_at ? "merged" : p.state === "closed" ? "closed" : p.draft ? "draft" : "open";
@@ -129,8 +187,8 @@ export const WORKER_SCRIPT = `"use strict";
         changedFiles: p.changed_files
       };
     };
-    const page = async (ref, n) => {
-      const raw2 = await getJson(\`\${repoPath(ref)}/files?per_page=\${PAGE}&page=\${n}\`);
+    const page2 = async (ref, n) => {
+      const raw2 = await getJson(\`\${pullUrl(ref)}/files?per_page=\${PAGE}&page=\${n}\`);
       return (Array.isArray(raw2) ? raw2 : []).flatMap((item) => {
         const f2 = parse(fileShape, item);
         if (!f2) return [];
@@ -152,7 +210,7 @@ export const WORKER_SCRIPT = `"use strict";
       let failure = null;
       const pageOf = (n) => slot(async () => {
         if (failure) throw failure;
-        return page(ref, n).then(
+        return page2(ref, n).then(
           (got) => (onPage(), got),
           (err2) => {
             failure ?? (failure = err2);
@@ -1003,8 +1061,8 @@ export const WORKER_SCRIPT = `"use strict";
      * If multiple children may have the same field name, access them using
      * {@link Node#childrenForFieldName}.
      */
-    childForFieldName(fieldName) {
-      const fieldId = this.tree.language.fields.indexOf(fieldName);
+    childForFieldName(fieldName2) {
+      const fieldId = this.tree.language.fields.indexOf(fieldName2);
       if (fieldId !== -1) return this.childForFieldId(fieldId);
       return null;
     }
@@ -1027,8 +1085,8 @@ export const WORKER_SCRIPT = `"use strict";
      *
      * See also {@link Node#children}.
      */
-    childrenForFieldName(fieldName) {
-      const fieldId = this.tree.language.fields.indexOf(fieldName);
+    childrenForFieldName(fieldName2) {
+      const fieldId = this.tree.language.fields.indexOf(fieldName2);
       if (fieldId !== -1 && fieldId !== 0) return this.childrenForFieldId(fieldId);
       return [];
     }
@@ -1509,9 +1567,9 @@ export const WORKER_SCRIPT = `"use strict";
       }
       this.fields = new Array(C._ts_language_field_count(this[0]) + 1);
       for (let i2 = 0, n = this.fields.length; i2 < n; i2++) {
-        const fieldName = C._ts_language_field_name_for_id(this[0], i2);
-        if (fieldName !== 0) {
-          this.fields[i2] = C.UTF8ToString(fieldName);
+        const fieldName2 = C._ts_language_field_name_for_id(this[0], i2);
+        if (fieldName2 !== 0) {
+          this.fields[i2] = C.UTF8ToString(fieldName2);
         } else {
           this.fields[i2] = null;
         }
@@ -1557,8 +1615,8 @@ export const WORKER_SCRIPT = `"use strict";
     /**
      * Get the field id for a field name.
      */
-    fieldIdForName(fieldName) {
-      const result = this.fields.indexOf(fieldName);
+    fieldIdForName(fieldName2) {
+      const result = this.fields.indexOf(fieldName2);
       return result !== -1 ? result : null;
     }
     /**
@@ -1570,11 +1628,11 @@ export const WORKER_SCRIPT = `"use strict";
     /**
      * Get the node type id for a node type name.
      */
-    idForNodeType(type, named) {
+    idForNodeType(type, named2) {
       const typeLength = C.lengthBytesUTF8(type);
       const typeAddress = C._malloc(typeLength + 1);
       C.stringToUTF8(type, typeAddress, typeLength + 1);
-      const result = C._ts_language_symbol_for_name(this[0], typeAddress, typeLength, named ? 1 : 0);
+      const result = C._ts_language_symbol_for_name(this[0], typeAddress, typeLength, named2 ? 1 : 0);
       C._free(typeAddress);
       return result || null;
     }
@@ -4318,17 +4376,22 @@ export const WORKER_SCRIPT = `"use strict";
   };
 
   // src/lib/syntax.ts
-  var grammarOf = (path) => {
-    const ext = path.split(".").pop()?.toLowerCase() ?? "";
-    if (ext === "tsx") return "tsx";
-    if (ext === "ts" || ext === "mts" || ext === "cts") return "typescript";
-    if (ext === "js" || ext === "jsx" || ext === "mjs" || ext === "cjs") return "javascript";
-    if (ext === "py") return "python";
-    if (ext === "go") return "go";
-    if (ext === "rs") return "rust";
-    if (ext === "java") return "java";
-    return null;
-  };
+  var perTree = (read) => memoize(read, { cache: /* @__PURE__ */ new WeakMap() });
+  var GRAMMARS = /* @__PURE__ */ new Map([
+    ["tsx", "tsx"],
+    ["ts", "typescript"],
+    ["mts", "typescript"],
+    ["cts", "typescript"],
+    ["js", "javascript"],
+    ["jsx", "javascript"],
+    ["mjs", "javascript"],
+    ["cjs", "javascript"],
+    ["py", "python"],
+    ["go", "go"],
+    ["rs", "rust"],
+    ["java", "java"]
+  ]);
+  var grammarOf = (path) => GRAMMARS.get(path.split(".").pop()?.toLowerCase() ?? "") ?? null;
   var MAX_ERROR_SHARE = 0.02;
   var LEADING_COMMENTS = /^(?:\\s*(?:\\/\\/[^\\n]*|\\/\\*[\\s\\S]*?\\*\\/))*/;
   var readable = (t) => !/@flow\\b/.test(LEADING_COMMENTS.exec(t.text)[0]) && t.errors <= t.text.length * MAX_ERROR_SHARE;
@@ -4391,10 +4454,7 @@ export const WORKER_SCRIPT = `"use strict";
   };
   var flatten = (tree, text, lang, captures) => {
     const wanted = /* @__PURE__ */ new Map();
-    for (const c2 of captures ?? []) {
-      const at3 = c2.node.startIndex;
-      wanted.set(at3, [...wanted.get(at3) ?? [], { id: c2.node.id, capture: c2.name }]);
-    }
+    for (const c2 of captures ?? []) pushTo(wanted, c2.node.startIndex, { id: c2.node.id, capture: c2.name });
     const tags = [];
     const fieldNames = lang.fields;
     const types = lang.types;
@@ -4402,7 +4462,7 @@ export const WORKER_SCRIPT = `"use strict";
     let cap = 1024;
     const type = [];
     const field = [];
-    let named = new Uint8Array(cap);
+    let named2 = new Uint8Array(cap);
     let start2 = new Uint32Array(cap);
     let end = new Uint32Array(cap);
     let parent = new Int32Array(cap);
@@ -4412,28 +4472,13 @@ export const WORKER_SCRIPT = `"use strict";
     let errors = 0;
     const grow = () => {
       cap *= 2;
-      const g8 = (a) => {
-        const b2 = new Uint8Array(cap);
-        b2.set(a);
-        return b2;
-      };
-      const g32 = (a) => {
-        const b2 = new Uint32Array(cap);
-        b2.set(a);
-        return b2;
-      };
-      const gi = (a) => {
-        const b2 = new Int32Array(cap);
-        b2.set(a);
-        return b2;
-      };
-      named = g8(named);
-      inError = g8(inError);
-      start2 = g32(start2);
-      end = g32(end);
-      parent = gi(parent);
-      first = gi(first);
-      next = gi(next);
+      named2 = resized(named2, new Uint8Array(cap));
+      inError = resized(inError, new Uint8Array(cap));
+      start2 = resized(start2, new Uint32Array(cap));
+      end = resized(end, new Uint32Array(cap));
+      parent = resized(parent, new Int32Array(cap));
+      first = resized(first, new Int32Array(cap));
+      next = resized(next, new Int32Array(cap));
     };
     const c = tree.walk();
     let count2 = 0;
@@ -4446,7 +4491,7 @@ export const WORKER_SCRIPT = `"use strict";
       type[id] = types[typeId] ?? c.nodeType;
       const f2 = c.currentFieldId;
       field[id] = f2 ? fieldNames[f2] ?? "" : "";
-      named[id] = namedType[typeId] ?? (namedType[typeId] = lang.nodeTypeIsNamed(typeId)) ? 1 : 0;
+      named2[id] = namedType[typeId] ?? (namedType[typeId] = lang.nodeTypeIsNamed(typeId)) ? 1 : 0;
       const s = c.startIndex;
       const e = c.endIndex;
       start2[id] = s;
@@ -4498,7 +4543,11 @@ export const WORKER_SCRIPT = `"use strict";
     c.delete();
     const lineStarts = [0];
     for (let i2 = 0; i2 < text.length; i2++) if (text.charCodeAt(i2) === 10) lineStarts.push(i2 + 1);
-    return { text, count: count2, type, field, named, start: start2, end, parent, first, next, lineStarts, errors, ...captures ? { tags } : {} };
+    return { text, count: count2, type, field, named: named2, start: start2, end, parent, first, next, lineStarts, errors, ...captures ? { tags } : {} };
+  };
+  var resized = (from, to) => {
+    to.set(from);
+    return to;
   };
   var children = (t, n) => {
     const out2 = [];
@@ -4552,7 +4601,30 @@ export const WORKER_SCRIPT = `"use strict";
     const s = f2.scopes[f2.enclosing[n]];
     return s.node === n && n !== 0 ? s.parent ?? f2.module : s;
   };
+  var indexFile = (path, t, rules) => {
+    const { units, unitByNode, labels } = unitsOf(path, t, rules);
+    const scopes = scopesOf(t, rules);
+    const scopeAt2 = (n) => scopes.all[scopes.enclosing[n]];
+    const bindingNodes = bindNames(t, rules, scopes, unitByNode);
+    joinNonlocalWrites(scopes.all);
+    const { members, bases } = membersOf(t, rules, units);
+    const imports5 = rules.imports(t);
+    const sites = sitesOf(t, rules, imports5, bindingNodes, scopeAt2);
+    const importScope = new Map(imports5.map((i2) => [i2, scopeAt2(i2.stmt)]));
+    return { path, rules, flat: t, units, labels, module: scopes.module, scopes: scopes.all, scopeOfNode: scopes.scopeOfNode, enclosing: scopes.enclosing, sites, imports: imports5, importScope, members, bases, unitByNode };
+  };
   var KIND_ORDER = { class: 0, type: 1, namespace: 2, function: 3, method: 4, value: 5 };
+  var definitionsOf = (t, rules) => {
+    const found = /* @__PURE__ */ new Map();
+    for (const c of t.tags ?? []) {
+      const r = rules.unit(t, c.capture, c.node);
+      if (!r) continue;
+      const prev = found.get(c.node);
+      if (!prev || KIND_ORDER[r.kind] > KIND_ORDER[prev.kind]) found.set(c.node, { ...r, node: c.node });
+    }
+    for (const r of rules.extraUnits?.(t) ?? []) if (!found.has(r.node)) found.set(r.node, r);
+    return [...found.values()].map((r) => ({ r, start: t.start[r.outer], end: Math.max(t.end[r.outer], t.end[r.node]) })).sort((a, b2) => a.start - b2.start || b2.end - a.end);
+  };
   var docStartOf = (t, n) => {
     let first = t.start[n];
     for (let p = prevSibling(t, n); p >= 0 && /comment/.test(t.type[p]); p = prevSibling(t, p)) {
@@ -4562,23 +4634,21 @@ export const WORKER_SCRIPT = `"use strict";
     }
     return first;
   };
+  var uniqueId = (ids, path, nameLine, name2) => {
+    let id = \`\${path}:\${nameLine}\`;
+    if (ids.has(id)) id = \`\${path}:\${nameLine}:\${name2}\`;
+    for (let k2 = 2; ids.has(id); k2++) id = \`\${path}:\${nameLine}:\${name2}:\${k2}\`;
+    ids.add(id);
+    return id;
+  };
   var unitsOf = (path, t, rules) => {
-    const found = /* @__PURE__ */ new Map();
-    for (const c of t.tags ?? []) {
-      const r = rules.unit(t, c.capture, c.node);
-      if (!r) continue;
-      const prev = found.get(c.node);
-      if (!prev || KIND_ORDER[r.kind] > KIND_ORDER[prev.kind]) found.set(c.node, { ...r, node: c.node });
-    }
-    for (const r of rules.extraUnits?.(t) ?? []) if (!found.has(r.node)) found.set(r.node, r);
-    const all2 = [...found.values()].map((r) => ({ r, start: t.start[r.outer], end: Math.max(t.end[r.outer], t.end[r.node]) })).sort((a, b2) => a.start - b2.start || b2.end - a.end);
     const units = [];
     const unitByNode = /* @__PURE__ */ new Map();
     const ids = /* @__PURE__ */ new Set();
     const parentOf = /* @__PURE__ */ new Map();
     const open = [];
     let last = null;
-    for (const { r, start: start2, end } of all2) {
+    for (const { r, start: start2, end } of definitionsOf(t, rules)) {
       while (open.length > 0 && !(open[open.length - 1].start <= start2 && end <= open[open.length - 1].end)) open.pop();
       const parent = open[open.length - 1];
       if (parent && (parent.kind === "function" || parent.kind === "method")) continue;
@@ -4591,29 +4661,24 @@ export const WORKER_SCRIPT = `"use strict";
         continue;
       }
       const nameStart = t.start[r.nameNode];
-      const kind = r.kind === "function" && parent && (parent.kind === "class" || parent.kind === "type") ? "method" : r.kind;
+      const nameLine = lineOf(t, nameStart);
       const u = {
-        id: "",
+        id: uniqueId(ids, path, nameLine, name2),
         path,
         name: name2,
         qname: parent ? \`\${parent.qname}.\${name2}\` : name2,
-        kind,
+        kind: r.kind === "function" && parent && (parent.kind === "class" || parent.kind === "type") ? "method" : r.kind,
         start: start2,
         end,
         startLine: lineOf(t, start2),
         endLine: lineOf(t, Math.max(start2, end - 1)),
-        nameLine: lineOf(t, nameStart),
+        nameLine,
         docLine: lineOf(t, docStartOf(t, r.outer)),
         nameStart,
         ...parent ? { parent: parent.id } : {},
         node: r.node,
         valueNode: r.node
       };
-      let id = \`\${path}:\${u.nameLine}\`;
-      if (ids.has(id)) id = \`\${path}:\${u.nameLine}:\${name2}\`;
-      for (let k2 = 2; ids.has(id); k2++) id = \`\${path}:\${u.nameLine}:\${name2}:\${k2}\`;
-      u.id = id;
-      ids.add(id);
       units.push(u);
       unitByNode.set(r.node, u);
       if (parent) parentOf.set(u, parent);
@@ -4623,26 +4688,28 @@ export const WORKER_SCRIPT = `"use strict";
     const labels = new Map(units.map((u) => [u.id, rules.label(t, u, parentOf.get(u))]));
     return { units, unitByNode, labels };
   };
-  var indexFile = (path, t, rules) => {
-    const { units, unitByNode, labels } = unitsOf(path, t, rules);
+  var scopesOf = (t, rules) => {
     const module2 = { id: 0, node: 0, kind: "module", parent: null, names: /* @__PURE__ */ new Map() };
-    const scopes = [module2];
+    const all2 = [module2];
     const scopeOfNode = /* @__PURE__ */ new Map([[0, module2]]);
     const enclosing = new Int32Array(t.count);
     for (let n = 1; n < t.count; n++) {
       const kind = rules.scope(t, n);
       if (!kind) {
-        enclosing[n] = rules.outside?.(t, n) ? scopes[enclosing[t.parent[n]]].parent?.id ?? 0 : enclosing[t.parent[n]];
+        enclosing[n] = rules.outside?.(t, n) ? all2[enclosing[t.parent[n]]].parent?.id ?? 0 : enclosing[t.parent[n]];
         continue;
       }
-      const s = { id: scopes.length, node: n, kind, parent: scopes[enclosing[t.parent[n]]], names: /* @__PURE__ */ new Map() };
-      scopes.push(s);
+      const s = { id: all2.length, node: n, kind, parent: all2[enclosing[t.parent[n]]], names: /* @__PURE__ */ new Map() };
+      all2.push(s);
       scopeOfNode.set(n, s);
       enclosing[n] = s.id;
     }
-    const scopeAt = (n) => scopes[enclosing[n]];
+    return { module: module2, all: all2, scopeOfNode, enclosing };
+  };
+  var bindNames = (t, rules, { module: module2, all: all2, enclosing }, unitByNode) => {
+    const scopeAt2 = (n) => all2[enclosing[n]];
     const outerScopeAt = (n) => {
-      const s = scopeAt(n);
+      const s = scopeAt2(n);
       return s.node === n ? s.parent ?? module2 : s;
     };
     const functionScopeOf = (s) => {
@@ -4651,34 +4718,33 @@ export const WORKER_SCRIPT = `"use strict";
       return x2 ?? module2;
     };
     const bindingNodes = /* @__PURE__ */ new Set();
-    for (let n = 1; n < t.count; n++) {
-      rules.binds(t, n, (nameNode, kind, opts = {}) => {
-        const name2 = opts.name ?? textOf(t, nameNode);
-        if (!name2) return;
-        if (kind !== "global" && kind !== "nonlocal") bindingNodes.add(nameNode);
-        let scope = kind === "def" || kind === "type" ? outerScopeAt(opts.unitNode ?? t.parent[nameNode]) : scopeAt(nameNode);
-        if (opts.to === "function") scope = functionScopeOf(scope);
-        if (opts.to === "module") scope = module2;
-        if (kind !== "global" && scope !== module2 && functionScopeOf(scope).names.get(name2)?.some((b3) => b3.kind === "global")) scope = module2;
-        const unit5 = opts.unitNode !== void 0 ? unitByNode.get(opts.unitNode) : void 0;
-        const b2 = {
-          name: name2,
-          node: nameNode,
-          kind,
-          scope,
-          ...unit5 ? { unit: unit5 } : {},
-          ...opts.import ? { import: opts.import } : {},
-          ...opts.typeNode !== void 0 && opts.typeNode >= 0 ? { typeNode: opts.typeNode } : {},
-          ...opts.init !== void 0 && opts.init >= 0 ? { init: opts.init } : {},
-          ...opts.initResult !== void 0 ? { initResult: opts.initResult } : {},
-          // A module's names are seen in the whole module: Go's package-level \`var\`.
-          ...opts.from !== void 0 && scope !== module2 ? { from: opts.from } : {}
-        };
-        const list = scope.names.get(name2);
-        if (list) list.push(b2);
-        else scope.names.set(name2, [b2]);
+    const emit = (nameNode, kind, opts = {}) => {
+      const name2 = opts.name ?? textOf(t, nameNode);
+      if (!name2) return;
+      if (kind !== "global" && kind !== "nonlocal") bindingNodes.add(nameNode);
+      let scope = kind === "def" || kind === "type" ? outerScopeAt(opts.unitNode ?? t.parent[nameNode]) : scopeAt2(nameNode);
+      if (opts.to === "function") scope = functionScopeOf(scope);
+      if (opts.to === "module") scope = module2;
+      if (kind !== "global" && scope !== module2 && functionScopeOf(scope).names.get(name2)?.some((b2) => b2.kind === "global")) scope = module2;
+      const unit5 = opts.unitNode !== void 0 ? unitByNode.get(opts.unitNode) : void 0;
+      pushTo(scope.names, name2, {
+        name: name2,
+        node: nameNode,
+        kind,
+        scope,
+        ...unit5 ? { unit: unit5 } : {},
+        ...opts.import ? { import: opts.import } : {},
+        ...opts.typeNode !== void 0 && opts.typeNode >= 0 ? { typeNode: opts.typeNode } : {},
+        ...opts.init !== void 0 && opts.init >= 0 ? { init: opts.init } : {},
+        ...opts.initResult !== void 0 ? { initResult: opts.initResult } : {},
+        // A module's names are seen in the whole module: Go's package-level \`var\`.
+        ...opts.from !== void 0 && scope !== module2 ? { from: opts.from } : {}
       });
-    }
+    };
+    for (let n = 1; n < t.count; n++) rules.binds(t, n, emit);
+    return bindingNodes;
+  };
+  var joinNonlocalWrites = (scopes) => {
     for (const s of scopes) {
       for (const [name2, bs] of s.names) {
         if (!bs.some((b2) => b2.kind === "nonlocal")) continue;
@@ -4686,16 +4752,15 @@ export const WORKER_SCRIPT = `"use strict";
         let target = s.parent;
         while (target && !(target.kind === "function" && target.names.get(name2)?.some((b2) => b2.kind !== "nonlocal" && b2.kind !== "global"))) target = target.parent;
         if (!target || writes.length === 0) continue;
-        s.names.set(
-          name2,
-          bs.filter((b2) => !writes.includes(b2))
-        );
+        s.names.set(name2, bs.filter((b2) => !writes.includes(b2)));
         for (const b2 of writes) {
           b2.scope = target;
           target.names.get(name2).push(b2);
         }
       }
     }
+  };
+  var membersOf = (t, rules, units) => {
     const members = /* @__PURE__ */ new Map();
     const bases = /* @__PURE__ */ new Map();
     for (const u of units) {
@@ -4706,12 +4771,11 @@ export const WORKER_SCRIPT = `"use strict";
     }
     for (const u of units) {
       const m2 = u.parent ? members.get(u.parent) : void 0;
-      if (!m2) continue;
-      const named = m2.get(u.name);
-      if (named) named.push(u);
-      else m2.set(u.name, [u]);
+      if (m2) pushTo(m2, u.name, u);
     }
-    const imports5 = rules.imports(t);
+    return { members, bases };
+  };
+  var sitesOf = (t, rules, imports5, bindingNodes, scopeAt2) => {
     const importNodes = new Set(imports5.map((i2) => i2.node));
     const sites = [];
     for (let n = 0; n < t.count; n++) {
@@ -4726,22 +4790,18 @@ export const WORKER_SCRIPT = `"use strict";
         shape: role5.kind,
         receiver: role5.kind === "bare" ? -1 : role5.receiver,
         ref: rules.isCallee(t, role5.expr) ? "call" : rules.isType(t, n) ? "type" : "value",
-        scope: scopeAt(n)
+        scope: scopeAt2(n)
       });
     }
     for (const i2 of imports5) {
       if (i2.name === null || i2.name === "*" || i2.node < 0) continue;
-      sites.push({ node: i2.node, start: t.start[i2.node], line: lineOf(t, t.start[i2.node]), name: i2.name, shape: "bare", receiver: -1, ref: "import", scope: scopeAt(i2.node) });
+      sites.push({ node: i2.node, start: t.start[i2.node], line: lineOf(t, t.start[i2.node]), name: i2.name, shape: "bare", receiver: -1, ref: "import", scope: scopeAt2(i2.node) });
     }
-    const importScope = new Map(imports5.map((i2) => [i2, scopeAt(i2.stmt)]));
-    return { path, rules, flat: t, units, labels, module: module2, scopes, scopeOfNode, enclosing, sites, imports: imports5, importScope, members, bases, unitByNode };
+    return sites;
   };
 
-  // src/lib/facts.ts
-  var VALUE = 1;
-  var TYPE = 2;
-  var NS = 4;
-  var FN = /* @__PURE__ */ new Set(["function_expression", "arrow_function", "generator_function", "function"]);
+  // src/lib/facts/nodes.ts
+  var FUNCTIONS = /* @__PURE__ */ new Set(["function_expression", "arrow_function", "generator_function", "function"]);
   var WRAPPERS = /* @__PURE__ */ new Set(["parenthesized_expression", "as_expression", "satisfies_expression", "non_null_expression", "type_assertion"]);
   var unwrap = (t, n) => {
     while (n >= 0 && WRAPPERS.has(t.type[n])) {
@@ -4751,80 +4811,876 @@ export const WORKER_SCRIPT = `"use strict";
     }
     return n;
   };
-  var isFn = (t, n) => n >= 0 && FN.has(t.type[n]);
+  var isFn = (t, n) => n >= 0 && FUNCTIONS.has(t.type[n]);
   var objectOf = (t, e) => {
     e = unwrap(t, e);
-    if (e < 0) return -1;
     if (t.type[e] === "object") return e;
-    if (t.type[e] === "call_expression") {
-      const args2 = child(t, e, "arguments");
-      if (args2 >= 0) {
-        for (const a of namedChildren(t, args2)) if (t.type[unwrap(t, a)] === "object") return unwrap(t, a);
-      }
-    }
+    if (t.type[e] !== "call_expression") return -1;
+    for (const a of namedChildren(t, child(t, e, "arguments"))) if (t.type[unwrap(t, a)] === "object") return unwrap(t, a);
     return -1;
   };
   var propName = (t, n) => {
     if (n < 0) return "?";
-    const ty = t.type[n];
-    if (ty === "string") {
-      const frag = childOfType(t, n, "string_fragment");
-      return frag >= 0 ? textOf(t, frag) : "";
-    }
-    return textOf(t, n);
+    if (t.type[n] !== "string") return textOf(t, n);
+    const fragment = childOfType(t, n, "string_fragment");
+    return fragment >= 0 ? textOf(t, fragment) : "";
   };
   var stringValue = (t, n) => {
-    if (n < 0) return null;
     if (t.type[n] === "string") return propName(t, n);
     if (t.type[n] === "template_string" && !namedChildren(t, n).some((c) => t.type[c] === "template_substitution")) return textOf(t, n).slice(1, -1);
     return null;
   };
-  var analyzeFile = (path, t) => {
-    const units = unitsOf2(path, t);
-    const scopes = scopesOf(t, units);
-    const mods = modulesOf(t);
-    const sites = sitesOf(t, scopes, mods);
-    const facts = {
-      path,
-      flat: t,
-      units,
-      module: scopes.module,
-      scopes: scopes.all,
-      scopeOfNode: scopes.scopeOfNode,
-      bindingOfName: scopes.bindingOfName,
-      sites,
-      imports: mods.imports,
-      exports: mods.exports,
-      moduleExports: mods.moduleExports,
-      specifiers: mods.specifiers,
-      shapes: /* @__PURE__ */ new Map(),
-      protoAliases: /* @__PURE__ */ new Map(),
-      assignments: []
-    };
-    shapesOf(facts, units);
-    return facts;
+  var firstStringArgument = (t, call) => {
+    const first = namedChildren(t, child(t, call, "arguments"))[0];
+    return first === void 0 ? null : stringValue(t, first);
   };
+  var annotatedType = (t, n) => {
+    const annotation = child(t, n, "type");
+    return annotation >= 0 ? namedChildren(t, annotation)[0] ?? -1 : -1;
+  };
+  var fieldName = (t, field) => child(t, field, t.type[field] === "field_definition" ? "property" : "name");
+  var assignmentIn = (t, statement) => {
+    const e = namedChildren(t, statement)[0];
+    return e !== void 0 && t.type[e] === "assignment_expression" ? e : -1;
+  };
+
+  // src/lib/facts/scopes.ts
+  var VALUE = 1;
+  var TYPE = 2;
+  var NS = 4;
+  var ANY = VALUE | TYPE | NS;
+  var lookup = (scope, name2, meaning) => {
+    for (let s = scope; s; s = s.parent) {
+      const b2 = s.bindings.get(name2)?.find((x2) => x2.meaning & meaning);
+      if (b2) return b2;
+    }
+    return null;
+  };
+  var FUNCTION_BODY_OWNERS = /* @__PURE__ */ new Set(["function_declaration", "function_expression", "function", "generator_function", "generator_function_declaration", "arrow_function", "method_definition"]);
+  var variableKind = (t, keyword) => t.type[keyword] === "var" ? "var" : t.type[keyword] === "let" ? "let" : "const";
+  var patternNames = (t, p, path = []) => {
+    switch (t.type[p]) {
+      case "identifier":
+        return [{ node: p, path }];
+      case "shorthand_property_identifier_pattern":
+        return [{ node: p, path: [...path, textOf(t, p)] }];
+      case "object_pattern":
+        return namedChildren(t, p).flatMap((c) => {
+          switch (t.type[c]) {
+            case "pair_pattern":
+              return patternNames(t, child(t, c, "value"), [...path, propName(t, child(t, c, "key"))]);
+            case "object_assignment_pattern":
+              return patternNames(t, child(t, c, "left"), path);
+            case "shorthand_property_identifier_pattern":
+            case "rest_pattern":
+              return patternNames(t, c, path);
+            default:
+              return [];
+          }
+        });
+      case "array_pattern":
+        return namedChildren(t, p).flatMap((c, i2) => patternNames(t, c, [...path, String(i2)]));
+      case "assignment_pattern":
+        return patternNames(t, child(t, p, "left"), path);
+      case "rest_pattern":
+        return patternNames(t, namedChildren(t, p)[0] ?? -1, [...path, "..."]);
+      default:
+        return [];
+    }
+  };
+  var scopesOf2 = (t, units) => {
+    const all2 = [];
+    const bindingOfName = /* @__PURE__ */ new Map();
+    const open = (kind, parent) => {
+      const s = { id: all2.length, kind, parent, bindings: /* @__PURE__ */ new Map() };
+      all2.push(s);
+      return s;
+    };
+    const module2 = open("module", null);
+    const topUnits = groupBy(
+      units.filter((u) => !u.parent),
+      (u) => u.name
+    );
+    const declare = (scope, nameNode, kind, meaning, extra = {}) => {
+      const name2 = textOf(t, nameNode);
+      const b2 = { name: name2, meaning, kind, node: nameNode, init: -1, typeNode: -1, decl: -1, ...extra };
+      if (scope === module2 && kind !== "import") {
+        const unit5 = (topUnits[name2] ?? []).find((u) => t.start[nameNode] >= u.start && t.start[nameNode] < u.end);
+        if (unit5) b2.unit = unit5;
+      }
+      const list = scope.bindings.get(name2);
+      if (list) list.push(b2);
+      else scope.bindings.set(name2, [b2]);
+      bindingOfName.set(nameNode, b2);
+    };
+    const declareName = (scope, decl, kind, meaning) => {
+      const nm = child(t, decl, "name");
+      if (nm >= 0) declare(scope, nm, kind, meaning, { decl });
+    };
+    const declarePattern = (scope, p, kind, init2, typeNode) => {
+      const names = patternNames(t, p);
+      const plain = names.length === 1 && names[0].node === p;
+      for (const n of names) declare(scope, n.node, kind, VALUE, { init: init2, typeNode, ...plain ? {} : { path: n.path }, decl: p });
+    };
+    const functionScopeOf = (s) => {
+      let x2 = s;
+      while (x2 && x2.kind !== "function" && x2.kind !== "arrow" && x2.kind !== "module") x2 = x2.parent;
+      return x2 ?? module2;
+    };
+    const typeParams = (scope, n) => {
+      for (const p of namedChildren(t, child(t, n, "type_parameters"))) {
+        const nm = child(t, p, "name");
+        if (nm >= 0) declare(scope, nm, "typeparam", TYPE);
+      }
+      return scope;
+    };
+    const signature = (scope, fn) => {
+      typeParams(scope, fn);
+      const single = child(t, fn, "parameter");
+      if (single >= 0) declare(scope, single, "param", VALUE);
+      for (const p of namedChildren(t, child(t, fn, "parameters"))) {
+        if (t.type[p] !== "required_parameter" && t.type[p] !== "optional_parameter") declarePattern(scope, p, "param", -1, -1);
+        else {
+          const pattern = child(t, p, "pattern");
+          if (pattern >= 0 && t.type[pattern] !== "this") declarePattern(scope, pattern, "param", child(t, p, "value"), annotatedType(t, p));
+        }
+      }
+      return scope;
+    };
+    const variables = (scope, n) => {
+      const kind = t.type[n] === "variable_declaration" ? "var" : variableKind(t, child(t, n, "kind"));
+      const target = kind === "var" ? functionScopeOf(scope) : scope;
+      for (const d of namedChildren(t, n)) if (t.type[d] === "variable_declarator") declarePattern(target, child(t, d, "name"), kind, child(t, d, "value"), annotatedType(t, d));
+    };
+    const imports5 = (stmt) => {
+      const imported = (nameNode, decl) => {
+        if (nameNode >= 0) declare(module2, nameNode, "import", ANY, { decl });
+      };
+      for (const c of namedChildren(t, stmt)) {
+        if (t.type[c] === "import_require_clause") imported(childOfType(t, c, "identifier"), c);
+        if (t.type[c] !== "import_clause") continue;
+        for (const k2 of namedChildren(t, c)) {
+          if (t.type[k2] === "identifier") imported(k2, k2);
+          else if (t.type[k2] === "namespace_import") imported(childOfType(t, k2, "identifier"), k2);
+          else if (t.type[k2] === "named_imports") {
+            for (const sp of namedChildren(t, k2)) {
+              if (t.type[sp] !== "import_specifier") continue;
+              const alias = child(t, sp, "alias");
+              const local = alias >= 0 ? alias : child(t, sp, "name");
+              if (t.type[local] === "identifier") imported(local, sp);
+            }
+          }
+        }
+      }
+    };
+    const enter = (n, outer) => {
+      switch (t.type[n]) {
+        case "function_declaration":
+        case "generator_function_declaration":
+          declareName(outer, n, "function", VALUE);
+          return signature(open("function", outer), n);
+        case "function_signature": {
+          const nm = child(t, n, "name");
+          if (nm >= 0 && !(outer.bindings.get(textOf(t, nm)) ?? []).some((b2) => b2.kind === "function")) declare(outer, nm, "function", VALUE, { decl: n });
+          return typeParams(open("type", outer), n);
+        }
+        case "function_expression":
+        case "function":
+        case "generator_function": {
+          const inner = open("function", outer);
+          declareName(inner, n, "function", VALUE);
+          return signature(inner, n);
+        }
+        case "arrow_function":
+          return signature(open("arrow", outer), n);
+        case "method_definition":
+          return signature(open("function", outer), n);
+        case "method_signature":
+        case "abstract_method_signature":
+          return signature(open("type", outer), n);
+        case "class_declaration":
+        case "abstract_class_declaration":
+          declareName(outer, n, "class", VALUE | TYPE);
+          return typeParams(open("class", outer), n);
+        case "class": {
+          const inner = open("class", outer);
+          declareName(inner, n, "class", VALUE | TYPE);
+          return typeParams(inner, n);
+        }
+        case "interface_declaration":
+        case "type_alias_declaration":
+          declareName(outer, n, "type", TYPE);
+          return typeParams(open("type", outer), n);
+        case "enum_declaration":
+          declareName(outer, n, "enum", VALUE | TYPE);
+          return outer;
+        case "internal_module":
+        case "module": {
+          const nm = child(t, n, "name");
+          if (t.type[nm] === "identifier") declare(outer, nm, "namespace", ANY, { decl: n });
+          return outer;
+        }
+        case "statement_block":
+        case "switch_body":
+        case "class_static_block":
+          return t.field[n] === "body" && FUNCTION_BODY_OWNERS.has(t.type[t.parent[n]]) ? outer : open("block", outer);
+        case "for_statement":
+          return open("for", outer);
+        case "for_in_statement": {
+          const inner = open("for", outer);
+          const keyword = child(t, n, "kind");
+          if (keyword >= 0) {
+            const kind = variableKind(t, keyword);
+            declarePattern(kind === "var" ? functionScopeOf(outer) : inner, child(t, n, "left"), kind, -1, -1);
+          }
+          return inner;
+        }
+        case "catch_clause": {
+          const inner = open("catch", outer);
+          const p = child(t, n, "parameter");
+          if (p >= 0) declarePattern(inner, p, "catch", -1, -1);
+          return inner;
+        }
+        case "lexical_declaration":
+        case "variable_declaration":
+          variables(outer, n);
+          return outer;
+        case "import_statement":
+          imports5(n);
+          return outer;
+        default:
+          return outer;
+      }
+    };
+    const scopeIds = new Int32Array(t.count);
+    const stack = [0];
+    while (stack.length > 0) {
+      const n = stack.pop();
+      const inner = enter(n, all2[scopeIds[n]]);
+      for (let c = t.first[n]; c >= 0; c = t.next[c]) {
+        scopeIds[c] = inner.id;
+        stack.push(c);
+      }
+    }
+    return { module: module2, all: all2, scopeIds, bindingOfName };
+  };
+
+  // src/lib/facts/modules.ts
+  var requireSpec = (t, n, scope) => {
+    n = unwrap(t, n);
+    if (t.type[n] !== "call_expression") return null;
+    const fn = child(t, n, "function");
+    if (t.type[fn] !== "identifier" || textOf(t, fn) !== "require") return null;
+    if (scope && lookup(scope, "require", VALUE)) return null;
+    return firstStringArgument(t, n);
+  };
+  var declaredNames = (t, p) => {
+    if (p < 0) return [];
+    if (t.type[p] === "identifier" || t.type[p] === "shorthand_property_identifier_pattern") return [p];
+    return namedChildren(t, p).filter((c) => t.type[c] !== "property_identifier" || t.field[c] !== "key").flatMap((c) => declaredNames(t, t.type[c] === "pair_pattern" ? child(t, c, "value") : c));
+  };
+  var modulesOf = (t) => {
+    const imports5 = [];
+    const exports = [];
+    const specifiers = [];
+    let moduleExports2 = -1;
+    const importStatement = (s) => {
+      const req = childOfType(t, s, "import_require_clause");
+      if (req >= 0) {
+        const spec2 = stringValue(t, child(t, req, "source"));
+        const id = childOfType(t, req, "identifier");
+        if (spec2 === null) return;
+        specifiers.push(spec2);
+        if (id >= 0) imports5.push({ local: textOf(t, id), spec: spec2, imported: "=", node: id });
+        return;
+      }
+      const spec = stringValue(t, child(t, s, "source"));
+      if (spec === null) return;
+      specifiers.push(spec);
+      for (const k2 of namedChildren(t, childOfType(t, s, "import_clause"))) {
+        if (t.type[k2] === "identifier") imports5.push({ local: textOf(t, k2), spec, imported: "default", node: k2 });
+        else if (t.type[k2] === "namespace_import") {
+          const id = childOfType(t, k2, "identifier");
+          if (id >= 0) imports5.push({ local: textOf(t, id), spec, imported: "*", node: id });
+        } else if (t.type[k2] === "named_imports") {
+          for (const sp of namedChildren(t, k2)) {
+            if (t.type[sp] !== "import_specifier") continue;
+            const nm = child(t, sp, "name");
+            const alias = child(t, sp, "alias");
+            imports5.push({ local: textOf(t, alias >= 0 ? alias : nm), spec, imported: propName(t, nm), node: nm });
+          }
+        }
+      }
+    };
+    const exportedDeclaration = (decl, isDefault) => {
+      const d = t.type[decl] === "ambient_declaration" ? namedChildren(t, decl)[0] ?? decl : decl;
+      if (t.type[d] === "lexical_declaration" || t.type[d] === "variable_declaration") {
+        for (const vd of namedChildren(t, d)) {
+          if (t.type[vd] !== "variable_declarator") continue;
+          for (const nm2 of declaredNames(t, child(t, vd, "name"))) exports.push({ kind: "local", name: textOf(t, nm2), local: textOf(t, nm2), nameNode: nm2 });
+        }
+        return;
+      }
+      const nm = child(t, d, "name");
+      if (nm >= 0) exports.push({ kind: "local", name: isDefault ? "default" : propName(t, nm), local: propName(t, nm), nameNode: nm });
+      else if (isDefault) exports.push({ kind: "expr", name: "default", value: d });
+    };
+    const exportStatement = (s) => {
+      const spec = stringValue(t, child(t, s, "source"));
+      if (spec !== null) specifiers.push(spec);
+      const decl = child(t, s, "declaration");
+      const value = child(t, s, "value");
+      const clause = childOfType(t, s, "export_clause");
+      const namespace2 = childOfType(t, s, "namespace_export");
+      if (decl >= 0) exportedDeclaration(decl, hasToken(t, s, "default"));
+      else if (value >= 0) exports.push({ kind: "expr", name: "default", value });
+      else if (clause >= 0) {
+        for (const sp of namedChildren(t, clause)) {
+          if (t.type[sp] !== "export_specifier") continue;
+          const nm = child(t, sp, "name");
+          const alias = child(t, sp, "alias");
+          const name2 = propName(t, alias >= 0 ? alias : nm);
+          if (spec !== null) exports.push({ kind: "reexport", name: name2, spec, imported: propName(t, nm), nameNode: nm });
+          else exports.push({ kind: "local", name: name2, local: propName(t, nm), nameNode: nm });
+        }
+      } else if (spec !== null) {
+        const id = namedChildren(t, namespace2)[0];
+        if (namespace2 >= 0) exports.push({ kind: "namespace", name: id !== void 0 ? propName(t, id) : "*", spec });
+        else exports.push({ kind: "star", spec });
+      } else if (hasToken(t, s, "=")) {
+        const e = namedChildren(t, s).find((c) => t.type[c] !== "decorator");
+        if (e !== void 0) moduleExports2 = e;
+      }
+    };
+    const commonJsExport = (s) => {
+      const e = assignmentIn(t, s);
+      if (e < 0) return;
+      const lhs = textOf(t, child(t, e, "left"));
+      const rhs = child(t, e, "right");
+      if (lhs === "module.exports") moduleExports2 = rhs;
+      else {
+        const m2 = /^(?:module\\.)?exports\\.([A-Za-z_$][\\w$]*)$/.exec(lhs);
+        if (m2) exports.push({ kind: "expr", name: m2[1], value: rhs });
+      }
+    };
+    for (const s of namedChildren(t, 0)) {
+      if (t.type[s] === "import_statement") importStatement(s);
+      else if (t.type[s] === "export_statement") exportStatement(s);
+      else if (t.type[s] === "expression_statement") commonJsExport(s);
+    }
+    for (let n = 0; n < t.count; n++) {
+      if (t.type[n] !== "call_expression") continue;
+      const fn = child(t, n, "function");
+      if (t.type[fn] !== "import" && !(t.type[fn] === "identifier" && textOf(t, fn) === "require")) continue;
+      const spec = firstStringArgument(t, n);
+      if (spec !== null) specifiers.push(spec);
+    }
+    return { imports: imports5, exports, specifiers, moduleExports: moduleExports2 };
+  };
+
+  // src/lib/facts/shapes.ts
+  var METHODS = /* @__PURE__ */ new Set(["method_definition", "method_signature", "abstract_method_signature"]);
+  var CLASS_BOUNDS = /* @__PURE__ */ new Set(["function_expression", "function_declaration", "generator_function", "generator_function_declaration", "class", "class_declaration", "function"]);
+  var FUNCTION_BOUNDS = /* @__PURE__ */ new Set([...CLASS_BOUNDS, "method_definition"]);
+  var CONDITIONAL = /* @__PURE__ */ new Set(["if_statement", "else_clause", "ternary_expression", "switch_case", "switch_default", "catch_clause", "for_statement", "for_in_statement", "while_statement", "do_statement"]);
+  var accessor = (t, n) => hasToken(t, n, "get") ? "get" : hasToken(t, n, "set") ? "set" : void 0;
+  var addTypeMembers = (t, body2, shape) => {
+    for (const m2 of namedChildren(t, body2)) {
+      const mt = t.type[m2];
+      if (mt === "index_signature") shape.open = true;
+      if (mt !== "property_signature" && mt !== "method_signature") continue;
+      const nm = child(t, m2, "name");
+      shape.members.push({ name: propName(t, nm), static: false, kind: mt === "method_signature" ? "signature" : "field", value: -1, typeNode: annotatedType(t, m2) });
+    }
+  };
+  var addThisAssignments = (t, root, shape, bounds) => {
+    const stack = [root];
+    while (stack.length > 0) {
+      const n = stack.pop();
+      if (n !== root && bounds.has(t.type[n])) continue;
+      for (let c = t.first[n]; c >= 0; c = t.next[c]) stack.push(c);
+      const lhs = t.type[n] === "assignment_expression" ? child(t, n, "left") : -1;
+      if (t.type[lhs] === "member_expression" && t.type[child(t, lhs, "object")] === "this") {
+        const prop = child(t, lhs, "property");
+        let isStatic = false;
+        let conditional = false;
+        for (let a = t.parent[n]; a >= 0 && a !== root; a = t.parent[a]) {
+          const at2 = t.type[a];
+          if (at2 === "method_definition") {
+            isStatic = hasToken(t, a, "static");
+            break;
+          }
+          if (CONDITIONAL.has(at2) || at2 === "binary_expression" && /^(&&|\\|\\||\\?\\?)$/.test(tokensOf(t, a)[0] ?? "")) conditional = true;
+        }
+        shape.members.push({ name: propName(t, prop), static: isStatic, kind: "this", value: child(t, n, "right"), typeNode: -1, ...conditional ? { conditional } : {} });
+      }
+    }
+  };
+  var shapesOf = (t, units) => {
+    const unitByNode = new Map(units.map((u) => [u.node, u]));
+    const unitByValue = new Map(units.filter((u) => u.valueNode >= 0).map((u) => [u.valueNode, u]));
+    const memberUnit = (node, valueNode) => unitByNode.get(node) ?? (valueNode >= 0 ? unitByValue.get(valueNode) : void 0);
+    const newShape = (name2, kind) => ({ name: name2, kind, members: [], heritage: [], open: false });
+    const classMember = (shape, m2) => {
+      const mt = t.type[m2];
+      const isStatic = hasToken(t, m2, "static");
+      if (METHODS.has(mt)) {
+        const nm = child(t, m2, "name");
+        const name2 = propName(t, nm);
+        shape.members.push({ name: name2, static: isStatic, kind: accessor(t, m2) ?? (mt === "method_definition" ? "method" : "signature"), unit: memberUnit(m2, m2), value: m2, typeNode: -1 });
+        if (name2 === "constructor" && mt === "method_definition") parameterProperties(shape, m2);
+      } else if (mt === "public_field_definition" || mt === "field_definition") {
+        const nm = fieldName(t, m2);
+        const v2 = child(t, m2, "value");
+        shape.members.push({ name: propName(t, nm), static: isStatic, kind: "field", unit: memberUnit(m2, unwrap(t, v2)), value: v2, typeNode: annotatedType(t, m2) });
+      }
+    };
+    const parameterProperties = (shape, ctor) => {
+      for (const p of namedChildren(t, child(t, ctor, "parameters"))) {
+        if (t.type[p] !== "required_parameter" && t.type[p] !== "optional_parameter") continue;
+        if (childOfType(t, p, "accessibility_modifier") < 0 && !hasToken(t, p, "readonly")) continue;
+        const pattern = child(t, p, "pattern");
+        if (t.type[pattern] === "identifier") shape.members.push({ name: textOf(t, pattern), static: false, kind: "param", value: -1, typeNode: annotatedType(t, p) });
+      }
+    };
+    const classShape = (n) => {
+      const nm = child(t, n, "name");
+      const shape = newShape(nm >= 0 ? textOf(t, nm) : "default", "class");
+      for (const h of namedChildren(t, childOfType(t, n, "class_heritage"))) {
+        const base = t.type[h] === "extends_clause" ? child(t, h, "value") : t.type[h] === "implements_clause" ? -1 : h;
+        if (base >= 0) shape.heritage.push(base);
+      }
+      const body2 = child(t, n, "body");
+      if (body2 >= 0) {
+        for (const m2 of namedChildren(t, body2)) classMember(shape, m2);
+        addThisAssignments(t, body2, shape, CLASS_BOUNDS);
+      }
+      return shape;
+    };
+    const interfaceShape = (n) => {
+      const shape = newShape(textOf(t, child(t, n, "name")), "interface");
+      shape.heritage.push(...namedChildren(t, childOfType(t, n, "extends_type_clause")));
+      addTypeMembers(t, child(t, n, "body"), shape);
+      return shape;
+    };
+    const objectShape = (n) => {
+      const shape = newShape("{}", "object");
+      for (const p of namedChildren(t, n)) {
+        const pt2 = t.type[p];
+        if (pt2 === "method_definition") {
+          const nm = child(t, p, "name");
+          shape.members.push({ name: propName(t, nm), static: false, kind: accessor(t, p) ?? "method", unit: memberUnit(p, p), value: p, typeNode: -1 });
+        } else if (pt2 === "pair") {
+          const k2 = child(t, p, "key");
+          const v2 = child(t, p, "value");
+          if (t.type[k2] === "computed_property_name") shape.open = true;
+          else shape.members.push({ name: propName(t, k2), static: false, kind: "pair", unit: memberUnit(p, unwrap(t, v2)), value: v2, typeNode: -1 });
+        } else if (pt2 === "shorthand_property_identifier") {
+          shape.members.push({ name: textOf(t, p), static: false, kind: "shorthand", value: p, typeNode: -1 });
+        } else if (pt2 === "spread_element") shape.open = true;
+      }
+      return shape;
+    };
+    const shapeOf = (n) => {
+      switch (t.type[n]) {
+        case "class_declaration":
+        case "abstract_class_declaration":
+        case "class":
+          return classShape(n);
+        case "interface_declaration":
+          return interfaceShape(n);
+        case "object_type": {
+          const shape = newShape("{}", "interface");
+          addTypeMembers(t, n, shape);
+          return shape;
+        }
+        case "object":
+          return objectShape(n);
+        case "internal_module":
+        case "module":
+          return newShape(propName(t, child(t, n, "name")), "namespace");
+        default:
+          return null;
+      }
+    };
+    const shapes2 = /* @__PURE__ */ new Map();
+    for (let n = 0; n < t.count; n++) {
+      const shape = shapeOf(n);
+      if (shape) shapes2.set(n, shape);
+    }
+    const prototypeOf = (e) => {
+      e = unwrap(t, e);
+      if (t.type[e] === "assignment_expression") return prototypeOf(child(t, e, "left"));
+      if (t.type[e] !== "member_expression" || propName(t, child(t, e, "property")) !== "prototype") return null;
+      const o = unwrap(t, child(t, e, "object"));
+      return t.type[o] === "identifier" ? textOf(t, o) : null;
+    };
+    const protoAliases = /* @__PURE__ */ new Map();
+    for (const s of namedChildren(t, 0)) {
+      if (t.type[s] !== "lexical_declaration" && t.type[s] !== "variable_declaration") continue;
+      for (const d of namedChildren(t, s)) {
+        if (t.type[d] !== "variable_declarator") continue;
+        const nm = child(t, d, "name");
+        const owner = prototypeOf(child(t, d, "value"));
+        if (owner && t.type[nm] === "identifier") protoAliases.set(textOf(t, nm), owner);
+      }
+    }
+    const assignments = [];
+    const unitAt = (stmt, rhs) => unitByNode.get(stmt) ?? unitByValue.get(unwrap(t, rhs));
+    const objectAssign = (call) => {
+      const args2 = namedChildren(t, child(t, call, "arguments"));
+      const target = unwrap(t, args2[0] ?? -1);
+      if (t.type[target] !== "identifier") return;
+      const owner = textOf(t, target);
+      for (const a of args2.slice(1)) {
+        const obj = unwrap(t, a);
+        if (t.type[obj] !== "object") continue;
+        for (const p of namedChildren(t, obj)) {
+          const k2 = child(t, p, "key");
+          if (t.type[p] === "shorthand_property_identifier") assignments.push({ owner, proto: false, name: textOf(t, p), value: p });
+          else if (t.type[p] === "pair" && t.type[k2] !== "computed_property_name") assignments.push({ owner, proto: false, name: propName(t, k2), value: child(t, p, "value") });
+        }
+      }
+    };
+    const memberAssignment = (s, e) => {
+      const lhs = child(t, e, "left");
+      const rhs = child(t, e, "right");
+      if (t.type[lhs] !== "member_expression") return;
+      const prop = child(t, lhs, "property");
+      const name2 = propName(t, prop);
+      const obj = unwrap(t, child(t, lhs, "object"));
+      const add = (owner, proto) => assignments.push({ owner, proto, name: name2, value: rhs, unit: unitAt(s, rhs) });
+      if (t.type[obj] === "identifier") {
+        const on2 = textOf(t, obj);
+        if (name2 !== "prototype") add(protoAliases.get(on2) ?? on2, protoAliases.has(on2));
+        else {
+          const o = objectOf(t, rhs);
+          if (o >= 0) assignments.push({ owner: on2, proto: true, name: "*", value: o });
+        }
+      } else if (t.type[obj] === "member_expression" && propName(t, child(t, obj, "property")) === "prototype") {
+        const o = unwrap(t, child(t, obj, "object"));
+        if (t.type[o] === "identifier") add(textOf(t, o), true);
+      }
+    };
+    for (const s of namedChildren(t, 0)) {
+      if (t.type[s] !== "expression_statement") continue;
+      const e = namedChildren(t, s)[0];
+      if (e === void 0) continue;
+      if (t.type[e] === "call_expression" && /^Object(\\.a|A)ssign$/.test(textOf(t, child(t, e, "function")))) objectAssign(e);
+      else if (t.type[e] === "assignment_expression") memberAssignment(s, e);
+    }
+    for (const u of units) {
+      if (u.parent || u.kind !== "function" || u.valueNode < 0) continue;
+      const shape = newShape(u.name, "function");
+      const body2 = child(t, u.valueNode, "body");
+      if (body2 >= 0) addThisAssignments(t, body2, shape, FUNCTION_BOUNDS);
+      shapes2.set(u.valueNode, shape);
+    }
+    return { shapes: shapes2, protoAliases, assignments };
+  };
+
+  // src/lib/facts/sites.ts
+  var TYPE_CONTEXT = /* @__PURE__ */ new Set(["type_query", "nested_type_identifier", "type_annotation", "type_arguments", "implements_clause", "extends_type_clause", "type_predicate", "asserts"]);
+  var CONTEXT_ENDS = /* @__PURE__ */ new Set(["statement_block", "arguments", "call_expression", "new_expression", "arrow_function", "pair", "variable_declarator", "assignment_expression", "class_body", "formal_parameters", "binary_expression", "ternary_expression"]);
+  var ASSIGN = /* @__PURE__ */ new Set(["assignment_expression", "augmented_assignment_expression"]);
+  var JSX_TAGS = /* @__PURE__ */ new Set(["jsx_opening_element", "jsx_self_closing_element", "jsx_closing_element"]);
+  var SEE_THROUGH = /* @__PURE__ */ new Set(["parenthesized_expression", "non_null_expression", "as_expression"]);
+  var PATTERNS = /* @__PURE__ */ new Set(["object_pattern", "pair_pattern", "array_pattern", "shorthand_property_identifier_pattern", "object_assignment_pattern", "assignment_pattern", "rest_pattern"]);
+  var enclosingDeclarator = (t, n) => {
+    for (let a = t.parent[n]; a >= 0; a = t.parent[a]) {
+      if (t.type[a] === "variable_declarator") return a;
+      if (!PATTERNS.has(t.type[a])) return -1;
+    }
+    return -1;
+  };
+  var requires = (t, declarator) => declarator >= 0 && requireSpec(t, child(t, declarator, "value"), null) !== null;
+  var sitesOf2 = (t, scopes, modules) => {
+    const sites = [];
+    const importByNode = new Map(modules.imports.map((i2) => [i2.node, i2]));
+    const exportByName = /* @__PURE__ */ new Map();
+    for (const e of modules.exports) if (e.kind === "local" || e.kind === "reexport") exportByName.set(e.nameNode, e);
+    const push = (node, name2, ref, form, extra = {}) => {
+      const start2 = t.start[node];
+      sites.push({ node, start: start2, line: lineOf(t, start2), name: name2, ref, form, scope: scopes.all[scopes.scopeIds[node]], receiver: -1, ...extra });
+    };
+    const valueKind = (id) => {
+      let e = id;
+      const p0 = t.parent[e];
+      if (t.type[p0] === "member_expression" && t.field[e] === "property" || t.type[p0] === "subscript_expression" && t.field[e] === "index") e = p0;
+      while (SEE_THROUGH.has(t.type[t.parent[e]])) e = t.parent[e];
+      const pt2 = t.type[t.parent[e]];
+      if (pt2 === "call_expression" && t.field[e] === "function" || pt2 === "new_expression" && t.field[e] === "constructor" || pt2 === "decorator") return "call";
+      if (JSX_TAGS.has(pt2) && t.field[e] === "name") return "jsx";
+      if (ASSIGN.has(pt2) && t.field[e] === "left") return "write";
+      return "value";
+    };
+    const contextKind = (id) => {
+      for (let a = t.parent[id]; a >= 0; a = t.parent[a]) {
+        const at2 = t.type[a];
+        if (at2 === "import_statement") return "import";
+        if (at2 === "export_statement") {
+          if (child(t, a, "declaration") >= 0) break;
+          const v2 = child(t, a, "value");
+          if (v2 >= 0) {
+            if (unwrap(t, v2) === id) return "export";
+            break;
+          }
+          return child(t, a, "source") >= 0 ? "import" : "export";
+        }
+        if (at2 === "variable_declarator") {
+          const nm = child(t, a, "name");
+          if (requires(t, a) && nm >= 0 && t.type[nm] !== "identifier") return "import";
+          break;
+        }
+        if (at2 === "statement_block" || at2 === "program") break;
+      }
+      for (let a = t.parent[id]; a > 0; a = t.parent[a]) {
+        const at2 = t.type[a];
+        if (at2 === "extends_clause") return t.field[id] === "value" || t.parent[id] === a ? "extends" : "type";
+        if (at2 === "class_heritage") return "extends";
+        if (TYPE_CONTEXT.has(at2)) return "type";
+        if (at2.endsWith("_statement") || CONTEXT_ENDS.has(at2) || at2 === "member_expression" && !TYPE_CONTEXT.has(t.type[t.parent[a]] ?? "")) break;
+      }
+      return null;
+    };
+    const identifier = (n) => {
+      const p = t.parent[n];
+      const pt2 = t.type[p];
+      const name2 = textOf(t, n);
+      switch (pt2) {
+        // An import specifier's imported name refers to the other module's export.
+        case "import_specifier": {
+          const entry = importByNode.get(n);
+          if (t.field[n] === "name" && entry) push(n, entry.imported, "import", "import", { importEntry: entry });
+          return;
+        }
+        case "import_clause": {
+          const entry = importByNode.get(n);
+          if (entry) push(n, name2, "import", "import", { importEntry: entry });
+          return;
+        }
+        case "namespace_import":
+        case "import_require_clause":
+        case "namespace_export":
+        case "nested_identifier":
+        case "internal_module":
+        case "module":
+          return;
+        case "export_specifier": {
+          const e = exportByName.get(n);
+          if (t.field[n] === "name" && e) push(n, name2, e.kind === "reexport" ? "import" : "export", "export", { exportEntry: e });
+          return;
+        }
+      }
+      const b2 = scopes.bindingOfName.get(n);
+      if (b2) {
+        if (b2.path && b2.path.length > 0 && requires(t, enclosingDeclarator(t, n))) push(pt2 === "pair_pattern" ? child(t, p, "key") : n, b2.path[b2.path.length - 1], "import", "require", { keyPath: b2.path });
+        return;
+      }
+      if (JSX_TAGS.has(pt2) && /^[a-z]/.test(name2)) return;
+      if (pt2 === "nested_type_identifier" && t.field[n] === "module") push(n, name2, "type", "bare");
+      else push(n, name2, contextKind(n) ?? valueKind(n), "bare");
+    };
+    const typeIdentifier = (n) => {
+      if (scopes.bindingOfName.has(n)) return;
+      const p = t.parent[n];
+      const ctx = contextKind(n);
+      if (t.type[p] !== "nested_type_identifier") push(n, textOf(t, n), ctx === "import" || ctx === "export" || ctx === "extends" ? ctx : "type", "bare");
+      else if (t.field[n] === "name") push(n, textOf(t, n), ctx === "import" ? "import" : "type", "member", { receiver: child(t, p, "module") });
+    };
+    const shorthandPattern = (n) => {
+      const b2 = scopes.bindingOfName.get(n);
+      if (!b2) push(n, textOf(t, n), "write", "bare");
+      else if (b2.path && requires(t, enclosingDeclarator(t, n))) push(n, textOf(t, n), "import", "require", { keyPath: b2.path });
+    };
+    const property = (n) => {
+      const p = t.parent[n];
+      if (t.type[p] !== "member_expression" || t.field[n] !== "property") return;
+      const ctx = contextKind(n);
+      push(n, textOf(t, n), ctx === "type" ? "type" : ctx === "import" || ctx === "export" ? ctx : valueKind(n), "member", { receiver: child(t, p, "object") });
+    };
+    const stringIndex = (n) => {
+      const p = t.parent[n];
+      const name2 = propName(t, n);
+      if (t.type[p] === "subscript_expression" && t.field[n] === "index" && /^[A-Za-z_$#][\\w$]*$/.test(name2)) push(n, name2, valueKind(n), "member", { receiver: child(t, p, "object"), start: t.start[n] + 1 });
+    };
+    for (let n = 1; n < t.count; n++) {
+      switch (t.type[n]) {
+        case "identifier":
+          identifier(n);
+          break;
+        case "type_identifier":
+          typeIdentifier(n);
+          break;
+        case "shorthand_property_identifier":
+          push(n, textOf(t, n), contextKind(n) ?? "value", "bare");
+          break;
+        case "shorthand_property_identifier_pattern":
+          shorthandPattern(n);
+          break;
+        case "property_identifier":
+        case "private_property_identifier":
+          property(n);
+          break;
+        case "string":
+          stringIndex(n);
+          break;
+      }
+    }
+    return sites;
+  };
+
+  // src/lib/facts/units.ts
+  var OVERLOADABLE = /* @__PURE__ */ new Set(["function_declaration", "generator_function_declaration", "function_signature", "method_definition", "method_signature", "abstract_method_signature"]);
+  var METHODS2 = /* @__PURE__ */ new Set(["method_definition", "method_signature", "abstract_method_signature"]);
+  var NOT_EXPORTED = /* @__PURE__ */ new Set(["export_clause", "namespace_export", "string", "decorator"]);
   var unitsOf2 = (path, t) => {
     const units = [];
-    const docStartOf2 = (n) => {
-      let first = t.start[n];
-      for (let p = prevSibling(t, n); p >= 0 && t.type[p] === "comment"; p = prevSibling(t, p)) {
-        const between = t.text.slice(t.end[p], first);
-        if ((between.match(/\\n/g) ?? []).length > 1) break;
-        first = t.start[p];
+    const qualified = (name2, parent) => parent ? \`\${parent.qname}.\${name2}\` : name2;
+    const keyword = (n, word) => children(t, n).find((c) => !t.named[c] && t.type[c] === word) ?? n;
+    const statements = (container, parent) => {
+      for (const s of namedChildren(t, container)) statement(s, parent);
+    };
+    const statement = (s, parent) => {
+      if (t.type[s] !== "export_statement") return ambient(s, s, parent);
+      const decl = child(t, s, "declaration");
+      if (decl >= 0) return ambient(decl, s, parent);
+      const value = child(t, s, "value");
+      if (value >= 0) return exportDefault(s, value, parent);
+      const e = namedChildren(t, s).find((c) => !NOT_EXPORTED.has(t.type[c]));
+      if (e !== void 0 && hasToken(t, s, "=")) defaultUnit(s, s, e, parent);
+    };
+    const ambient = (decl, outer, parent) => {
+      if (t.type[decl] !== "ambient_declaration") return declaration(decl, outer, parent);
+      const block = childOfType(t, decl, "statement_block");
+      if (hasToken(t, decl, "global") && block >= 0) return statements(block, addUnit(decl, outer, keyword(decl, "global"), "global", qualified("global", parent), "namespace", parent, decl));
+      const inner = namedChildren(t, decl)[0];
+      if (inner !== void 0) declaration(inner, outer, parent);
+    };
+    const declaration = (decl, outer, parent) => {
+      switch (t.type[decl]) {
+        case "function_declaration":
+        case "generator_function_declaration":
+        case "function_signature":
+          named2(decl, outer, "function", parent);
+          return;
+        case "class_declaration":
+        case "abstract_class_declaration":
+          return classMembers(decl, named2(decl, outer, "class", parent));
+        case "interface_declaration":
+        case "type_alias_declaration":
+        case "enum_declaration": {
+          const nm = child(t, decl, "name");
+          addUnit(decl, outer, nm, textOf(t, nm), qualified(textOf(t, nm), parent), "type", parent, decl);
+          return;
+        }
+        case "internal_module":
+        case "module": {
+          const nm = child(t, decl, "name");
+          const name2 = propName(t, nm);
+          const u = addUnit(decl, outer, nm, name2, qualified(name2, parent), "namespace", parent, decl);
+          const body2 = child(t, decl, "body");
+          if (body2 >= 0) statements(body2, u);
+          return;
+        }
+        case "lexical_declaration":
+        case "variable_declaration":
+          return variables(decl, outer, parent);
+        case "expression_statement":
+          return assignment(decl, outer, parent);
       }
-      return first;
+    };
+    const named2 = (decl, outer, kind, parent) => {
+      const nm = child(t, decl, "name");
+      const name2 = nm >= 0 ? textOf(t, nm) : "default";
+      return addUnit(decl, outer, nm >= 0 ? nm : outer, name2, qualified(name2, parent), kind, parent, decl);
+    };
+    const exportDefault = (s, value, parent) => {
+      const e = unwrap(t, value);
+      if (t.type[e] === "class") classMembers(e, addUnit(s, s, keyword(s, "default"), "default", qualified("default", parent), "class", parent, e));
+      else defaultUnit(s, keyword(s, "default"), value, parent);
+    };
+    const defaultUnit = (s, nameNode, value, parent) => {
+      const e = unwrap(t, value);
+      if (t.type[e] === "identifier") return;
+      const u = addUnit(s, s, nameNode, "default", "default", isFn(t, e) ? "function" : "value", parent, e);
+      const obj = objectOf(t, value);
+      if (obj >= 0) objectMembers(obj, u);
+    };
+    const variables = (decl, outer, parent) => {
+      const declarators = namedChildren(t, decl).filter((c) => t.type[c] === "variable_declarator");
+      for (const d of declarators) {
+        const nm = child(t, d, "name");
+        if (t.type[nm] !== "identifier") continue;
+        const value = child(t, d, "value");
+        const init2 = unwrap(t, value);
+        const node = declarators.length === 1 ? outer : d;
+        const name2 = textOf(t, nm);
+        const qname = qualified(name2, parent);
+        if (t.type[init2] === "class") classMembers(init2, addUnit(d, node, nm, name2, qname, "class", parent, init2));
+        else if (isFn(t, init2)) addUnit(d, node, nm, name2, qname, "function", parent, init2);
+        else {
+          const obj = objectOf(t, value);
+          const u = addUnit(d, node, nm, name2, qname, "value", parent, obj);
+          if (obj >= 0) objectMembers(obj, u);
+        }
+      }
+    };
+    const assignment = (decl, outer, parent) => {
+      const e = assignmentIn(t, decl);
+      if (e < 0) return;
+      const lhs = child(t, e, "left");
+      const right2 = child(t, e, "right");
+      const rhs = unwrap(t, right2);
+      if (t.type[lhs] !== "member_expression" && t.type[lhs] !== "subscript_expression") return;
+      const lhsText = textOf(t, lhs);
+      const nameNode = t.type[lhs] === "member_expression" ? child(t, lhs, "property") : child(t, lhs, "index");
+      const name2 = propName(t, nameNode);
+      if (isFn(t, rhs)) addUnit(decl, outer, nameNode, name2, lhsText, /^(module\\.)?exports\\./.test(lhsText) ? "function" : "method", parent, rhs);
+      else if (t.type[rhs] === "class") classMembers(rhs, addUnit(decl, outer, nameNode, name2, lhsText, "class", parent, rhs));
+      else if (lhsText === "module.exports") {
+        const obj = objectOf(t, right2);
+        if (obj >= 0) objectMembers(obj, addUnit(decl, outer, lhs, "module.exports", "module.exports", "value", parent, obj));
+      }
+    };
+    const classMembers = (cls, parent) => {
+      for (const m2 of namedChildren(t, child(t, cls, "body"))) {
+        const ty = t.type[m2];
+        if (METHODS2.has(ty)) method(m2, memberStart(m2), child(t, m2, "name"), parent, m2);
+        if (ty !== "public_field_definition" && ty !== "field_definition") continue;
+        const value = unwrap(t, child(t, m2, "value"));
+        if (isFn(t, value)) method(m2, memberStart(m2), fieldName(t, m2), parent, value);
+      }
+    };
+    const objectMembers = (obj, parent) => {
+      for (const p of namedChildren(t, obj)) {
+        if (t.type[p] === "method_definition") method(p, p, child(t, p, "name"), parent, p);
+        if (t.type[p] !== "pair") continue;
+        const value = unwrap(t, child(t, p, "value"));
+        if (isFn(t, value)) method(p, p, child(t, p, "key"), parent, value);
+      }
+    };
+    const method = (node, outer, nameNode, parent, value) => {
+      const name2 = propName(t, nameNode);
+      addUnit(node, outer, nameNode, name2, \`\${parent.qname}.\${name2}\`, "method", parent, value);
     };
     const memberStart = (n) => {
       let first = n;
       for (let p = prevSibling(t, n); p >= 0 && t.type[p] === "decorator"; p = prevSibling(t, p)) first = p;
       return first;
     };
-    const overloadable = (n) => ["function_declaration", "generator_function_declaration", "function_signature", "method_definition", "method_signature", "abstract_method_signature"].includes(t.type[n]) && !hasToken(t, n, "get") && !hasToken(t, n, "set");
-    const make = (node, outer, nameNode, name2, qname, kind, parent, valueNode = -1) => {
+    const overloadable = (n) => OVERLOADABLE.has(t.type[n]) && !hasToken(t, n, "get") && !hasToken(t, n, "set");
+    const docStart = (n) => {
+      let first = t.start[n];
+      for (let p = prevSibling(t, n); p >= 0 && t.type[p] === "comment"; p = prevSibling(t, p)) {
+        if ((t.text.slice(t.end[p], first).match(/\\n/g) ?? []).length > 1) break;
+        first = t.start[p];
+      }
+      return first;
+    };
+    const addUnit = (node, outer, nameNode, name2, qname, kind, parent, valueNode = -1) => {
       const start2 = t.start[outer];
       const end = Math.max(t.end[outer], t.end[node]);
-      const nameStart = nameNode >= 0 ? t.start[nameNode] : start2;
       const last = units[units.length - 1];
       if (last && last.name === name2 && last.parent === parent?.id && last.kind === kind && (kind === "function" || kind === "method") && overloadable(last.node) && overloadable(node)) {
         last.end = end;
@@ -4833,6 +5689,7 @@ export const WORKER_SCRIPT = `"use strict";
         if (valueNode >= 0) last.valueNode = valueNode;
         return last;
       }
+      const nameStart = nameNode >= 0 ? t.start[nameNode] : start2;
       const u = {
         id: "",
         path,
@@ -4844,7 +5701,7 @@ export const WORKER_SCRIPT = `"use strict";
         startLine: lineOf(t, start2),
         endLine: lineOf(t, Math.max(start2, end - 1)),
         nameLine: lineOf(t, nameStart),
-        docLine: lineOf(t, docStartOf2(outer)),
+        docLine: lineOf(t, docStart(outer)),
         nameStart,
         ...parent ? { parent: parent.id } : {},
         node,
@@ -4855,861 +5712,237 @@ export const WORKER_SCRIPT = `"use strict";
       units.push(u);
       return u;
     };
-    const objectMembers = (obj, parent) => {
-      for (const p of namedChildren(t, obj)) {
-        const ty = t.type[p];
-        if (ty === "method_definition") {
-          const nm = child(t, p, "name");
-          make(p, p, nm, propName(t, nm), \`\${parent.qname}.\${propName(t, nm)}\`, "method", parent, p);
-        } else if (ty === "pair") {
-          const v2 = unwrap(t, child(t, p, "value"));
-          const k2 = child(t, p, "key");
-          if (isFn(t, v2)) make(p, p, k2, propName(t, k2), \`\${parent.qname}.\${propName(t, k2)}\`, "method", parent, v2);
-        }
-      }
-    };
-    const classMembers = (cls, parent) => {
-      const body2 = child(t, cls, "body");
-      if (body2 < 0) return;
-      for (const m2 of namedChildren(t, body2)) {
-        const ty = t.type[m2];
-        if (ty === "method_definition" || ty === "method_signature" || ty === "abstract_method_signature") {
-          const nm = child(t, m2, "name");
-          const name2 = propName(t, nm);
-          make(m2, memberStart(m2), nm, name2, \`\${parent.qname}.\${name2}\`, "method", parent, m2);
-        } else if (ty === "public_field_definition" || ty === "field_definition") {
-          const nm = child(t, m2, ty === "field_definition" ? "property" : "name");
-          const v2 = unwrap(t, child(t, m2, "value"));
-          if (isFn(t, v2)) make(m2, memberStart(m2), nm, propName(t, nm), \`\${parent.qname}.\${propName(t, nm)}\`, "method", parent, v2);
-        }
-      }
-    };
-    const statements = (container, parent) => {
-      const q2 = (name2) => parent ? \`\${parent.qname}.\${name2}\` : name2;
-      for (const s of namedChildren(t, container)) {
-        let decl = s;
-        const outer = s;
-        if (t.type[s] === "export_statement") {
-          const d = child(t, s, "declaration");
-          const v2 = child(t, s, "value");
-          if (d >= 0) decl = d;
-          else if (v2 >= 0) {
-            const e = unwrap(t, v2);
-            if (t.type[e] === "identifier") continue;
-            const kw = children(t, s).find((c) => !t.named[c] && t.type[c] === "default") ?? s;
-            if (t.type[e] === "class") {
-              classMembers(e, make(s, s, kw, "default", q2("default"), "class", parent, e));
-              continue;
-            }
-            const u = make(s, s, kw, "default", "default", isFn(t, e) ? "function" : "value", parent, e);
-            const obj = objectOf(t, v2);
-            if (obj >= 0) objectMembers(obj, u);
-            continue;
-          } else {
-            const e = namedChildren(t, s).find((c) => t.type[c] !== "export_clause" && t.type[c] !== "namespace_export" && t.type[c] !== "string" && t.type[c] !== "decorator");
-            if (e === void 0 || !hasToken(t, s, "=")) continue;
-            const x2 = unwrap(t, e);
-            if (t.type[x2] === "identifier") continue;
-            const u = make(s, s, s, "default", "default", isFn(t, x2) ? "function" : "value", parent, x2);
-            const obj = objectOf(t, e);
-            if (obj >= 0) objectMembers(obj, u);
-            continue;
-          }
-        }
-        if (t.type[decl] === "ambient_declaration") {
-          const block = childOfType(t, decl, "statement_block");
-          if (hasToken(t, decl, "global") && block >= 0) {
-            const kw = children(t, decl).find((c) => !t.named[c] && t.type[c] === "global") ?? decl;
-            statements(block, make(decl, outer, kw, "global", q2("global"), "namespace", parent, decl));
-            continue;
-          }
-          const inner = namedChildren(t, decl).find((c) => t.type[c] !== "comment");
-          if (inner === void 0) continue;
-          decl = inner;
-        }
-        const ty = t.type[decl];
-        if (ty === "function_declaration" || ty === "generator_function_declaration" || ty === "function_signature") {
-          const nm = child(t, decl, "name");
-          const name2 = nm >= 0 ? textOf(t, nm) : "default";
-          make(decl, outer, nm >= 0 ? nm : outer, name2, q2(name2), "function", parent, decl);
-        } else if (ty === "class_declaration" || ty === "abstract_class_declaration") {
-          const nm = child(t, decl, "name");
-          const name2 = nm >= 0 ? textOf(t, nm) : "default";
-          classMembers(decl, make(decl, outer, nm >= 0 ? nm : outer, name2, q2(name2), "class", parent, decl));
-        } else if (ty === "interface_declaration" || ty === "type_alias_declaration" || ty === "enum_declaration") {
-          const nm = child(t, decl, "name");
-          make(decl, outer, nm, textOf(t, nm), q2(textOf(t, nm)), "type", parent, decl);
-        } else if (ty === "internal_module" || ty === "module") {
-          const nm = child(t, decl, "name");
-          const name2 = propName(t, nm);
-          const u = make(decl, outer, nm, name2, q2(name2), "namespace", parent, decl);
-          const body2 = child(t, decl, "body");
-          if (body2 >= 0) statements(body2, u);
-        } else if (ty === "lexical_declaration" || ty === "variable_declaration") {
-          const decls = namedChildren(t, decl).filter((c) => t.type[c] === "variable_declarator");
-          for (const d of decls) {
-            const nm = child(t, d, "name");
-            if (nm < 0 || t.type[nm] !== "identifier") continue;
-            const value = child(t, d, "value");
-            const init2 = unwrap(t, value);
-            const node = decls.length === 1 ? outer : d;
-            const name2 = textOf(t, nm);
-            if (init2 >= 0 && t.type[init2] === "class") classMembers(init2, make(d, node, nm, name2, q2(name2), "class", parent, init2));
-            else if (isFn(t, init2)) make(d, node, nm, name2, q2(name2), "function", parent, init2);
-            else {
-              const obj = value >= 0 ? objectOf(t, value) : -1;
-              const u = make(d, node, nm, name2, q2(name2), "value", parent, obj);
-              if (obj >= 0) objectMembers(obj, u);
-            }
-          }
-        } else if (ty === "expression_statement") {
-          const e = namedChildren(t, decl)[0];
-          if (e === void 0 || t.type[e] !== "assignment_expression") continue;
-          const lhs = child(t, e, "left");
-          const rhsRaw = child(t, e, "right");
-          const rhs = unwrap(t, rhsRaw);
-          if (t.type[lhs] !== "member_expression" && t.type[lhs] !== "subscript_expression") continue;
-          const lhsText = textOf(t, lhs);
-          const nameNode = t.type[lhs] === "member_expression" ? child(t, lhs, "property") : child(t, lhs, "index");
-          const name2 = propName(t, nameNode);
-          if (isFn(t, rhs)) make(decl, outer, nameNode, name2, lhsText, /^(module\\.)?exports\\./.test(lhsText) ? "function" : "method", parent, rhs);
-          else if (rhs >= 0 && t.type[rhs] === "class") classMembers(rhs, make(decl, outer, nameNode, name2, lhsText, "class", parent, rhs));
-          else if (/^module\\.exports$/.test(lhsText)) {
-            const obj = objectOf(t, rhsRaw);
-            if (obj >= 0) objectMembers(obj, make(decl, outer, lhs, "module.exports", "module.exports", "value", parent, obj));
-          }
-        }
-      }
-    };
     statements(0);
     return units;
   };
-  var scopesOf = (t, units) => {
-    let nextId = 0;
-    const all2 = [];
-    const scopeOfNode = /* @__PURE__ */ new Map();
-    const bindingOfName = /* @__PURE__ */ new Map();
-    const newScope = (node, kind, parent) => {
-      const s = { id: nextId++, node, kind, parent, bindings: /* @__PURE__ */ new Map() };
-      all2.push(s);
-      scopeOfNode.set(node, s);
-      return s;
-    };
-    const module2 = newScope(0, "module", null);
-    const unitsByName = /* @__PURE__ */ new Map();
-    for (const u of units) if (!u.parent) unitsByName.set(u.name, [...unitsByName.get(u.name) ?? [], u]);
-    const declare = (scope, nameNode, kind, meaning, extra = {}) => {
-      const name2 = textOf(t, nameNode);
-      const b2 = { name: name2, meaning, kind, node: nameNode, scope, init: -1, typeNode: -1, decl: -1, ...extra };
-      if (scope === module2 && !b2.unit && kind !== "import") {
-        const u = (unitsByName.get(name2) ?? []).find((x2) => t.start[nameNode] >= x2.start && t.start[nameNode] < x2.end);
-        if (u) b2.unit = u;
-      }
-      const list = scope.bindings.get(name2) ?? [];
-      list.push(b2);
-      scope.bindings.set(name2, list);
-      bindingOfName.set(nameNode, b2);
-      return b2;
-    };
-    const functionScopeOf = (s) => {
-      let x2 = s;
-      while (x2 && x2.kind !== "function" && x2.kind !== "arrow" && x2.kind !== "module") x2 = x2.parent;
-      return x2 ?? module2;
-    };
-    const patternNames2 = (p, path, out2, init2 = -1) => {
-      if (p < 0) return;
-      const ty = t.type[p];
-      if (ty === "identifier" || ty === "shorthand_property_identifier_pattern") out2.push({ node: p, path: ty === "shorthand_property_identifier_pattern" ? [...path, textOf(t, p)] : path, init: init2 });
-      else if (ty === "object_pattern") {
-        for (const c of namedChildren(t, p)) {
-          if (t.type[c] === "shorthand_property_identifier_pattern") out2.push({ node: c, path: [...path, textOf(t, c)], init: -1 });
-          else if (t.type[c] === "pair_pattern") patternNames2(child(t, c, "value"), [...path, propName(t, child(t, c, "key"))], out2);
-          else if (t.type[c] === "object_assignment_pattern") {
-            const left = child(t, c, "left");
-            if (t.type[left] === "shorthand_property_identifier_pattern") out2.push({ node: left, path: [...path, textOf(t, left)], init: child(t, c, "right") });
-            else patternNames2(left, path, out2);
-          } else if (t.type[c] === "rest_pattern") patternNames2(namedChildren(t, c)[0] ?? -1, [...path, "..."], out2);
-        }
-      } else if (ty === "array_pattern") {
-        namedChildren(t, p).forEach((c, i2) => patternNames2(c, [...path, String(i2)], out2));
-      } else if (ty === "assignment_pattern") patternNames2(child(t, p, "left"), path, out2, child(t, p, "right"));
-      else if (ty === "rest_pattern") patternNames2(namedChildren(t, p)[0] ?? -1, [...path, "..."], out2);
-    };
-    const declarePattern = (scope, p, kind, init2, typeNode) => {
-      const names = [];
-      patternNames2(p, [], names);
-      const plain = names.length === 1 && names[0].node === p;
-      for (const n of names) declare(scope, n.node, kind, VALUE, { init: init2, typeNode, ...plain ? {} : { path: n.path }, decl: p });
-    };
-    const typeParams = (scope, n) => {
-      const tp = child(t, n, "type_parameters");
-      if (tp < 0) return;
-      for (const p of namedChildren(t, tp)) {
-        const nm = child(t, p, "name");
-        if (nm >= 0) declare(scope, nm, "typeparam", TYPE);
-      }
-    };
-    const params2 = (scope, fn) => {
-      const single = child(t, fn, "parameter");
-      if (single >= 0) declare(scope, single, "param", VALUE);
-      const ps = child(t, fn, "parameters");
-      if (ps < 0) return;
-      for (const p of namedChildren(t, ps)) {
-        if (t.type[p] === "required_parameter" || t.type[p] === "optional_parameter") {
-          const pat = child(t, p, "pattern");
-          const ty = child(t, p, "type");
-          const typeNode = ty >= 0 ? namedChildren(t, ty)[0] ?? -1 : -1;
-          if (pat >= 0 && t.type[pat] !== "this") declarePattern(scope, pat, "param", child(t, p, "value"), typeNode);
-        } else declarePattern(scope, p, "param", -1, -1);
-      }
-    };
-    const declareImport = (scope, stmt) => {
-      for (const c of namedChildren(t, stmt)) {
-        if (t.type[c] === "import_clause") {
-          for (const k2 of namedChildren(t, c)) {
-            if (t.type[k2] === "identifier") declare(scope, k2, "import", VALUE | TYPE | NS, { decl: k2 });
-            else if (t.type[k2] === "namespace_import") {
-              const id = childOfType(t, k2, "identifier");
-              if (id >= 0) declare(scope, id, "import", VALUE | TYPE | NS, { decl: k2 });
-            } else if (t.type[k2] === "named_imports") {
-              for (const sp of namedChildren(t, k2)) {
-                if (t.type[sp] !== "import_specifier") continue;
-                const alias = child(t, sp, "alias");
-                const nm = child(t, sp, "name");
-                const local = alias >= 0 ? alias : nm;
-                if (local >= 0 && t.type[local] === "identifier") declare(scope, local, "import", VALUE | TYPE | NS, { decl: sp });
-              }
-            }
-          }
-        } else if (t.type[c] === "import_require_clause") {
-          const id = childOfType(t, c, "identifier");
-          if (id >= 0) declare(scope, id, "import", VALUE | TYPE | NS, { decl: c });
-        }
-      }
-    };
-    const varDecl = (scope, n) => {
-      const kindTok = child(t, n, "kind");
-      const kind = t.type[n] === "variable_declaration" ? "var" : kindTok >= 0 && t.type[kindTok] === "let" ? "let" : "const";
-      const target = kind === "var" ? functionScopeOf(scope) : scope;
-      for (const d of namedChildren(t, n)) {
-        if (t.type[d] !== "variable_declarator") continue;
-        const ty = child(t, d, "type");
-        declarePattern(target, child(t, d, "name"), kind, child(t, d, "value"), ty >= 0 ? namedChildren(t, ty)[0] ?? -1 : -1);
-      }
-    };
-    const scopeIndex = new Int32Array(t.count);
-    const scopeAt = { get: (n) => all2[scopeIndex[n]] };
-    const stack = [0];
-    while (stack.length > 0) {
-      const n = stack.pop();
-      const outer = scopeAt.get(n);
-      const ty = t.type[n];
-      let inner = outer;
-      switch (ty) {
-        case "function_declaration":
-        case "generator_function_declaration": {
-          const nm = child(t, n, "name");
-          if (nm >= 0) declare(outer, nm, "function", VALUE, { decl: n });
-          inner = newScope(n, "function", outer);
-          typeParams(inner, n);
-          params2(inner, n);
-          break;
-        }
-        case "function_signature": {
-          const nm = child(t, n, "name");
-          if (nm >= 0 && !(outer.bindings.get(textOf(t, nm)) ?? []).some((b2) => b2.kind === "function")) declare(outer, nm, "function", VALUE, { decl: n });
-          inner = newScope(n, "type", outer);
-          typeParams(inner, n);
-          break;
-        }
-        case "function_expression":
-        case "function":
-        case "generator_function": {
-          inner = newScope(n, "function", outer);
-          const nm = child(t, n, "name");
-          if (nm >= 0) declare(inner, nm, "function", VALUE, { decl: n });
-          typeParams(inner, n);
-          params2(inner, n);
-          break;
-        }
-        case "arrow_function":
-          inner = newScope(n, "arrow", outer);
-          typeParams(inner, n);
-          params2(inner, n);
-          break;
-        case "method_definition":
-        case "method_signature":
-        case "abstract_method_signature":
-          inner = newScope(n, ty === "method_definition" ? "function" : "type", outer);
-          typeParams(inner, n);
-          params2(inner, n);
-          break;
-        case "class_declaration":
-        case "abstract_class_declaration": {
-          const nm = child(t, n, "name");
-          if (nm >= 0) declare(outer, nm, "class", VALUE | TYPE, { decl: n });
-          inner = newScope(n, "class", outer);
-          typeParams(inner, n);
-          break;
-        }
-        case "class": {
-          inner = newScope(n, "class", outer);
-          const nm = child(t, n, "name");
-          if (nm >= 0) declare(inner, nm, "class", VALUE | TYPE, { decl: n });
-          typeParams(inner, n);
-          break;
-        }
-        case "interface_declaration":
-        case "type_alias_declaration": {
-          const nm = child(t, n, "name");
-          if (nm >= 0) declare(outer, nm, "type", TYPE, { decl: n });
-          inner = newScope(n, "type", outer);
-          typeParams(inner, n);
-          break;
-        }
-        case "enum_declaration": {
-          const nm = child(t, n, "name");
-          if (nm >= 0) declare(outer, nm, "enum", VALUE | TYPE, { decl: n });
-          break;
-        }
-        case "internal_module":
-        case "module": {
-          const nm = child(t, n, "name");
-          if (nm >= 0 && t.type[nm] === "identifier") declare(outer, nm, "namespace", VALUE | TYPE | NS, { decl: n });
-          break;
-        }
-        case "statement_block":
-        case "switch_body":
-        case "class_static_block": {
-          const p = t.parent[n];
-          const pt2 = p >= 0 ? t.type[p] : "";
-          if (!(t.field[n] === "body" && (pt2 === "function_declaration" || pt2 === "function_expression" || pt2 === "function" || pt2 === "generator_function" || pt2 === "generator_function_declaration" || pt2 === "arrow_function" || pt2 === "method_definition"))) inner = newScope(n, "block", outer);
-          break;
-        }
-        case "for_statement":
-        case "for_in_statement":
-          inner = newScope(n, "for", outer);
-          if (ty === "for_in_statement") {
-            const kindTok = child(t, n, "kind");
-            if (kindTok >= 0) {
-              const k2 = t.type[kindTok] === "var" ? "var" : t.type[kindTok] === "let" ? "let" : "const";
-              declarePattern(k2 === "var" ? functionScopeOf(outer) : inner, child(t, n, "left"), k2, -1, -1);
-            }
-          }
-          break;
-        case "catch_clause": {
-          inner = newScope(n, "catch", outer);
-          const p = child(t, n, "parameter");
-          if (p >= 0) declarePattern(inner, p, "catch", -1, -1);
-          break;
-        }
-        case "lexical_declaration":
-        case "variable_declaration":
-          varDecl(outer, n);
-          break;
-        case "import_statement":
-          declareImport(module2, n);
-          break;
-      }
-      for (let c = t.first[n]; c >= 0; c = t.next[c]) {
-        scopeIndex[c] = inner.id;
-        stack.push(c);
-      }
-    }
-    return { module: module2, all: all2, scopeOfNode, bindingOfName, scopeAt };
-  };
-  var lookup = (scope, name2, meaning) => {
-    for (let s = scope; s; s = s.parent) {
-      const list = s.bindings.get(name2);
-      if (!list) continue;
-      const b2 = list.find((x2) => x2.meaning & meaning);
-      if (b2) return b2;
-    }
-    return null;
-  };
-  var requireSpec = (t, n, scope) => {
-    n = unwrap(t, n);
-    if (n < 0 || t.type[n] !== "call_expression") return null;
-    const fn = child(t, n, "function");
-    if (fn < 0 || t.type[fn] !== "identifier" || textOf(t, fn) !== "require") return null;
-    if (scope && lookup(scope, "require", VALUE)) return null;
-    const args2 = child(t, n, "arguments");
-    const first = args2 >= 0 ? namedChildren(t, args2)[0] : void 0;
-    return first === void 0 ? null : stringValue(t, first);
-  };
-  var modulesOf = (t) => {
-    const imports5 = [];
-    const exports = [];
-    const specifiers = [];
-    let moduleExports2 = -1;
-    for (const s of namedChildren(t, 0)) {
-      const ty = t.type[s];
-      if (ty === "import_statement") {
-        const src = child(t, s, "source");
-        const spec = stringValue(t, src);
-        const typeOnly = children(t, s).some((c) => !t.named[c] && t.type[c] === "type");
-        const req = childOfType(t, s, "import_require_clause");
-        if (req >= 0) {
-          const rs = stringValue(t, child(t, req, "source"));
-          const id = childOfType(t, req, "identifier");
-          if (rs !== null) {
-            specifiers.push({ spec: rs, node: req, reexport: false });
-            if (id >= 0) imports5.push({ local: textOf(t, id), spec: rs, imported: "=", node: id, typeOnly, kind: "import-equals" });
-          }
-          continue;
-        }
-        if (spec === null) continue;
-        specifiers.push({ spec, node: s, reexport: false });
-        const clause = childOfType(t, s, "import_clause");
-        if (clause < 0) continue;
-        for (const k2 of namedChildren(t, clause)) {
-          if (t.type[k2] === "identifier") imports5.push({ local: textOf(t, k2), spec, imported: "default", node: k2, typeOnly, kind: "esm" });
-          else if (t.type[k2] === "namespace_import") {
-            const id = childOfType(t, k2, "identifier");
-            if (id >= 0) imports5.push({ local: textOf(t, id), spec, imported: "*", node: id, typeOnly, kind: "esm" });
-          } else if (t.type[k2] === "named_imports") {
-            for (const sp of namedChildren(t, k2)) {
-              if (t.type[sp] !== "import_specifier") continue;
-              const nm = child(t, sp, "name");
-              const alias = child(t, sp, "alias");
-              const specTypeOnly = typeOnly || children(t, sp).some((c) => !t.named[c] && t.type[c] === "type");
-              imports5.push({ local: textOf(t, alias >= 0 ? alias : nm), spec, imported: propName(t, nm), node: nm, typeOnly: specTypeOnly, kind: "esm" });
-            }
-          }
-        }
-      } else if (ty === "export_statement") {
-        const src = child(t, s, "source");
-        const spec = src >= 0 ? stringValue(t, src) : null;
-        if (spec !== null) specifiers.push({ spec, node: s, reexport: true });
-        const decl = child(t, s, "declaration");
-        const value = child(t, s, "value");
-        const clause = childOfType(t, s, "export_clause");
-        const nsExport = childOfType(t, s, "namespace_export");
-        const isDefault = children(t, s).some((c) => !t.named[c] && t.type[c] === "default");
-        if (decl >= 0) {
-          let d = decl;
-          if (t.type[d] === "ambient_declaration") d = namedChildren(t, d)[0] ?? d;
-          const dt2 = t.type[d];
-          if (dt2 === "lexical_declaration" || dt2 === "variable_declaration") {
-            for (const vd of namedChildren(t, d)) {
-              if (t.type[vd] !== "variable_declarator") continue;
-              const names = [];
-              const collect = (p) => {
-                if (p < 0) return;
-                if (t.type[p] === "identifier" || t.type[p] === "shorthand_property_identifier_pattern") names.push(p);
-                else for (const c of namedChildren(t, p)) if (t.type[c] !== "property_identifier" || t.field[c] !== "key") collect(t.type[c] === "pair_pattern" ? child(t, c, "value") : c);
-              };
-              collect(child(t, vd, "name"));
-              for (const nm of names) exports.push({ kind: "local", name: textOf(t, nm), local: textOf(t, nm), node: s, nameNode: nm });
-            }
-          } else {
-            const nm = child(t, d, "name");
-            if (nm >= 0) exports.push({ kind: "local", name: isDefault ? "default" : propName(t, nm), local: propName(t, nm), node: s, nameNode: nm });
-            else if (isDefault) exports.push({ kind: "expr", name: "default", value: d, node: s });
-          }
-        } else if (value >= 0) {
-          exports.push({ kind: "expr", name: "default", value, node: s });
-        } else if (clause >= 0) {
-          for (const sp of namedChildren(t, clause)) {
-            if (t.type[sp] !== "export_specifier") continue;
-            const nm = child(t, sp, "name");
-            const alias = child(t, sp, "alias");
-            const name2 = propName(t, alias >= 0 ? alias : nm);
-            if (spec !== null) exports.push({ kind: "reexport", name: name2, spec, imported: propName(t, nm), node: s, nameNode: nm });
-            else exports.push({ kind: "local", name: name2, local: propName(t, nm), node: s, nameNode: nm });
-          }
-        } else if (nsExport >= 0 && spec !== null) {
-          const id = namedChildren(t, nsExport)[0];
-          exports.push({ kind: "namespace", name: id !== void 0 ? propName(t, id) : "*", spec, node: s });
-        } else if (spec !== null) {
-          exports.push({ kind: "star", spec, node: s });
-        } else if (hasToken(t, s, "=")) {
-          const e = namedChildren(t, s).find((c) => t.type[c] !== "decorator");
-          if (e !== void 0) moduleExports2 = e;
-        }
-      } else if (ty === "expression_statement") {
-        const e = namedChildren(t, s)[0];
-        if (e === void 0 || t.type[e] !== "assignment_expression") continue;
-        const lhs = child(t, e, "left");
-        const rhs = child(t, e, "right");
-        const lt2 = textOf(t, lhs);
-        if (lt2 === "module.exports") moduleExports2 = rhs;
-        else {
-          const m2 = /^(?:module\\.)?exports\\.([A-Za-z_$][\\w$]*)$/.exec(lt2);
-          if (m2) exports.push({ kind: "expr", name: m2[1], value: rhs, node: s });
-        }
-      }
-    }
-    for (let n = 0; n < t.count; n++) {
-      if (t.type[n] !== "call_expression") continue;
-      const fn = child(t, n, "function");
-      if (fn < 0) continue;
-      const isImport = t.type[fn] === "import";
-      const isRequire = t.type[fn] === "identifier" && textOf(t, fn) === "require";
-      if (!isImport && !isRequire) continue;
-      const args2 = child(t, n, "arguments");
-      const first = args2 >= 0 ? namedChildren(t, args2)[0] : void 0;
-      const spec = first === void 0 ? null : stringValue(t, first);
-      if (spec !== null) specifiers.push({ spec, node: n, reexport: false });
-    }
-    return { imports: imports5, exports, specifiers, moduleExports: moduleExports2 };
-  };
-  var TYPE_CONTEXT = /* @__PURE__ */ new Set(["type_query", "nested_type_identifier", "type_annotation", "type_arguments", "implements_clause", "extends_type_clause", "type_predicate", "asserts"]);
-  var ASSIGN = /* @__PURE__ */ new Set(["assignment_expression", "augmented_assignment_expression"]);
-  var sitesOf = (t, scopes, mods) => {
-    const sites = [];
-    const importByNode = /* @__PURE__ */ new Map();
-    for (const i2 of mods.imports) importByNode.set(i2.node, i2);
-    const exportByName = /* @__PURE__ */ new Map();
-    for (const e of mods.exports) if (e.kind === "local" || e.kind === "reexport") exportByName.set(e.nameNode, e);
-    const scopeOf = (n) => scopes.scopeAt.get(n) ?? scopes.module;
-    const push3 = (node, name2, ref, form, extra = {}) => {
-      const start2 = t.start[node];
-      sites.push({ node, start: start2, line: lineOf(t, start2), name: name2, ref, form, scope: scopeOf(node), receiver: -1, ...extra });
-    };
-    const valueKind = (id) => {
-      let e = id;
-      const p0 = t.parent[e];
-      if (p0 >= 0 && (t.type[p0] === "member_expression" && t.field[e] === "property")) e = p0;
-      else if (p0 >= 0 && t.type[p0] === "subscript_expression" && t.field[e] === "index") e = p0;
-      while (t.parent[e] >= 0 && (t.type[t.parent[e]] === "parenthesized_expression" || t.type[t.parent[e]] === "non_null_expression" || t.type[t.parent[e]] === "as_expression")) e = t.parent[e];
-      const p = t.parent[e];
-      if (p < 0) return "value";
-      const pt2 = t.type[p];
-      if (pt2 === "call_expression" && t.field[e] === "function") return "call";
-      if (pt2 === "new_expression" && t.field[e] === "constructor") return "call";
-      if (pt2 === "decorator") return "call";
-      if ((pt2 === "jsx_opening_element" || pt2 === "jsx_self_closing_element" || pt2 === "jsx_closing_element") && t.field[e] === "name") return "jsx";
-      if (ASSIGN.has(pt2) && t.field[e] === "left") return "write";
-      return "value";
-    };
-    const contextKind = (id) => {
-      for (let a = t.parent[id]; a >= 0; a = t.parent[a]) {
-        const at3 = t.type[a];
-        if (at3 === "import_statement") return "import";
-        if (at3 === "export_statement") {
-          if (child(t, a, "declaration") >= 0) break;
-          const v2 = child(t, a, "value");
-          if (v2 >= 0) {
-            if (unwrap(t, v2) === id) return "export";
-            break;
-          }
-          return child(t, a, "source") >= 0 ? "import" : "export";
-        }
-        if (at3 === "variable_declarator") {
-          const nm = child(t, a, "name");
-          if (requireSpec(t, child(t, a, "value"), null) !== null && nm >= 0 && t.type[nm] !== "identifier") return "import";
-          break;
-        }
-        if (at3 === "statement_block" || at3 === "program") break;
-      }
-      for (let a = t.parent[id]; a > 0; a = t.parent[a]) {
-        const at3 = t.type[a];
-        if (at3 === "extends_clause") return t.field[id] === "value" || t.parent[id] === a ? "extends" : "type";
-        if (at3 === "class_heritage") return "extends";
-        if (TYPE_CONTEXT.has(at3)) return "type";
-        if (at3.endsWith("_statement") || at3 === "statement_block" || at3 === "arguments" || at3 === "call_expression" || at3 === "new_expression" || at3 === "arrow_function" || at3 === "pair" || at3 === "variable_declarator" || at3 === "assignment_expression" || at3 === "class_body" || at3 === "formal_parameters" || at3 === "binary_expression" || at3 === "ternary_expression" || at3 === "member_expression" && TYPE_CONTEXT.has(t.type[t.parent[a]] ?? "") === false) break;
-      }
-      return null;
-    };
-    for (let n = 1; n < t.count; n++) {
-      const ty = t.type[n];
-      if (ty === "identifier") {
-        const p = t.parent[n];
-        const pt2 = t.type[p];
-        const name2 = textOf(t, n);
-        if (pt2 === "import_specifier") {
-          if (t.field[n] === "name") {
-            const entry = importByNode.get(n);
-            if (entry) push3(n, entry.imported, "import", "import", { importEntry: entry });
-          }
-          continue;
-        }
-        if (pt2 === "import_clause") {
-          const entry = importByNode.get(n);
-          if (entry) push3(n, name2, "import", "import", { importEntry: entry });
-          continue;
-        }
-        if (pt2 === "namespace_import" || pt2 === "import_require_clause" || pt2 === "namespace_export") continue;
-        if (pt2 === "export_specifier") {
-          if (t.field[n] === "name") {
-            const e = exportByName.get(n);
-            if (e) push3(n, name2, e.kind === "reexport" ? "import" : "export", "export", { exportEntry: e });
-          }
-          continue;
-        }
-        const b2 = scopes.bindingOfName.get(n);
-        if (b2) {
-          if (b2.path && b2.path.length > 0) {
-            const vd = enclosingDeclarator(t, n);
-            if (vd >= 0 && requireSpec(t, child(t, vd, "value"), null) !== null) {
-              const keyNode = t.type[p] === "pair_pattern" ? child(t, p, "key") : n;
-              push3(keyNode, b2.path[b2.path.length - 1], "import", "require", { keyPath: b2.path });
-            }
-          }
-          continue;
-        }
-        if ((pt2 === "jsx_opening_element" || pt2 === "jsx_self_closing_element" || pt2 === "jsx_closing_element") && /^[a-z]/.test(name2)) continue;
-        if (pt2 === "nested_identifier" || pt2 === "internal_module" || pt2 === "module") continue;
-        if (pt2 === "nested_type_identifier" && t.field[n] === "module") {
-          push3(n, name2, "type", "bare");
-          continue;
-        }
-        const ctx = contextKind(n);
-        push3(n, name2, ctx ?? valueKind(n), "bare");
-      } else if (ty === "type_identifier") {
-        if (scopes.bindingOfName.has(n)) continue;
-        const p = t.parent[n];
-        if (t.type[p] === "nested_type_identifier") {
-          if (t.field[n] === "name") push3(n, textOf(t, n), contextKind(n) === "import" ? "import" : "type", "member", { receiver: child(t, p, "module") });
-          continue;
-        }
-        const ctx = contextKind(n);
-        push3(n, textOf(t, n), ctx === "import" || ctx === "export" || ctx === "extends" ? ctx : "type", "bare");
-      } else if (ty === "shorthand_property_identifier") {
-        push3(n, textOf(t, n), contextKind(n) ?? "value", "bare");
-      } else if (ty === "shorthand_property_identifier_pattern") {
-        if (scopes.bindingOfName.has(n)) {
-          const vd = enclosingDeclarator(t, n);
-          const b2 = scopes.bindingOfName.get(n);
-          if (vd >= 0 && b2.path && requireSpec(t, child(t, vd, "value"), null) !== null) push3(n, textOf(t, n), "import", "require", { keyPath: b2.path });
-          continue;
-        }
-        push3(n, textOf(t, n), "write", "bare");
-      } else if (ty === "property_identifier" || ty === "private_property_identifier") {
-        const p = t.parent[n];
-        if (t.type[p] === "member_expression" && t.field[n] === "property") {
-          const obj = child(t, p, "object");
-          const ctx = contextKind(n);
-          push3(n, textOf(t, n), ctx === "type" ? "type" : ctx === "import" || ctx === "export" ? ctx : valueKind(n), "member", { receiver: obj });
-        }
-      } else if (ty === "string" && t.type[t.parent[n]] === "subscript_expression" && t.field[n] === "index") {
-        const p = t.parent[n];
-        const name2 = propName(t, n);
-        if (/^[A-Za-z_$#][\\w$]*$/.test(name2)) push3(n, name2, valueKind(n), "member", { receiver: child(t, p, "object"), start: t.start[n] + 1 });
-      }
-    }
-    return sites;
-  };
-  var enclosingDeclarator = (t, n) => {
-    for (let a = t.parent[n]; a >= 0; a = t.parent[a]) {
-      const at3 = t.type[a];
-      if (at3 === "variable_declarator") return a;
-      if (at3 !== "object_pattern" && at3 !== "pair_pattern" && at3 !== "array_pattern" && at3 !== "shorthand_property_identifier_pattern" && at3 !== "object_assignment_pattern" && at3 !== "assignment_pattern" && at3 !== "rest_pattern") return -1;
-    }
-    return -1;
-  };
-  var shapesOf = (f2, units) => {
-    const t = f2.flat;
-    const unitByValue = /* @__PURE__ */ new Map();
-    const unitByNode = /* @__PURE__ */ new Map();
-    for (const u of units) {
-      unitByNode.set(u.node, u);
-      if (u.valueNode >= 0) unitByValue.set(u.valueNode, u);
-    }
-    const memberUnit = (node, valueNode) => unitByNode.get(node) ?? (valueNode >= 0 ? unitByValue.get(valueNode) : void 0);
-    const shapeId = (n) => \`\${f2.path}#\${t.start[n]}\`;
-    for (let n = 0; n < t.count; n++) {
-      const ty = t.type[n];
-      if (ty === "class_declaration" || ty === "abstract_class_declaration" || ty === "class") {
-        const nm = child(t, n, "name");
-        const shape = { id: shapeId(n), path: f2.path, name: nm >= 0 ? textOf(t, nm) : "default", kind: "class", node: n, members: [], heritage: [], unit: unitByNode.get(n) ?? unitByValue.get(n), open: false };
-        const heritage = childOfType(t, n, "class_heritage");
-        if (heritage >= 0) {
-          for (const h of namedChildren(t, heritage)) {
-            if (t.type[h] === "extends_clause") {
-              const v2 = child(t, h, "value");
-              if (v2 >= 0) shape.heritage.push(v2);
-            } else if (t.type[h] !== "implements_clause") shape.heritage.push(h);
-          }
-        }
-        const body2 = child(t, n, "body");
-        if (body2 >= 0) {
-          for (const m2 of namedChildren(t, body2)) {
-            const mt = t.type[m2];
-            const isStatic = hasToken(t, m2, "static");
-            if (mt === "method_definition" || mt === "method_signature" || mt === "abstract_method_signature") {
-              const nm2 = child(t, m2, "name");
-              const name2 = propName(t, nm2);
-              const kind = hasToken(t, m2, "get") ? "get" : hasToken(t, m2, "set") ? "set" : mt === "method_definition" ? "method" : "signature";
-              shape.members.push({ name: name2, static: isStatic, kind, node: m2, nameStart: t.start[nm2], unit: memberUnit(m2, m2), value: m2, typeNode: -1 });
-              if (name2 === "constructor" && mt === "method_definition") {
-                const ps = child(t, m2, "parameters");
-                for (const p of ps >= 0 ? namedChildren(t, ps) : []) {
-                  if ((t.type[p] === "required_parameter" || t.type[p] === "optional_parameter") && (childOfType(t, p, "accessibility_modifier") >= 0 || hasToken(t, p, "readonly"))) {
-                    const pat = child(t, p, "pattern");
-                    const typ = child(t, p, "type");
-                    if (pat >= 0 && t.type[pat] === "identifier") shape.members.push({ name: textOf(t, pat), static: false, kind: "param", node: p, nameStart: t.start[pat], value: -1, typeNode: typ >= 0 ? namedChildren(t, typ)[0] ?? -1 : -1 });
-                  }
-                }
-              }
-            } else if (mt === "public_field_definition" || mt === "field_definition") {
-              const nm2 = child(t, m2, mt === "field_definition" ? "property" : "name");
-              const v2 = child(t, m2, "value");
-              const typ = child(t, m2, "type");
-              shape.members.push({ name: propName(t, nm2), static: isStatic, kind: "field", node: m2, nameStart: t.start[nm2], unit: memberUnit(m2, unwrap(t, v2)), value: v2, typeNode: typ >= 0 ? namedChildren(t, typ)[0] ?? -1 : -1 });
-            }
-          }
-          collectThisAssignments(t, body2, shape, false);
-        }
-        f2.shapes.set(n, shape);
-      } else if (ty === "interface_declaration") {
-        const nm = child(t, n, "name");
-        const shape = { id: shapeId(n), path: f2.path, name: textOf(t, nm), kind: "interface", node: n, members: [], heritage: [], unit: unitByNode.get(n), open: false };
-        const ext = childOfType(t, n, "extends_type_clause");
-        if (ext >= 0) shape.heritage.push(...namedChildren(t, ext));
-        const body2 = child(t, n, "body");
-        if (body2 >= 0) addTypeMembers(t, body2, shape);
-        f2.shapes.set(n, shape);
-      } else if (ty === "object_type") {
-        const shape = { id: shapeId(n), path: f2.path, name: "{}", kind: "interface", node: n, members: [], heritage: [], open: false };
-        addTypeMembers(t, n, shape);
-        f2.shapes.set(n, shape);
-      } else if (ty === "object") {
-        const shape = { id: shapeId(n), path: f2.path, name: "{}", kind: "object", node: n, members: [], heritage: [], unit: unitByValue.get(n), open: false };
-        for (const p of namedChildren(t, n)) {
-          const pt2 = t.type[p];
-          if (pt2 === "method_definition") {
-            const nm = child(t, p, "name");
-            const kind = hasToken(t, p, "get") ? "get" : hasToken(t, p, "set") ? "set" : "method";
-            shape.members.push({ name: propName(t, nm), static: false, kind, node: p, nameStart: t.start[nm], unit: memberUnit(p, p), value: p, typeNode: -1 });
-          } else if (pt2 === "pair") {
-            const k2 = child(t, p, "key");
-            if (t.type[k2] === "computed_property_name") {
-              shape.open = true;
-              continue;
-            }
-            const v2 = child(t, p, "value");
-            shape.members.push({ name: propName(t, k2), static: false, kind: "pair", node: p, nameStart: t.start[k2], unit: memberUnit(p, unwrap(t, v2)), value: v2, typeNode: -1 });
-          } else if (pt2 === "shorthand_property_identifier") {
-            shape.members.push({ name: textOf(t, p), static: false, kind: "shorthand", node: p, nameStart: t.start[p], value: p, typeNode: -1 });
-          } else if (pt2 === "spread_element") shape.open = true;
-        }
-        f2.shapes.set(n, shape);
-      } else if (ty === "internal_module" || ty === "module") {
-        const nm = child(t, n, "name");
-        f2.shapes.set(n, { id: shapeId(n), path: f2.path, name: propName(t, nm), kind: "namespace", node: n, members: [], heritage: [], unit: unitByNode.get(n), open: false });
-      }
-    }
-    const prototypeOf = (e) => {
-      e = unwrap(t, e);
-      if (e < 0) return null;
-      if (t.type[e] === "assignment_expression") return prototypeOf(child(t, e, "left"));
-      if (t.type[e] === "member_expression" && propName(t, child(t, e, "property")) === "prototype") {
-        const o = unwrap(t, child(t, e, "object"));
-        if (t.type[o] === "identifier") return textOf(t, o);
-      }
-      return null;
-    };
-    for (const s of namedChildren(t, 0)) {
-      if (t.type[s] === "lexical_declaration" || t.type[s] === "variable_declaration") {
-        for (const d of namedChildren(t, s)) {
-          if (t.type[d] !== "variable_declarator") continue;
-          const nm = child(t, d, "name");
-          const owner = prototypeOf(child(t, d, "value"));
-          if (owner && nm >= 0 && t.type[nm] === "identifier") f2.protoAliases.set(textOf(t, nm), owner);
-        }
-      }
-    }
-    const unitAt = (stmt, rhs) => unitByNode.get(stmt) ?? unitByValue.get(unwrap(t, rhs));
-    const visitAssignments = (container) => {
-      for (const s of namedChildren(t, container)) {
-        if (t.type[s] !== "expression_statement") continue;
-        const e = namedChildren(t, s)[0];
-        if (e !== void 0 && t.type[e] === "call_expression" && /^Object(\\.a|A)ssign$/.test(textOf(t, child(t, e, "function")))) {
-          const args2 = namedChildren(t, child(t, e, "arguments"));
-          const target = args2[0] !== void 0 ? unwrap(t, args2[0]) : -1;
-          if (target < 0 || t.type[target] !== "identifier") continue;
-          for (const a of args2.slice(1)) {
-            const obj2 = unwrap(t, a);
-            if (t.type[obj2] !== "object") continue;
-            for (const p of namedChildren(t, obj2)) {
-              if (t.type[p] === "shorthand_property_identifier") f2.assignments.push({ owner: textOf(t, target), proto: false, name: textOf(t, p), node: s, nameStart: t.start[p], value: p });
-              else if (t.type[p] === "pair" && t.type[child(t, p, "key")] !== "computed_property_name") {
-                const k2 = child(t, p, "key");
-                f2.assignments.push({ owner: textOf(t, target), proto: false, name: propName(t, k2), node: s, nameStart: t.start[k2], value: child(t, p, "value") });
-              }
-            }
-          }
-          continue;
-        }
-        if (e === void 0 || t.type[e] !== "assignment_expression") continue;
-        const lhs = child(t, e, "left");
-        const rhs = child(t, e, "right");
-        if (t.type[lhs] !== "member_expression") continue;
-        const prop = child(t, lhs, "property");
-        const name2 = propName(t, prop);
-        const obj = unwrap(t, child(t, lhs, "object"));
-        if (t.type[obj] === "identifier") {
-          const on2 = textOf(t, obj);
-          if (name2 === "prototype") {
-            const o = objectOf(t, rhs);
-            if (o >= 0) f2.assignments.push({ owner: on2, proto: true, name: "*", node: s, nameStart: t.start[prop], value: o });
-            continue;
-          }
-          const alias = f2.protoAliases.get(on2);
-          if (alias) f2.assignments.push({ owner: alias, proto: true, name: name2, node: s, nameStart: t.start[prop], value: rhs, unit: unitAt(s, rhs) });
-          else f2.assignments.push({ owner: on2, proto: false, name: name2, node: s, nameStart: t.start[prop], value: rhs, unit: unitAt(s, rhs) });
-        } else if (t.type[obj] === "member_expression" && propName(t, child(t, obj, "property")) === "prototype") {
-          const o = unwrap(t, child(t, obj, "object"));
-          if (t.type[o] === "identifier") f2.assignments.push({ owner: textOf(t, o), proto: true, name: name2, node: s, nameStart: t.start[prop], value: rhs, unit: unitAt(s, rhs) });
-        }
-      }
-    };
-    visitAssignments(0);
-    for (const u of units) {
-      if (u.parent || u.kind !== "function") continue;
-      const fnNode = u.valueNode;
-      if (fnNode < 0) continue;
-      const shape = { id: shapeId(fnNode), path: f2.path, name: u.name, kind: "function", node: fnNode, members: [], heritage: [], unit: u, open: false };
-      const body2 = child(t, fnNode, "body");
-      if (body2 >= 0) collectThisAssignments(t, body2, shape, true);
-      f2.shapes.set(fnNode, shape);
-    }
-  };
-  var addTypeMembers = (t, body2, shape) => {
-    for (const m2 of namedChildren(t, body2)) {
-      const mt = t.type[m2];
-      if (mt === "property_signature" || mt === "method_signature") {
-        const nm = child(t, m2, "name");
-        const typ = child(t, m2, "type");
-        shape.members.push({ name: propName(t, nm), static: false, kind: mt === "method_signature" ? "signature" : "field", node: m2, nameStart: t.start[nm], value: -1, typeNode: typ >= 0 ? namedChildren(t, typ)[0] ?? -1 : -1 });
-      } else if (mt === "index_signature") shape.open = true;
-    }
-  };
-  var CONDITIONAL = /* @__PURE__ */ new Set(["if_statement", "else_clause", "ternary_expression", "switch_case", "switch_default", "catch_clause", "for_statement", "for_in_statement", "while_statement", "do_statement"]);
-  var collectThisAssignments = (t, root, shape, isFunction) => {
-    const stack = [root];
-    while (stack.length > 0) {
-      const n = stack.pop();
-      const ty = t.type[n];
-      if (n !== root && (ty === "function_expression" || ty === "function_declaration" || ty === "generator_function" || ty === "generator_function_declaration" || ty === "class" || ty === "class_declaration" || ty === "function")) continue;
-      if (isFunction && n !== root && ty === "method_definition") continue;
-      if (ty === "assignment_expression") {
-        const lhs = child(t, n, "left");
-        if (t.type[lhs] === "member_expression" && t.type[child(t, lhs, "object")] === "this") {
-          const prop = child(t, lhs, "property");
-          const name2 = propName(t, prop);
-          let isStatic = false;
-          let conditional = false;
-          for (let a = t.parent[n]; a >= 0 && a !== root; a = t.parent[a]) {
-            const at3 = t.type[a];
-            if (at3 === "method_definition") {
-              isStatic = hasToken(t, a, "static");
-              break;
-            }
-            if (CONDITIONAL.has(at3) || at3 === "binary_expression" && /^(&&|\\|\\||\\?\\?)$/.test(tokensOf(t, a)[0] ?? "")) conditional = true;
-          }
-          if (!shape.members.some((m2) => m2.name === name2 && m2.kind === "this" && m2.value === child(t, n, "right"))) shape.members.push({ name: name2, static: isStatic, kind: "this", node: n, nameStart: t.start[prop], value: child(t, n, "right"), typeNode: -1, ...conditional ? { conditional } : {} });
-        }
-      }
-      for (let c = t.first[n]; c >= 0; c = t.next[c]) stack.push(c);
-    }
-  };
+
+  // src/lib/facts.ts
+  var scopeAt = (f2, n) => f2.scopes[f2.scopeIds[n]];
   var parseFacts = (syntax, path, text) => {
-    const flat = syntax.parse(path, text);
-    return flat ? analyzeFile(path, flat) : null;
+    const t = syntax.parse(path, text);
+    if (!t) return null;
+    const units = unitsOf2(path, t);
+    const scopes = scopesOf2(t, units);
+    const modules = modulesOf(t);
+    return {
+      path,
+      flat: t,
+      units,
+      module: scopes.module,
+      scopes: scopes.all,
+      scopeIds: scopes.scopeIds,
+      sites: sitesOf2(t, scopes, modules),
+      ...modules,
+      ...shapesOf(t, units)
+    };
   };
+
+  // src/lib/langs/go/build.ts
+  var GOOS = new Set("aix android darwin dragonfly freebsd hurd illumos ios js linux nacl netbsd openbsd plan9 solaris wasip1 windows zos".split(" "));
+  var GOARCH = new Set("386 amd64 amd64p32 arm armbe arm64 arm64be loong64 mips mipsle mips64 mips64le mips64p32 mips64p32le ppc ppc64 ppc64le riscv riscv64 s390 s390x sparc sparc64 wasm".split(" "));
+  var UNIX = new Set("aix android darwin dragonfly freebsd hurd illumos ios linux netbsd openbsd solaris".split(" "));
+  var parseExpr = (src) => {
+    const tokens = src.match(/!|&&|\\|\\||\\(|\\)|[\\w.]+/g) ?? [];
+    let at2 = 0;
+    const or = () => {
+      let a = and();
+      while (a && tokens[at2] === "||") {
+        at2++;
+        const b2 = and();
+        a = b2 ? { op: "or", a, b: b2 } : null;
+      }
+      return a;
+    };
+    const and = () => {
+      let a = not();
+      while (a && tokens[at2] === "&&") {
+        at2++;
+        const b2 = not();
+        a = b2 ? { op: "and", a, b: b2 } : null;
+      }
+      return a;
+    };
+    const not = () => {
+      if (tokens[at2] === "!") {
+        at2++;
+        const x2 = not();
+        return x2 ? { op: "not", x: x2 } : null;
+      }
+      if (tokens[at2] === "(") {
+        at2++;
+        const x2 = or();
+        return tokens[at2++] === ")" ? x2 : null;
+      }
+      const tag = tokens[at2++];
+      return tag && /^[\\w.]+$/.test(tag) ? { op: "tag", tag } : null;
+    };
+    const e = or();
+    return e && at2 === tokens.length ? e : null;
+  };
+  var all = (xs) => xs.reduce((a, b2) => a ? { op: "and", a, b: b2 } : b2, null);
+  var constraintOf = (path, text) => {
+    const terms = [];
+    const base = path.split("/").pop() ?? "";
+    const name2 = base.includes(".") ? base.slice(0, base.indexOf(".")) : base;
+    const under = name2.indexOf("_");
+    if (under >= 0) {
+      const l3 = name2.slice(under).split("_");
+      if (l3[l3.length - 1] === "test") l3.pop();
+      const n = l3.length;
+      if (n >= 2 && GOOS.has(l3[n - 2]) && GOARCH.has(l3[n - 1])) terms.push({ op: "tag", tag: l3[n - 2] }, { op: "tag", tag: l3[n - 1] });
+      else if (n >= 1 && (GOOS.has(l3[n - 1]) || GOARCH.has(l3[n - 1]))) terms.push({ op: "tag", tag: l3[n - 1] });
+    }
+    const header = text.slice(0, Math.max(0, text.search(/^\\s*package\\s/m)));
+    const goBuild = /^\\/\\/go:build\\s+(.+)$/m.exec(header);
+    let unknown2 = false;
+    if (goBuild) {
+      const e = parseExpr(goBuild[1].trim());
+      if (e) terms.push(e);
+      else unknown2 = true;
+    } else {
+      for (const m2 of header.matchAll(/^\\/\\/\\s*\\+build\\s+(.+)$/gm)) {
+        const options = m2[1].trim().split(/\\s+/).map((o) => all(o.split(",").map((term) => term.startsWith("!") ? { op: "not", x: { op: "tag", tag: term.slice(1) } } : { op: "tag", tag: term })));
+        const line = options.reduce((a, b2) => a && b2 ? { op: "or", a, b: b2 } : a ?? b2, null);
+        if (line) terms.push(line);
+      }
+    }
+    return unknown2 ? "unknown" : all(terms);
+  };
+  var constraints = /* @__PURE__ */ new WeakMap();
+  var constraintOfFile = (f2) => {
+    if (!constraints.has(f2.flat)) constraints.set(f2.flat, constraintOf(f2.path, f2.flat.text));
+    return constraints.get(f2.flat);
+  };
+  var tagsOf = (e, out2 = /* @__PURE__ */ new Set()) => {
+    if (e.op === "tag") out2.add(e.tag);
+    else if (e.op === "not") tagsOf(e.x, out2);
+    else {
+      tagsOf(e.a, out2);
+      tagsOf(e.b, out2);
+    }
+    return out2;
+  };
+  var holds = (e, env) => {
+    if (e.op === "not") return !holds(e.x, env);
+    if (e.op === "and" || e.op === "or") return e.op === "and" ? holds(e.a, env) && holds(e.b, env) : holds(e.a, env) || holds(e.b, env);
+    const tag = e.tag;
+    if (GOOS.has(tag)) return tag === env.goos || tag === "linux" && env.goos === "android" || tag === "solaris" && env.goos === "illumos" || tag === "darwin" && env.goos === "ios";
+    if (GOARCH.has(tag)) return tag === env.goarch;
+    if (tag === "unix") return UNIX.has(env.goos);
+    if (/^go1\\.\\d+$/.test(tag)) return true;
+    return env.on.has(tag);
+  };
+  var builds = (exprs) => {
+    const free = [...new Set(exprs.flatMap((e) => [...tagsOf(e)]))].filter((t) => !GOOS.has(t) && !GOARCH.has(t) && t !== "unix" && !/^go1\\.\\d+$/.test(t));
+    if (free.length > 6) return null;
+    const out2 = [];
+    for (const goos of GOOS) {
+      for (const goarch of GOARCH) {
+        for (let mask = 0; mask < 1 << free.length; mask++) out2.push({ goos, goarch, on: new Set(free.filter((_2, i2) => mask & 1 << i2)) });
+      }
+    }
+    return out2;
+  };
+  var reachCache = /* @__PURE__ */ new WeakMap();
+  var reaches = (from, to) => {
+    if (from.path === to.path) return true;
+    const target = constraintOfFile(to);
+    if (target === null) return true;
+    const source = constraintOfFile(from);
+    if (target === "unknown" || source === "unknown") return false;
+    let byTarget = reachCache.get(from.flat);
+    if (!byTarget) reachCache.set(from.flat, byTarget = /* @__PURE__ */ new WeakMap());
+    let hit = byTarget.get(to.flat);
+    if (hit === void 0) {
+      const envs = builds(source ? [source, target] : [target]);
+      hit = envs !== null && envs.every((env) => (source ? !holds(source, env) : false) || holds(target, env));
+      byTarget.set(to.flat, hit);
+    }
+    return hit;
+  };
+  var ignored = (path, text) => {
+    const c = constraintOf(path, text);
+    if (c === null) return false;
+    if (c === "unknown") return true;
+    const envs = builds([c]);
+    return envs === null ? false : envs.every((env) => env.on.has("ignore") || !holds(c, env));
+  };
+
+  // src/lib/langs/go/modules.ts
+  var isTest = (path) => path.endsWith("_test.go");
+  var goModsAbove = (path) => {
+    const dirs = path.split("/").slice(0, -1);
+    const out2 = [];
+    for (let k2 = dirs.length; k2 >= 0; k2--) out2.push([...dirs.slice(0, k2), "go.mod"].join("/"));
+    return out2;
+  };
+  var clauseOf = (text) => /^\\s*package\\s+([A-Za-z_]\\w*)/m.exec(text.replace(/\\/\\*[\\s\\S]*?\\*\\/|\\/\\/[^\\n]*/g, ""))?.[1] ?? null;
+  var goModuleFiles = (from, spec, _level, ctx) => {
+    for (const mod of goModsAbove(from)) {
+      const text = ctx.text(mod);
+      if (text === void 0) continue;
+      const m2 = /^\\s*module\\s+("?)([^\\s"]+)\\1/m.exec(text);
+      if (!m2) return [];
+      const modulePath = m2[2];
+      if (spec !== modulePath && !spec.startsWith(\`\${modulePath}/\`)) return [];
+      const root = mod.split("/").slice(0, -1).join("/");
+      const dir = [root, spec.slice(modulePath.length).replace(/^\\//, "")].filter((x2) => x2).join("/");
+      const files = [...ctx.known].filter((p) => p.endsWith(".go") && !isTest(p) && p.split("/").slice(0, -1).join("/") === dir && goModsAbove(p).find((m3) => ctx.text(m3) !== void 0) === mod);
+      const kept = files.filter((p) => {
+        const body2 = ctx.text(p);
+        return body2 === void 0 || !ignored(p, body2);
+      });
+      const names = new Set(kept.map((p) => clauseOf(ctx.text(p) ?? "")));
+      return names.size === 1 && !names.has("main") && !names.has(null) ? kept : [];
+    }
+    return [];
+  };
+
+  // src/lib/diff.ts
+  var HEADER = /^@@ -(\\d+)(?:,\\d+)? \\+(\\d+)(?:,\\d+)? @@/;
+  var parsePatch = (patch) => {
+    const raw = [];
+    let current = null;
+    let o = 0;
+    let n = 0;
+    for (const line of patch.split("\\n")) {
+      const header = HEADER.exec(line);
+      if (header) {
+        o = Number(header[1]);
+        n = Number(header[2]);
+        current = { oldStart: o, newStart: n, lines: [] };
+        raw.push(current);
+        continue;
+      }
+      if (!current || line.startsWith("\\\\")) continue;
+      const text = line.slice(1);
+      if (line.startsWith("-")) current.lines.push({ t: "del", o: o++, text });
+      else if (line.startsWith("+")) current.lines.push({ t: "add", n: n++, text });
+      else current.lines.push({ t: "ctx", o: o++, n: n++, text });
+    }
+    return raw.map((h) => {
+      const heads = h.lines.filter((l3) => l3.n !== void 0);
+      const bases = h.lines.filter((l3) => l3.o !== void 0);
+      const newEnd = heads.length > 0 ? heads[heads.length - 1].n : h.newStart - 1;
+      const oldEnd = bases.length > 0 ? bases[bases.length - 1].o : h.oldStart - 1;
+      let next = newEnd + 1;
+      const lines = [];
+      for (let i2 = h.lines.length - 1; i2 >= 0; i2--) {
+        const l3 = h.lines[i2];
+        if (l3.n !== void 0) next = l3.n;
+        lines.push({ ...l3, at: l3.n ?? next });
+      }
+      return { oldStart: h.oldStart, newStart: h.newStart, newEnd, oldEnd, lines: lines.reverse() };
+    });
+  };
+  var addedHunks = (text) => {
+    const lines = text.split("\\n");
+    if (lines[lines.length - 1] === "") lines.pop();
+    if (lines.length === 0) return [];
+    return [{ oldStart: 0, newStart: 1, newEnd: lines.length, oldEnd: -1, lines: lines.map((line, i2) => ({ t: "add", n: i2 + 1, text: line, at: i2 + 1 })) }];
+  };
+  var allLines = (hunks) => hunks.flatMap((h) => h.lines);
+  var addedLines = (lines) => new Set(lines.filter((l3) => l3.t === "add").map((l3) => l3.n));
 
   // src/lib/symbols.ts
   var indentOf = (line) => {
@@ -5798,30 +6031,7 @@ export const WORKER_SCRIPT = `"use strict";
     { re: /^\\s*(?:[\\w@]+\\s+)*(?:fun|func|function)\\s+(?:<[^>]*>\\s*)?(?:[\\w.]+\\.)?(\\w+)\\s*[(<]/, kind: "function" },
     { re: /^\\s*(?:(?:public|private|protected|internal|static|final|virtual|override|async|abstract|synchronized|inline|extern|const|unsafe)\\s+)*[\\w<>\\[\\],.?*&: ]+\\s+\\*?(\\w+)\\s*\\([^;]*$/, kind: "function" }
   ];
-  var patternsFor = (lang) => {
-    switch (lang) {
-      case "ts":
-      case "js":
-        return JS;
-      case "py":
-        return PY;
-      case "go":
-        return GO;
-      case "rs":
-        return RS;
-      case "rb":
-        return RB;
-      case "java":
-      case "kt":
-      case "swift":
-      case "cs":
-      case "php":
-      case "c":
-        return C_FAMILY;
-      default:
-        return [];
-    }
-  };
+  var PATTERNS2 = { ts: JS, js: JS, py: PY, go: GO, rs: RS, rb: RB, java: C_FAMILY, kt: C_FAMILY, swift: C_FAMILY, cs: C_FAMILY, php: C_FAMILY, c: C_FAMILY };
   var GO_LABEL = /^[A-Za-z_]\\w*:\\s*$/;
   var extentEnd = (lines, start2, lang) => {
     const indent = indentOf(lines[start2 - 1]);
@@ -5842,7 +6052,7 @@ export const WORKER_SCRIPT = `"use strict";
     return last;
   };
   var findDecls = (lines, lang) => {
-    const patterns = patternsFor(lang);
+    const patterns = PATTERNS2[lang] ?? [];
     if (patterns.length === 0) return [];
     const decls = [];
     const containers = [];
@@ -5914,57 +6124,59 @@ export const WORKER_SCRIPT = `"use strict";
     }
     return null;
   };
-  var innermostByLine = (decls, count2) => {
-    const out2 = new Array(count2 + 1).fill(null);
-    for (const d of decls) {
-      for (let line = d.start; line <= Math.min(d.end, count2); line++) {
-        const best = out2[line];
-        if (best === null || d.end - d.start < best.end - best.start) out2[line] = d;
+  var innermostByLine = (items, count2, span2) => {
+    const best = new Array(count2 + 1).fill(void 0);
+    const size = [];
+    for (const item of items) {
+      const [from, to] = span2(item);
+      for (let line = from; line <= Math.min(to, count2); line++) {
+        if (best[line] !== void 0 && to - from >= size[line]) continue;
+        best[line] = item;
+        size[line] = to - from;
       }
     }
-    return out2;
+    return best;
+  };
+  var changeSpan = (lines) => {
+    const ats = lines.map((l3) => l3.at);
+    return {
+      from: ats.reduce((a, b2) => Math.min(a, b2)),
+      to: ats.reduce((a, b2) => Math.max(a, b2)),
+      add: lines.filter((l3) => l3.t === "add").length,
+      del: lines.filter((l3) => l3.t === "del").length
+    };
   };
   var changedSymbols = (path, lang, head, hunks) => {
-    const changed = hunks.flatMap((h) => h.lines).filter((l3) => l3.t !== "ctx");
+    const changed = allLines(hunks).filter((l3) => l3.t !== "ctx");
     if (!head) return { symbols: [], loose: looseRuns(path, changed) };
     const decls = findDecls(head, lang);
-    const starts = /* @__PURE__ */ new Map();
-    for (const d of decls) if (!starts.has(d.start)) starts.set(d.start, d);
-    const innermost2 = innermostByLine(decls, head.length);
-    const added = new Set(changed.filter((l3) => l3.t === "add").map((l3) => l3.n));
-    const owner = /* @__PURE__ */ new Map();
+    const starts = new Map(decls.map((d) => [d.start, d]));
+    const innermost2 = innermostByLine(decls, head.length, (d) => [d.start, d.end]);
+    const linesOf = new Map(decls.map((d) => [d, []]));
     const loose = [];
     let previous2 = null;
     for (const l3 of changed) {
       const text = l3.text;
       const target = isBlank(text) ? previous2 && l3.at - previous2.line.at <= 1 ? previous2.target : void 0 : (isComment(text, lang) || /^\\s*@/.test(text) ? documented(head, starts, l3.at, lang) : null) ?? innermost2[l3.at] ?? null;
       if (target === void 0) continue;
-      if (target) {
-        const owned = owner.get(target);
-        if (owned) owned.push(l3);
-        else owner.set(target, [l3]);
-      } else loose.push(l3);
+      if (target) linesOf.get(target).push(l3);
+      else loose.push(l3);
       previous2 = { line: l3, target };
     }
-    const symbols = [...owner.entries()].sort(([a], [b2]) => a.start - b2.start).map(([d, lines]) => {
-      const ats = lines.map((l3) => l3.at);
-      return {
-        id: \`\${path}:\${d.start}\`,
-        path,
-        lang,
-        name: d.name,
-        label: labelOf(d, lang),
-        kind: d.kind,
-        ...d.parent ? { parent: d.parent } : {},
-        status: added.has(d.start) ? "new" : "changed",
-        start: d.start,
-        end: d.end,
-        from: ats.reduce((a, b2) => Math.min(a, b2)),
-        to: ats.reduce((a, b2) => Math.max(a, b2)),
-        add: lines.filter((l3) => l3.t === "add").length,
-        del: lines.filter((l3) => l3.t === "del").length
-      };
-    });
+    const added = addedLines(changed);
+    const symbols = decls.filter((d) => linesOf.get(d).length > 0).map((d) => ({
+      id: \`\${path}:\${d.start}\`,
+      path,
+      lang,
+      name: d.name,
+      label: labelOf(d, lang),
+      kind: d.kind,
+      ...d.parent ? { parent: d.parent } : {},
+      status: added.has(d.start) ? "new" : "changed",
+      start: d.start,
+      end: d.end,
+      ...changeSpan(linesOf.get(d))
+    }));
     return { symbols, loose: looseRuns(path, loose) };
   };
   var looseRuns = (path, lines) => {
@@ -6007,7 +6219,29 @@ export const WORKER_SCRIPT = `"use strict";
     return out2;
   };
 
-  // src/lib/langs/go.ts
+  // src/lib/langs/go/nodes.ts
+  var typeName = (t, n) => {
+    if (n < 0) return null;
+    switch (t.type[n]) {
+      case "type_identifier":
+        return { kind: "name", node: n };
+      case "pointer_type":
+      case "parenthesized_type":
+        return typeName(t, namedChildren(t, n)[0] ?? -1);
+      case "generic_type":
+        return typeName(t, child(t, n, "type"));
+      case "qualified_type":
+        return { kind: "qualified", qualifier: child(t, n, "package"), name: textOf(t, child(t, n, "name")) };
+      default:
+        return null;
+    }
+  };
+  var receiverType = (t, n) => {
+    const recv = namedChildren(t, child(t, n, "receiver"))[0];
+    return recv !== void 0 ? child(t, recv, "type") : -1;
+  };
+
+  // src/lib/langs/go/rules.ts
   var IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/;
   var packageNames = (path) => {
     const segs = path.split("/");
@@ -6030,12 +6264,7 @@ export const WORKER_SCRIPT = `"use strict";
     }
     return out2;
   };
-  var importCache = /* @__PURE__ */ new WeakMap();
-  var imports = (t) => {
-    let hit = importCache.get(t);
-    if (!hit) importCache.set(t, hit = importsOf(t));
-    return hit;
-  };
+  var imports = perTree(importsOf);
   var idsOf = (t, list) => list < 0 ? [] : t.type[list] === "identifier" ? [list] : namedChildren(t, list).filter((c) => t.type[c] === "identifier");
   var params = (t, list, emit) => {
     for (const p of namedChildren(t, list)) {
@@ -6135,26 +6364,6 @@ export const WORKER_SCRIPT = `"use strict";
   };
   var TYPE_PARENTS = /* @__PURE__ */ new Set(["pointer_type", "qualified_type", "slice_type", "array_type", "map_type", "channel_type", "generic_type", "type_arguments", "parameter_declaration", "field_declaration", "type_spec", "type_alias", "composite_literal", "var_spec", "type_case", "type_assertion_expression", "type_conversion_expression"]);
   var isType = (t, n) => t.type[n] === "type_identifier" || t.type[n] === "package_identifier" && t.type[t.parent[n]] === "qualified_type" || TYPE_PARENTS.has(t.type[t.parent[n]]) && t.field[n] === "type";
-  var typeName = (t, n) => {
-    if (n < 0) return null;
-    switch (t.type[n]) {
-      case "type_identifier":
-        return { kind: "name", node: n };
-      case "pointer_type":
-      case "parenthesized_type":
-        return typeName(t, namedChildren(t, n)[0] ?? -1);
-      case "generic_type":
-        return typeName(t, child(t, n, "type"));
-      case "qualified_type":
-        return { kind: "qualified", qualifier: child(t, n, "package"), name: textOf(t, child(t, n, "name")) };
-      default:
-        return null;
-    }
-  };
-  var receiverType = (t, n) => {
-    const recv = namedChildren(t, child(t, n, "receiver"))[0];
-    return recv !== void 0 ? child(t, recv, "type") : -1;
-  };
   var unit = (t, capture, node) => {
     const ty = t.type[node];
     if (capture === "definition.function" && ty === "function_declaration") return { kind: "function", nameNode: child(t, node, "name"), outer: node };
@@ -6166,6 +6375,8 @@ export const WORKER_SCRIPT = `"use strict";
     }
     return null;
   };
+  var FUNCTIONS2 = /* @__PURE__ */ new Set(["function_declaration", "method_declaration", "func_literal"]);
+  var BLOCKS = /* @__PURE__ */ new Set(["block", "if_statement", "for_statement", "expression_switch_statement", "type_switch_statement", "select_statement", "communication_case", "expression_case", "type_case", "default_case"]);
   var GO2 = {
     unit,
     label: (t, u) => {
@@ -6175,8 +6386,8 @@ export const WORKER_SCRIPT = `"use strict";
     },
     scope: (t, n) => {
       const ty = t.type[n];
-      if (ty === "function_declaration" || ty === "method_declaration" || ty === "func_literal") return "function";
-      if (ty === "block" || ty === "if_statement" || ty === "for_statement" || ty === "expression_switch_statement" || ty === "type_switch_statement" || ty === "select_statement" || ty === "communication_case" || ty === "expression_case" || ty === "type_case" || ty === "default_case") return "block";
+      if (FUNCTIONS2.has(ty)) return "function";
+      if (BLOCKS.has(ty)) return "block";
       if ((ty === "type_spec" || ty === "type_alias") && child(t, n, "type_parameters") >= 0) return "block";
       return null;
     },
@@ -6187,6 +6398,8 @@ export const WORKER_SCRIPT = `"use strict";
     isType,
     imports
   };
+
+  // src/lib/langs/go/typing.ts
   var hint = (t, e) => {
     switch (t.type[e]) {
       case "identifier":
@@ -6237,13 +6450,13 @@ export const WORKER_SCRIPT = `"use strict";
     for (const fd of namedChildren(t, list)) {
       if (t.type[fd] !== "field_declaration") continue;
       const type = child(t, fd, "type");
-      let named = false;
+      let named2 = false;
       for (let c = t.first[fd]; c >= 0; c = t.next[c]) {
         if (t.field[c] !== "name") continue;
-        named = true;
+        named2 = true;
         out2.push({ name: textOf(t, c), typeNode: type, init: -1, onSelf: false });
       }
-      const tn = named ? null : typeName(t, type);
+      const tn = named2 ? null : typeName(t, type);
       if (tn && tn.kind !== "self") out2.push({ name: tn.kind === "name" ? textOf(t, tn.node) : tn.name, typeNode: type, init: -1, onSelf: false });
     }
     return out2;
@@ -6251,129 +6464,6 @@ export const WORKER_SCRIPT = `"use strict";
   var PREDECLARED = new Set(
     "append cap clear close complex copy delete imag len make max min new panic print println real recover bool byte comparable complex64 complex128 error float32 float64 int int8 int16 int32 int64 rune string uint uint8 uint16 uint32 uint64 uintptr any true false iota nil".split(" ")
   );
-  var isTest = (path) => path.endsWith("_test.go");
-  var GOOS = new Set("aix android darwin dragonfly freebsd hurd illumos ios js linux nacl netbsd openbsd plan9 solaris wasip1 windows zos".split(" "));
-  var GOARCH = new Set("386 amd64 amd64p32 arm armbe arm64 arm64be loong64 mips mipsle mips64 mips64le mips64p32 mips64p32le ppc ppc64 ppc64le riscv riscv64 s390 s390x sparc sparc64 wasm".split(" "));
-  var UNIX = new Set("aix android darwin dragonfly freebsd hurd illumos ios linux netbsd openbsd solaris".split(" "));
-  var parseExpr = (src) => {
-    const tokens = src.match(/!|&&|\\|\\||\\(|\\)|[\\w.]+/g) ?? [];
-    let at3 = 0;
-    const or = () => {
-      let a = and();
-      while (a && tokens[at3] === "||") {
-        at3++;
-        const b2 = and();
-        a = b2 ? { op: "or", a, b: b2 } : null;
-      }
-      return a;
-    };
-    const and = () => {
-      let a = not();
-      while (a && tokens[at3] === "&&") {
-        at3++;
-        const b2 = not();
-        a = b2 ? { op: "and", a, b: b2 } : null;
-      }
-      return a;
-    };
-    const not = () => {
-      if (tokens[at3] === "!") {
-        at3++;
-        const x2 = not();
-        return x2 ? { op: "not", x: x2 } : null;
-      }
-      if (tokens[at3] === "(") {
-        at3++;
-        const x2 = or();
-        return tokens[at3++] === ")" ? x2 : null;
-      }
-      const tag = tokens[at3++];
-      return tag && /^[\\w.]+$/.test(tag) ? { op: "tag", tag } : null;
-    };
-    const e = or();
-    return e && at3 === tokens.length ? e : null;
-  };
-  var all = (xs) => xs.reduce((a, b2) => a ? { op: "and", a, b: b2 } : b2, null);
-  var constraintOf = (path, text) => {
-    const terms = [];
-    const base = path.split("/").pop() ?? "";
-    const name2 = base.includes(".") ? base.slice(0, base.indexOf(".")) : base;
-    const under = name2.indexOf("_");
-    if (under >= 0) {
-      const l3 = name2.slice(under).split("_");
-      if (l3[l3.length - 1] === "test") l3.pop();
-      const n = l3.length;
-      if (n >= 2 && GOOS.has(l3[n - 2]) && GOARCH.has(l3[n - 1])) terms.push({ op: "tag", tag: l3[n - 2] }, { op: "tag", tag: l3[n - 1] });
-      else if (n >= 1 && (GOOS.has(l3[n - 1]) || GOARCH.has(l3[n - 1]))) terms.push({ op: "tag", tag: l3[n - 1] });
-    }
-    const header = text.slice(0, Math.max(0, text.search(/^\\s*package\\s/m)));
-    const goBuild = /^\\/\\/go:build\\s+(.+)$/m.exec(header);
-    let unknown2 = false;
-    if (goBuild) {
-      const e = parseExpr(goBuild[1].trim());
-      if (e) terms.push(e);
-      else unknown2 = true;
-    } else {
-      for (const m2 of header.matchAll(/^\\/\\/\\s*\\+build\\s+(.+)$/gm)) {
-        const options = m2[1].trim().split(/\\s+/).map((o) => all(o.split(",").map((term) => term.startsWith("!") ? { op: "not", x: { op: "tag", tag: term.slice(1) } } : { op: "tag", tag: term })));
-        const line = options.reduce((a, b2) => a && b2 ? { op: "or", a, b: b2 } : a ?? b2, null);
-        if (line) terms.push(line);
-      }
-    }
-    return unknown2 ? "unknown" : all(terms);
-  };
-  var constraints = /* @__PURE__ */ new WeakMap();
-  var constraintOfFile = (f2) => {
-    if (!constraints.has(f2.flat)) constraints.set(f2.flat, constraintOf(f2.path, f2.flat.text));
-    return constraints.get(f2.flat);
-  };
-  var tagsOf = (e, out2 = /* @__PURE__ */ new Set()) => {
-    if (e.op === "tag") out2.add(e.tag);
-    else if (e.op === "not") tagsOf(e.x, out2);
-    else {
-      tagsOf(e.a, out2);
-      tagsOf(e.b, out2);
-    }
-    return out2;
-  };
-  var holds = (e, env) => {
-    if (e.op === "not") return !holds(e.x, env);
-    if (e.op === "and" || e.op === "or") return e.op === "and" ? holds(e.a, env) && holds(e.b, env) : holds(e.a, env) || holds(e.b, env);
-    const tag = e.tag;
-    if (GOOS.has(tag)) return tag === env.goos || tag === "linux" && env.goos === "android" || tag === "solaris" && env.goos === "illumos" || tag === "darwin" && env.goos === "ios";
-    if (GOARCH.has(tag)) return tag === env.goarch;
-    if (tag === "unix") return UNIX.has(env.goos);
-    if (/^go1\\.\\d+$/.test(tag)) return true;
-    return env.on.has(tag);
-  };
-  var builds = (exprs) => {
-    const free = [...new Set(exprs.flatMap((e) => [...tagsOf(e)]))].filter((t) => !GOOS.has(t) && !GOARCH.has(t) && t !== "unix" && !/^go1\\.\\d+$/.test(t));
-    if (free.length > 6) return null;
-    const out2 = [];
-    for (const goos of GOOS) {
-      for (const goarch of GOARCH) {
-        for (let mask = 0; mask < 1 << free.length; mask++) out2.push({ goos, goarch, on: new Set(free.filter((_2, i2) => mask & 1 << i2)) });
-      }
-    }
-    return out2;
-  };
-  var reachCache = /* @__PURE__ */ new WeakMap();
-  var reaches = (from, to) => {
-    if (from.path === to.path) return true;
-    const target = constraintOfFile(to);
-    if (target === null) return true;
-    const source = constraintOfFile(from);
-    if (target === "unknown" || source === "unknown") return false;
-    let byTarget = reachCache.get(from.flat);
-    if (!byTarget) reachCache.set(from.flat, byTarget = /* @__PURE__ */ new WeakMap());
-    let hit = byTarget.get(to.flat);
-    if (hit === void 0) {
-      const envs = builds(source ? [source, target] : [target]);
-      hit = envs !== null && envs.every((env) => (source ? !holds(source, env) : false) || holds(target, env));
-      byTarget.set(to.flat, hit);
-    }
-    return hit;
-  };
   var ownName = (t) => {
     const clause = namedChildren(t, 0).find((c) => t.type[c] === "package_clause");
     const name2 = clause !== void 0 ? namedChildren(t, clause)[0] : void 0;
@@ -6397,43 +6487,310 @@ export const WORKER_SCRIPT = `"use strict";
     ownName,
     conversions: true
   };
-  var goModsAbove = (path) => {
-    const dirs = path.split("/").slice(0, -1);
-    const out2 = [];
-    for (let k2 = dirs.length; k2 >= 0; k2--) out2.push([...dirs.slice(0, k2), "go.mod"].join("/"));
-    return out2;
-  };
-  var clauseOf = (text) => /^\\s*package\\s+([A-Za-z_]\\w*)/m.exec(text.replace(/\\/\\*[\\s\\S]*?\\*\\/|\\/\\/[^\\n]*/g, ""))?.[1] ?? null;
-  var ignored = (path, text) => {
-    const c = constraintOf(path, text);
-    if (c === null) return false;
-    if (c === "unknown") return true;
-    const envs = builds([c]);
-    return envs === null ? false : envs.every((env) => env.on.has("ignore") || !holds(c, env));
-  };
-  var goModuleFiles = (from, spec, _level, ctx) => {
-    for (const mod of goModsAbove(from)) {
-      const text = ctx.text(mod);
-      if (text === void 0) continue;
-      const m2 = /^\\s*module\\s+("?)([^\\s"]+)\\1/m.exec(text);
-      if (!m2) return [];
-      const modulePath = m2[2];
-      if (spec !== modulePath && !spec.startsWith(\`\${modulePath}/\`)) return [];
-      const root = mod.split("/").slice(0, -1).join("/");
-      const dir = [root, spec.slice(modulePath.length).replace(/^\\//, "")].filter((x2) => x2).join("/");
-      const files = [...ctx.known].filter((p) => p.endsWith(".go") && !isTest(p) && p.split("/").slice(0, -1).join("/") === dir && goModsAbove(p).find((m3) => ctx.text(m3) !== void 0) === mod);
-      const kept = files.filter((p) => {
-        const body2 = ctx.text(p);
-        return body2 === void 0 || !ignored(p, body2);
-      });
-      const names = new Set(kept.map((p) => clauseOf(ctx.text(p) ?? "")));
-      return names.size === 1 && !names.has("main") && !names.has(null) ? kept : [];
-    }
-    return [];
-  };
   var GO_RESOLVER = { typing: GO_TYPING, moduleFiles: goModuleFiles };
 
-  // src/lib/langs/jdk.ts
+  // src/lib/langs/java/nodes.ts
+  var code = (t, n) => namedChildren(t, n).filter((c) => t.type[c] !== "line_comment" && t.type[c] !== "block_comment");
+  var lastDescendants = perTree((t) => {
+    const last = new Int32Array(t.count);
+    for (let n = 0; n < t.count; n++) last[n] = n;
+    for (let n = t.count - 1; n > 0; n--) if (last[t.parent[n]] < last[n]) last[t.parent[n]] = last[n];
+    return last;
+  });
+  var lastDescendant = (t, n) => lastDescendants(t)[n];
+  var TYPE_KINDS = { class_declaration: "class", interface_declaration: "interface", enum_declaration: "enum", record_declaration: "record", annotation_type_declaration: "annotation" };
+  var TYPE_DECLARATIONS = new Set(Object.keys(TYPE_KINDS));
+  var TYPE_BODIES = /* @__PURE__ */ new Set(["class_body", "interface_body", "annotation_type_body", "enum_body_declarations"]);
+  var CONSTRUCTORS = /* @__PURE__ */ new Set(["constructor_declaration", "compact_constructor_declaration"]);
+  var ownerOfBody = (t, body2) => {
+    let p = t.parent[body2];
+    if (t.type[body2] === "enum_body_declarations" && p >= 0) p = t.parent[p];
+    return p >= 0 && TYPE_DECLARATIONS.has(t.type[p]) ? p : -1;
+  };
+  var isMember = (t, n) => {
+    const p = t.parent[n];
+    if (p < 0) return false;
+    if (t.type[p] === "program") return true;
+    if (!TYPE_BODIES.has(t.type[p])) return false;
+    const owner = ownerOfBody(t, p);
+    return owner >= 0 && isMember(t, owner);
+  };
+  var isAnonymousBody = (t, n) => t.type[n] === "class_body" && (t.type[t.parent[n]] === "object_creation_expression" || t.type[t.parent[n]] === "enum_constant");
+  var isAnnotation = (t, n) => t.type[n] === "annotation" || t.type[n] === "marker_annotation";
+  var isVar = (t, type) => type >= 0 && t.type[type] === "type_identifier" && textOf(t, type) === "var";
+  var spreadType = (t, n) => namedChildren(t, n).find((c) => t.type[c] !== "modifiers" && t.type[c] !== "variable_declarator" && !isAnnotation(t, c)) ?? -1;
+  var PRIMITIVE_TYPES = /* @__PURE__ */ new Set(["integral_type", "floating_point_type", "boolean_type"]);
+  var isPrimitiveType = (t, n) => PRIMITIVE_TYPES.has(t.type[n]);
+  var parametersOf = (t, decl) => namedChildren(t, child(t, decl, "parameters")).filter((c) => t.type[c] === "formal_parameter" || t.type[c] === "spread_parameter");
+  var dimsOf = (t, dims) => dims < 0 ? 0 : (textOf(t, dims).match(/\\[/g) ?? []).length;
+  var namesOf = (spec) => spec ? spec.split(".") : [];
+  var dotted = (t, n) => n < 0 ? [] : t.type[n] === "scoped_identifier" ? [...dotted(t, child(t, n, "scope")), textOf(t, child(t, n, "name"))] : [textOf(t, n)];
+  var typeParts = (t, n) => {
+    if (n < 0) return [];
+    switch (t.type[n]) {
+      case "type_identifier":
+        return isVar(t, n) ? [] : [textOf(t, n)];
+      case "generic_type":
+        return typeParts(t, namedChildren(t, n)[0] ?? -1);
+      case "annotated_type":
+        return typeParts(t, namedChildren(t, n).find((c) => !isAnnotation(t, c)) ?? -1);
+      case "scoped_type_identifier": {
+        const parts2 = code(t, n).filter((c) => !isAnnotation(t, c));
+        const head = typeParts(t, parts2[0] ?? -1);
+        return parts2.length > 1 && head.length > 0 ? [...head, textOf(t, parts2[parts2.length - 1])] : [];
+      }
+      default:
+        return [];
+    }
+  };
+  var supertypeNodes = (t, n) => {
+    if (t.type[n] === "class_body") {
+      const creation = t.parent[n];
+      return t.type[creation] === "object_creation_expression" && child(t, creation, "type") >= 0 ? [child(t, creation, "type")] : [];
+    }
+    const out2 = [];
+    const sup = child(t, n, "superclass");
+    if (sup >= 0) out2.push(...code(t, sup));
+    for (const l3 of [child(t, n, "interfaces"), namedChildren(t, n).find((c) => t.type[c] === "extends_interfaces") ?? -1]) {
+      if (l3 >= 0) {
+        for (const tl of namedChildren(t, l3)) if (t.type[tl] === "type_list") out2.push(...code(t, tl));
+      }
+    }
+    return out2;
+  };
+  var hasModifier = (t, decl, word) => {
+    const mods = namedChildren(t, decl).find((c) => t.type[c] === "modifiers") ?? -1;
+    return mods >= 0 && hasToken(t, mods, word);
+  };
+  var accessOf = (t, decl, inInterface) => hasModifier(t, decl, "private") ? "private" : hasModifier(t, decl, "protected") ? "protected" : inInterface || hasModifier(t, decl, "public") ? "public" : "package";
+  var anonymousBody = (t, creation) => namedChildren(t, creation).find((c) => t.type[c] === "class_body");
+  var qualifiedCreation = (t, creation) => code(t, creation).some((c) => t.field[c] === "" && t.type[c] !== "class_body" && !isAnnotation(t, c));
+  var creationOf = (t, n) => {
+    let x2 = n;
+    let q2 = t.parent[n];
+    if (q2 >= 0 && t.type[q2] === "scoped_type_identifier") {
+      const parts2 = code(t, q2);
+      if (x2 !== parts2[parts2.length - 1]) return -1;
+      x2 = q2;
+      q2 = t.parent[q2];
+    }
+    if (q2 >= 0 && t.type[q2] === "generic_type") {
+      x2 = q2;
+      q2 = t.parent[q2];
+    }
+    return q2 >= 0 && t.type[q2] === "object_creation_expression" && t.field[x2] === "type" ? q2 : -1;
+  };
+  var isType2 = (t, n) => t.type[n] === "type_identifier" || t.type[t.parent[n]] === "marker_annotation" || t.type[t.parent[n]] === "annotation" || t.type[t.parent[n]] === "record_pattern";
+  var mayBeType = (t, n) => {
+    if (t.type[n] === "type_identifier") return true;
+    const p = t.parent[n];
+    const pt2 = t.type[p];
+    if ((pt2 === "marker_annotation" || pt2 === "annotation") && t.field[n] === "name") return true;
+    if (pt2 === "record_pattern" || (pt2 === "method_invocation" || pt2 === "field_access") && t.field[n] === "object") return true;
+    return pt2 === "method_reference" && code(t, p)[0] === n;
+  };
+  var argCount = (t, call) => code(t, child(t, call, "arguments")).length;
+
+  // src/lib/langs/java/gaps.ts
+  var gapsBefore = perTree((t) => {
+    const before = new Int32Array(t.count + 1);
+    for (let n = 0; n < t.count; n++) before[n + 1] = before[n] + (t.type[n] === "ERROR" || n > 0 && t.start[n] === t.end[n] ? 1 : 0);
+    return before;
+  });
+  var gapIn = (t, n) => {
+    if (n < 0) return false;
+    const before = gapsBefore(t);
+    return before[lastDescendant(t, n) + 1] - before[n] > 0;
+  };
+  var headerGap = (t, decl) => {
+    for (let c = t.first[decl]; c >= 0; c = t.next[c]) if (t.field[c] !== "body" && gapIn(t, c)) return true;
+    return false;
+  };
+  var topGap = perTree((t) => {
+    for (let c = t.first[0]; c >= 0; c = t.next[c]) if (t.type[c] === "ERROR" || t.start[c] === t.end[c] || (t.type[c] === "package_declaration" || t.type[c] === "import_declaration") && gapIn(t, c)) return true;
+    return false;
+  });
+  var CLASS_BODIES = /* @__PURE__ */ new Set(["class_body", "interface_body", "annotation_type_body", "enum_body", "enum_body_declarations"]);
+  var unsureAt = (t, n) => {
+    if (topGap(t)) return true;
+    for (let x2 = n, p = t.parent[n]; p >= 0; x2 = p, p = t.parent[p]) {
+      if (CLASS_BODIES.has(t.type[p]) && (TYPE_DECLARATIONS.has(t.type[x2]) ? headerGap(t, x2) : gapIn(t, x2))) return true;
+      if (TYPE_DECLARATIONS.has(t.type[p]) && t.field[x2] !== "body" && headerGap(t, p)) return true;
+    }
+    return false;
+  };
+
+  // src/lib/langs/java/roots.ts
+  var packageOf = (t) => {
+    const pd = namedChildren(t, 0).find((c) => t.type[c] === "package_declaration");
+    const name2 = pd !== void 0 ? namedChildren(t, pd).find((c) => t.type[c] === "scoped_identifier" || t.type[c] === "identifier") : void 0;
+    return name2 !== void 0 ? dotted(t, name2).join(".") : "";
+  };
+  var rootOf = (path, pkg) => {
+    const dir = path.split("/").slice(0, -1);
+    const segs = pkg ? pkg.split(".") : [];
+    if (segs.length > dir.length) return null;
+    for (let i2 = 0; i2 < segs.length; i2++) if (dir[dir.length - segs.length + i2] !== segs[i2]) return null;
+    return dir.slice(0, dir.length - segs.length).join("/");
+  };
+  var SOURCE_SET = /^(.*\\/)?src\\/([^/]+)\\/java$/;
+  var rootsSeen = (root) => {
+    const m2 = SOURCE_SET.exec(root);
+    return m2 && m2[2] !== "main" ? [root, \`\${m2[1] ?? ""}src/main/java\`] : [root];
+  };
+  var inRoot = (root, rel) => root ? \`\${root}/\${rel}\` : rel;
+  var packageFile = (pkg, name2) => [...namesOf(pkg), \`\${name2}.java\`].join("/");
+  var typeFile = (segs) => {
+    if (segs.length === 0) return null;
+    let i2 = segs.findIndex((s) => /^[A-Z]/.test(s));
+    if (i2 < 0) i2 = segs.length - 1;
+    return { pkg: segs.slice(0, i2).join("."), top: segs[i2], rel: [...segs.slice(0, i2), \`\${segs[i2]}.java\`].join("/"), nested: segs.slice(i2 + 1) };
+  };
+  var outlineOf = memoize(
+    (f2) => {
+      const t = f2.flat;
+      const pkg = packageOf(t);
+      const isStatic = (i2) => hasToken(t, i2.stmt, "static");
+      const declared = /* @__PURE__ */ new Set();
+      const tops = /* @__PURE__ */ new Set();
+      const params2 = /* @__PURE__ */ new Set();
+      for (let n = 0; n < t.count; n++) {
+        if (TYPE_DECLARATIONS.has(t.type[n])) {
+          declared.add(textOf(t, child(t, n, "name")));
+          if (t.parent[n] === 0) tops.add(textOf(t, child(t, n, "name")));
+        } else if (t.type[n] === "type_parameter") {
+          for (const c of namedChildren(t, n)) if (t.type[c] === "type_identifier") params2.add(textOf(t, c));
+        }
+      }
+      return {
+        pkg,
+        root: rootOf(f2.path, pkg),
+        singles: f2.imports.filter((i2) => i2.name !== "*" && !isStatic(i2)),
+        statics: f2.imports.filter((i2) => i2.name !== "*" && isStatic(i2)),
+        staticStars: f2.imports.filter((i2) => i2.name === "*" && isStatic(i2)),
+        declared,
+        tops,
+        params: params2,
+        lombok: f2.imports.some((i2) => i2.spec === "lombok" || i2.spec.startsWith("lombok.")) || t.text.includes("@lombok.")
+      };
+    },
+    { cache: /* @__PURE__ */ new WeakMap() }
+  );
+
+  // src/lib/langs/java/files.ts
+  var readFiles = (files, ctx) => {
+    const known = new Set(ctx.known);
+    const byPath = new Map(files.map((f2) => [f2.path, f2]));
+    let ids = 0;
+    const program2 = {
+      exists: (p) => ctx.exists ? ctx.exists(p) : known.has(p) ? true : void 0,
+      fileAt: (path) => {
+        const f2 = byPath.get(path);
+        return f2 ? jfileOf(f2) : void 0;
+      }
+    };
+    const jfileOf = memoize((f2) => {
+      const t = f2.flat;
+      const jf = { ...outlineOf(f2), f: f2, t, byNode: /* @__PURE__ */ new Map(), top: /* @__PURE__ */ new Map(), program: program2 };
+      for (let n = 0; n < t.count; n++) {
+        const named2 = TYPE_DECLARATIONS.has(t.type[n]);
+        if (!named2 && !isAnonymousBody(t, n)) continue;
+        let outer = null;
+        for (let x2 = t.parent[n]; x2 >= 0 && !outer; x2 = t.parent[x2]) outer = jf.byNode.get(x2) ?? null;
+        const kind = named2 ? TYPE_KINDS[t.type[n]] : t.type[t.parent[n]] === "enum_constant" ? "constant" : "anonymous";
+        const T = { id: ids++, file: jf, node: n, name: named2 ? textOf(t, child(t, n, "name")) : "", kind, outer, unit: named2 ? f2.unitByNode.get(n) : void 0 };
+        jf.byNode.set(n, T);
+        if (named2 && t.parent[n] === 0) jf.top.set(T.name, T);
+      }
+      return jf;
+    });
+    return jfileOf;
+  };
+  var perNode = (cycle, read) => {
+    const cache = /* @__PURE__ */ new WeakMap();
+    return (jf, n) => {
+      let byNode = cache.get(jf);
+      if (!byNode) cache.set(jf, byNode = /* @__PURE__ */ new Map());
+      if (byNode.has(n)) return byNode.get(n);
+      byNode.set(n, cycle);
+      const value = read(jf, n);
+      byNode.set(n, value);
+      return value;
+    };
+  };
+  var isIface = (x2) => "fqn" in x2 ? x2.iface : x2.kind === "interface" || x2.kind === "annotation";
+  var isAnonymous = (T) => T.kind === "anonymous" || T.kind === "constant";
+  var typeKey = (T) => {
+    if (!isMember(T.file.t, T.node)) return \`#\${T.id}\`;
+    const names = [];
+    for (let x2 = T; x2; x2 = x2.outer) names.unshift(x2.name);
+    return [...T.file.pkg ? [T.file.pkg] : [], ...names].join(".");
+  };
+  var keyOfRef = (x2) => "fqn" in x2 ? x2.fqn : typeKey(x2);
+  var pkgOf = (x2) => "fqn" in x2 ? x2.fqn.slice(0, x2.fqn.lastIndexOf(".")) : x2.file.pkg;
+  var topOfType = (T) => T.outer ? topOfType(T.outer) : T;
+  var bodyOf = (T) => isAnonymous(T) ? T.node : child(T.file.t, T.node, "body");
+  var memberNodes = (T) => {
+    const t = T.file.t;
+    return namedChildren(t, bodyOf(T)).flatMap((c) => t.type[c] === "enum_body_declarations" ? namedChildren(t, c) : [c]);
+  };
+  var memberTypesOf = memoize(
+    (T) => {
+      const t = T.file.t;
+      const types = /* @__PURE__ */ new Map();
+      for (const c of memberNodes(T)) if (TYPE_DECLARATIONS.has(t.type[c])) types.set(textOf(t, child(t, c, "name")), T.file.byNode.get(c));
+      return types;
+    },
+    { cache: /* @__PURE__ */ new WeakMap() }
+  );
+  var openOf = memoize(
+    (T) => {
+      if (T.file.lombok) return true;
+      const t = T.file.t;
+      if (!isAnonymous(T) && headerGap(t, T.node)) return true;
+      const body2 = bodyOf(T);
+      for (let c = body2 >= 0 ? t.first[body2] : -1; c >= 0; c = t.next[c]) {
+        for (const m2 of t.type[c] === "enum_body_declarations" ? namedChildren(t, c) : [c]) {
+          if (t.type[m2] === "ERROR" || t.start[m2] === t.end[m2]) return true;
+          if (t.type[m2] !== "block" && t.type[m2] !== "static_initializer" && headerGap(t, m2)) return true;
+        }
+      }
+      return false;
+    },
+    { cache: /* @__PURE__ */ new WeakMap() }
+  );
+
+  // src/lib/langs/java/scopes.ts
+  var scopeOf = (jf, n) => jf.f.scopes[jf.f.enclosing[n]];
+  var visible = (jf, bs, at2) => (bs ?? []).filter((b2) => {
+    if (b2.from !== void 0 && b2.from > at2) return false;
+    const t = jf.t;
+    if (t.type[t.parent[b2.node]] !== "resource") return true;
+    const body2 = child(t, t.parent[t.parent[t.parent[b2.node]]], "body");
+    return body2 >= 0 && at2 < t.end[body2];
+  });
+  var variablesSeen = (jf, s, name2, at2) => visible(jf, s.names.get(name2), at2).filter((b2) => b2.kind === "local" || b2.kind === "param");
+  var typesSeen = (jf, s, name2, at2) => visible(jf, s.names.get(name2), at2).filter((b2) => b2.kind === "type");
+  var isTypeParam = (jf, b2) => jf.t.type[jf.t.parent[b2.node]] === "type_parameter";
+  var inBody = (T, n) => {
+    if (isAnonymous(T)) return true;
+    const t = T.file.t;
+    const within = (x2) => x2 >= 0 && t.start[x2] <= t.start[n] && t.end[n] <= t.end[x2];
+    return within(child(t, T.node, "body")) || T.kind === "record" && within(child(t, T.node, "parameters"));
+  };
+  var classAround = (jf, n) => {
+    for (let s = scopeOf(jf, n); s; s = s.parent) if (s.kind === "class") return jf.byNode.get(s.node) ?? null;
+    return null;
+  };
+  var typeParameterOf = (jf, n, name2) => {
+    for (let s = scopeOf(jf, n); s; s = s.parent) {
+      const bs = typesSeen(jf, s, name2, jf.t.start[n]);
+      if (bs.length > 0) return isTypeParam(jf, bs[bs.length - 1]) ? jf.t.parent[bs[bs.length - 1].node] : -1;
+    }
+    return -1;
+  };
+
+  // src/lib/langs/java/jdk.ts
   var JDK_PACKAGES = ["java.lang", "java.util.function", "java.util", "java.io", "java.util.concurrent", "java.net", "javax.lang.model.util", "javax.net.ssl", "javax.tools", "java.lang.reflect", "java.time.temporal", "java.security", "javax.lang.model.element", "java.nio", "java.util.concurrent.locks", "java.lang.constant", "javax.lang.model.type", "java.nio.channels", "java.util.logging", "java.security.cert", "java.lang.ref", "java.nio.file", "java.lang.invoke", "javax.annotation.processing", "java.util.concurrent.atomic", "javax.security.auth", "java.util.random", "java.util.stream", "javax.management", "java.beans", "java.nio.charset", "java.time", "java.math", "java.nio.file.attribute", "java.lang.annotation", "java.lang.instrument", "java.time.format", "java.util.zip"];
   var JDK_ALIASES = ["@0.String", "@0.Object", "@3.Serializable", "@8.JavaFileManager.Location", "@0.RuntimeException", "@1.Function", "@4.CompletionStage", "@0.Runnable", "@1.BiFunction", "@4.TimeUnit", "@d.ByteBuffer", "@2.Collection", "@0.Comparable", "@4.Executor", "@0.ReflectiveOperationException", "@1.Consumer", "@0.Cloneable", "@3.IOException", "@0.CharSequence", "@0.Throwable", "@e.AbstractQueuedSynchronizer.ConditionObject", "@3.OutputStream", "@1.BiConsumer", "@0.IncompatibleClassChangeError", "@1.LongBinaryOperator", "@0.Exception", "@0.Class", "@f.Constable", "@2.Comparator", "@1.IntBinaryOperator", "@j.X509Certificate", "@2.AbstractCollection", "@0.LinkageError", "@8.FileObject", "@1.DoubleBinaryOperator", "@a.TemporalAccessor", "@1.ToDoubleFunction", "@2.AbstractMap", "@0.VirtualMachineError", "@5.URL", "@7.ManagerFactoryParameters", "@4.ForkJoinTask", "@0.Thread.UncaughtExceptionHandler", "@1.ToLongFunction", "@1.LongUnaryOperator", "@0.Number", "@0.ClassLoader", "@3.Closeable", "@a.TemporalField", "@2.AbstractQueue", "@1.ToIntFunction", "@9.AnnotatedElement", "@1.IntUnaryOperator", "@2.Locale", "@f.ConstantDesc", "@5.Authenticator.RequestorType", "@a.TemporalUnit", "@1.Supplier", "@a.Temporal", "@2.SequencedCollection", "@8.JavaFileObject.Kind", "@1.BinaryOperator", "@3.InputStream", "@0.IndexOutOfBoundsException", "@b.Principal", "@e.Condition", "@0.IllegalArgumentException", "@0.AutoCloseable", "@4.BlockingQueue", "@0.Appendable", "@4.RunnableScheduledFuture", "@6.AbstractElementVisitor6", "@4.Callable", "@b.ProtectionDomain", "@9.AccessibleObject", "@2.ResourceBundle.Control", "@3.Writer", "@3.ObjectStreamConstants", "@0.AbstractStringBuilder", "@0.Thread", "@2.Map.Entry", "@5.InetAddress", "@2.AbstractSet", "@c.Element", "@6.AbstractAnnotationValueVisitor6", "@8.JavaFileObject", "@h.ReadableByteChannel", "@h.WritableByteChannel", "@2.Map", "@1.DoubleUnaryOperator", "@g.TypeMirror", "@1.UnaryOperator", "@6.SimpleAnnotationValueVisitor9", "@6.SimpleAnnotationValueVisitor6", "@6.SimpleAnnotationValueVisitor7", "@6.SimpleAnnotationValueVisitor8", "@3.FilterOutputStream", "@9.GenericDeclaration", "@4.ThreadPoolExecutor", "@2.AbstractList", "@2.RandomAccess", "@1.Predicate", "@4.CompletableFuture", "@e.AbstractOwnableSynchronizer", "@i.LogRecord", "@7.SSLEngine", "@4.CountedCompleter", "@r.Collector.Characteristics", "@3.Reader", "@5.SocketException", "@b.GeneralSecurityException", "@q.RandomGenerator", "@4.ExecutorService", "@4.Flow.Subscriber", "@4.RejectedExecutionHandler", "@4.ScheduledExecutorService", "@1.DoublePredicate", "@c.AnnotationValue", "@4.AbstractExecutorService", "@3.FilenameFilter", "@a.TemporalAmount", "@2.ResourceBundle", "@4.RunnableFuture", "@3.InterruptedIOException", "@m.TypeDescriptor.OfField", "@2.AbstractSequentialList", "@4.ConcurrentNavigableMap", "@c.AnnotationValueVisitor", "@7.SSLSessionBindingEvent", "@2.List", "@2.EventListener", "@3.Flushable", "@0.IllegalStateException", "@k.Reference", "@5.Authenticator", "@b.PublicKey", "@4.ConcurrentMap", "@1.LongPredicate", "@6.SimpleElementVisitor9", "@6.SimpleElementVisitor6", "@6.SimpleElementVisitor7", "@6.SimpleElementVisitor8", "@6.AbstractTypeVisitor6", "@3.ObjectOutput", "@2.SequencedMap", "@2.SequencedSet", "@2.NavigableMap", "@2.NavigableSet", "@4.Future", "@1.IntPredicate", "@7.TrustManager", "@x.BasicFileAttributes", "@b.KeyStore", "@3.ObjectInput", "@3.File", "@3.PrintStream", "@3.PrintWriter", "@9.Type", "@2.Set", "@1.BiPredicate", "@6.SimpleTypeVisitor9", "@6.SimpleTypeVisitor6", "@6.SimpleTypeVisitor7", "@6.SimpleTypeVisitor8", "@3.FilterInputStream", "@3.ObjectStreamClass", "@h.Channel", "@2.Queue", "@2.Deque", "@4.Flow.Subscription", "@c.ExecutableElement", "@9.Executable", "@7.SSLSession", "@7.KeyManager", "@0.ClassFormatError", "@a.TemporalAdjuster", "@c.AnnotationMirror", "@7.X509TrustManager", "@1.ToIntBiFunction", "@4.ScheduledFuture", "@c.VariableElement", "@6.ElementScanner9", "@6.ElementScanner6", "@6.ElementScanner7", "@6.ElementScanner8", "@5.Socket", "@8.JavaFileManager", "@m.TypeDescriptor", "@4.Flow.Publisher", "@1.DoubleConsumer", "@c.ElementVisitor", "@7.X509KeyManager", "@0.Iterable", "@b.Provider", "@2.Iterator", "@0.Error", "@5.URLConnection", "@5.ProxySelector", "@5.SocketAddress", "@j.X509Extension", "@4.BlockingDeque", "@4.ThreadFactory", "@e.ReadWriteLock", "@8.OptionChecker", "@0.StringBuffer", "@1.LongConsumer", "@i.Handler", "@7.SSLException", "@0.ThreadLocal", "@h.ByteChannel", "@l.FileVisitor", "@p.Destroyable", "@j.Certificate", "@1.IntFunction", "@2.Spliterator", "@1.IntConsumer", "@g.TypeVisitor", "@0.Module", "@9.Member", "@9.Method", "@3.DataOutput", "@3.FileFilter", "@2.Dictionary", "@3.DataInput", "@2.Hashtable", "@2.SortedMap", "@2.SortedSet", "@i.Formatter", "@n.Processor", "@0.Readable", "@v.Duration", "@u.Charset", "@2.HashMap", "@2.HashSet", "@4.Delayed"];
   var JDK_TYPES = String.raw\`@t.PropertyChangeListener|i|!3m|a:propertyChange(@t.PropertyChangeEvent)||
@@ -6907,66 +7264,1184 @@ org.xml|sax
 org.xml.sax|ext helpers
 sun|misc reflect\`;
 
-  // src/lib/langs/java.ts
-  var code = (t, n) => namedChildren(t, n).filter((c) => t.type[c] !== "line_comment" && t.type[c] !== "block_comment");
-  var gapCache = /* @__PURE__ */ new WeakMap();
-  var gapsOf = (t) => {
-    let hit = gapCache.get(t);
+  // src/lib/langs/java/library.ts
+  var libOf = (line) => {
+    const [fqn, kind, supers, methods, fields3, types] = line.replace(/!([0-9a-z]+)/g, (_2, n) => JDK_ALIASES[parseInt(n, 36)]).replace(/@([0-9a-z]+)\\./g, (_2, n) => \`\${JDK_PACKAGES[parseInt(n, 36)]}.\`).split("|");
+    return {
+      fqn,
+      iface: kind.toLowerCase() === "i",
+      supers: supers ? supers.split(",") : [],
+      members: kind === "i" || kind === "c",
+      methods: (methods ? methods.split(" ") : []).map((m2) => {
+        const flags2 = m2.split(":");
+        const sig = flags2.pop();
+        const list = sig.slice(sig.indexOf("(") + 1, -1);
+        const varargs = list.endsWith("...");
+        const written2 = list ? list.replace(/\\.\\.\\.$/, "").split(",") : [];
+        const params2 = written2.map((p, i2) => varargs && i2 === written2.length - 1 && p !== "?" ? \`\${p}[]\` : p);
+        const key = params2.includes("?") ? null : params2.join(",");
+        return { name: sig.slice(0, sig.indexOf("(")), n: params2.length, varargs, access: flags2.includes("p") ? "protected" : "public", isStatic: flags2.includes("s"), abstract: flags2.includes("a"), key, params: params2 };
+      }),
+      fields: new Set(fields3 ? fields3.split(" ") : []),
+      types: new Set(types ? types.split(" ") : [])
+    };
+  };
+  var libs = once(
+    () => new Map(
+      JDK_TYPES.split("\\n").map((line) => {
+        const l3 = libOf(line);
+        return [l3.fqn, l3];
+      })
+    )
+  );
+  var libNamed = (fqn) => libs().get(fqn);
+  var OBJECT = () => libNamed("java.lang.Object");
+  var INTERFACE_OBJECT = once(() => ({ ...OBJECT(), iface: true, methods: OBJECT().methods.filter((m2) => m2.access === "public").map((m2) => ({ ...m2, abstract: true })) }));
+  var exportedPackages = once(
+    () => new Set(
+      JDK_EXPORTS.split("\\n").flatMap((line) => {
+        const [around, names] = line.split("|");
+        return names.split(" ").map((n) => \`\${around}.\${n}\`);
+      })
+    )
+  );
+  var jdkPackage = (pkg) => /^java(\\.|$)/.test(pkg) || exportedPackages().has(pkg);
+  var JAVA_LANG = new Set(
+    "AbstractMethodError Appendable ArithmeticException ArrayIndexOutOfBoundsException ArrayStoreException AssertionError AutoCloseable Boolean BootstrapMethodError Byte Character CharSequence Class ClassCastException ClassCircularityError ClassFormatError ClassLoader ClassNotFoundException ClassValue CloneNotSupportedException Cloneable Comparable Deprecated Double Enum EnumConstantNotPresentException Error Exception ExceptionInInitializerError Float FunctionalInterface IllegalAccessError IllegalAccessException IllegalArgumentException IllegalCallerException IllegalMonitorStateException IllegalStateException IllegalThreadStateException IncompatibleClassChangeError IndexOutOfBoundsException InheritableThreadLocal InstantiationError InstantiationException Integer InternalError InterruptedException Iterable LayerInstantiationException LinkageError Long Math NegativeArraySizeException NoClassDefFoundError NoSuchFieldError NoSuchFieldException NoSuchMethodError NoSuchMethodException NullPointerException Number NumberFormatException Object OutOfMemoryError Override Readable ReflectiveOperationException Runnable Runtime RuntimeException SafeVarargs SecurityException Short StackOverflowError StackTraceElement StackWalker StrictMath String StringBuffer StringBuilder StringIndexOutOfBoundsException SuppressWarnings System Thread ThreadDeath ThreadGroup ThreadLocal Throwable TypeNotPresentException UnknownError UnsatisfiedLinkError UnsupportedClassVersionError UnsupportedOperationException VerifyError VirtualMachineError Void".split(" ")
+  );
+
+  // src/lib/langs/java/type-names.ts
+  var UNKNOWN = { k: "unknown" };
+  var NONE = { k: "none" };
+  var ownerOf = (r) => r.k === "type" ? r.t : r.k === "lib" ? r.lib : null;
+  var topAt = (from, path, pkg, name2) => {
+    if (from.program.exists(path) === false) return "absent";
+    const jf = from.program.fileAt(path);
+    if (!jf) return "unknown";
+    return jf.pkg === pkg ? jf.top.get(name2) ?? "absent" : "absent";
+  };
+  var typeIn = (from, pkg, name2, rel) => {
+    if (from.root === null) return "unknown";
+    for (const r of rootsSeen(from.root)) {
+      const got = topAt(from, inRoot(r, rel), pkg, name2);
+      if (got !== "absent") return got;
+    }
+    return "absent";
+  };
+  var fqnType = (from, segs, imported = false) => {
+    const tf = typeFile(segs);
+    if (!tf) return NONE;
+    const l3 = libNamed(segs.join("."));
+    if (jdkPackage(tf.pkg)) return l3 ? { k: "lib", lib: l3 } : { k: "none", fqn: segs.join(".") };
+    const got = typeIn(from, tf.pkg, tf.top, tf.rel);
+    if (l3 && (got === "absent" || got === "unknown" && from.root !== null && rootsSeen(from.root).every((r) => from.program.exists(inRoot(r, tf.rel)) !== true))) return { k: "lib", lib: l3 };
+    if (got === "unknown") return UNKNOWN;
+    if (got === "absent") return { k: "none", fqn: segs.join(".") };
+    let res = { k: "type", t: got };
+    for (const name2 of tf.nested) {
+      if (res.k !== "type") return UNKNOWN;
+      if (imported) {
+        const own = memberTypesOf(res.t).get(name2);
+        if (!own) return NONE;
+        res = { k: "type", t: own };
+        continue;
+      }
+      const m2 = memberType(res.t, name2);
+      if (m2.found === void 0) return m2.complete ? NONE : UNKNOWN;
+      res = m2.found;
+    }
+    return res;
+  };
+  var typeName2 = (jf, n, name2) => {
+    const at2 = jf.t.start[n];
+    for (let s = scopeOf(jf, n); s; s = s.parent) {
+      const bs = typesSeen(jf, s, name2, at2);
+      if (s.kind === "class") {
+        if (bs.some((b2) => isTypeParam(jf, b2))) return { k: "param" };
+        const T = jf.byNode.get(s.node);
+        if (!T) return UNKNOWN;
+        if (inBody(T, n)) {
+          const m2 = memberType(T, name2);
+          if (m2.found !== void 0) return m2.found;
+          if (!m2.complete) return UNKNOWN;
+        }
+        continue;
+      }
+      if (s.kind === "module") break;
+      if (bs.length > 0) {
+        const b2 = bs[bs.length - 1];
+        const local = jf.byNode.get(jf.t.parent[b2.node]);
+        return isTypeParam(jf, b2) ? { k: "param" } : local ? { k: "type", t: local } : UNKNOWN;
+      }
+    }
+    return topType(jf, name2);
+  };
+  var topType = (jf, name2) => {
+    const own = jf.top.get(name2);
+    if (own) return { k: "type", t: own };
+    const single = jf.singles.find((i2) => i2.local === name2);
+    if (single) return fqnType(jf, [...namesOf(single.spec), name2], true);
+    for (const i2 of jf.statics.filter((i3) => i3.local === name2)) {
+      const c = ownerOf(fqnType(jf, namesOf(i2.spec), true));
+      if (!c) return UNKNOWN;
+      const m2 = memberType(c, name2);
+      if (m2.found !== void 0) return m2.found;
+      if (!m2.complete) return UNKNOWN;
+    }
+    if (!/^[A-Z]/.test(name2)) return NONE;
+    if (jf.root === null) return UNKNOWN;
+    const got = typeIn(jf, jf.pkg, name2, packageFile(jf.pkg, name2));
+    if (got !== "absent") return got === "unknown" ? UNKNOWN : { k: "type", t: got };
+    if (!JAVA_LANG.has(name2)) return UNKNOWN;
+    const l3 = libNamed(\`java.lang.\${name2}\`);
+    return l3 ? { k: "lib", lib: l3 } : { k: "none", fqn: \`java.lang.\${name2}\` };
+  };
+  var resolveParts = (jf, n, parts2) => {
+    if (parts2.length === 0) return NONE;
+    let res = typeName2(jf, n, parts2[0]);
+    if (parts2.length === 1) return res;
+    if (res.k === "none" && !res.fqn) return fqnType(jf, parts2);
+    for (const name2 of parts2.slice(1)) {
+      if (res.k !== "type" && res.k !== "lib") return res.k === "none" ? UNKNOWN : res;
+      const m2 = memberType(res.k === "type" ? res.t : res.lib, name2);
+      if (m2.found === void 0) return m2.complete ? NONE : UNKNOWN;
+      res = m2.found;
+    }
+    return res;
+  };
+  var typeOfNode = (jf, n) => {
+    const r = resolveParts(jf, n, typeParts(jf.t, n));
+    return r.k === "type" ? r.t : null;
+  };
+  var inherits = (x2, m2) => m2.access !== "private" && !(m2.access === "package" && pkgOf(m2.owner) !== pkgOf(x2));
+  var memberType = (x2, name2, depth = 0) => {
+    if (depth > 40) return { complete: false };
+    if ("fqn" in x2) {
+      if (x2.types.has(name2)) {
+        const nested = libNamed(\`\${x2.fqn}.\${name2}\`);
+        return { found: nested ? { k: "lib", lib: nested } : UNKNOWN, complete: true };
+      }
+      if (!x2.members) return { complete: false };
+    } else {
+      const own = memberTypesOf(x2).get(name2);
+      if (own) return { found: { k: "type", t: own }, complete: true };
+      if (openOf(x2)) return { complete: false };
+    }
+    let complete = true;
+    let found;
+    for (const s of supersOf(x2)) {
+      if (!s) {
+        complete = false;
+        continue;
+      }
+      const m2 = memberType(s, name2, depth + 1);
+      if (!m2.complete) complete = false;
+      if (m2.found === void 0) continue;
+      if (m2.found.k === "type" && m2.found.t.outer && !inherits(x2, { access: accessOf(m2.found.t.file.t, m2.found.t.node, isIface(m2.found.t.outer)), owner: m2.found.t.outer })) continue;
+      found = found === void 0 || found.k === "type" && m2.found.k === "type" && found.t === m2.found.t ? m2.found : UNKNOWN;
+    }
+    return { ...found !== void 0 ? { found } : {}, complete };
+  };
+  var superCache = /* @__PURE__ */ new WeakMap();
+  var supersOf = (x2) => {
+    const hit = superCache.get(x2);
     if (hit) return hit;
-    const last = new Int32Array(t.count);
-    for (let n = 0; n < t.count; n++) last[n] = n;
-    for (let n = t.count - 1; n > 0; n--) if (last[t.parent[n]] < last[n]) last[t.parent[n]] = last[n];
-    const before = new Int32Array(t.count + 1);
-    for (let n = 0; n < t.count; n++) before[n + 1] = before[n] + (t.type[n] === "ERROR" || n > 0 && t.start[n] === t.end[n] ? 1 : 0);
-    hit = { last, before, top: false };
-    gapCache.set(t, hit);
-    for (let c = t.first[0]; c >= 0; c = t.next[c]) if (t.type[c] === "ERROR" || t.start[c] === t.end[c] || (t.type[c] === "package_declaration" || t.type[c] === "import_declaration") && gapIn(t, c)) hit.top = true;
+    superCache.set(x2, [null]);
+    let supers;
+    if ("fqn" in x2) supers = x2.supers.length > 0 ? x2.supers.map((s) => libNamed(s) ?? null) : x2 === OBJECT() || x2 === INTERFACE_OBJECT() ? [] : [x2.iface ? INTERFACE_OBJECT() : OBJECT()];
+    else {
+      const t = x2.file.t;
+      const written2 = supertypeNodes(t, x2.node).map((n) => ownerOf(resolveParts(x2.file, n, typeParts(t, n))));
+      if (!isAnonymous(x2) && headerGap(t, x2.node)) supers = [null];
+      else if (x2.kind === "class") supers = child(t, x2.node, "superclass") >= 0 ? written2 : [OBJECT(), ...written2];
+      else if (x2.kind === "interface") supers = written2.length > 0 ? written2 : [INTERFACE_OBJECT()];
+      else if (x2.kind === "enum") supers = [libNamed("java.lang.Enum"), ...written2];
+      else if (x2.kind === "record") supers = [libNamed("java.lang.Record"), ...written2];
+      else if (x2.kind === "annotation") supers = [libNamed("java.lang.annotation.Annotation")];
+      else if (x2.kind === "constant") supers = [x2.outer];
+      else supers = written2[0] && isIface(written2[0]) ? [OBJECT(), written2[0]] : written2.length > 0 ? written2 : [null];
+    }
+    superCache.set(x2, supers);
+    return supers;
+  };
+  var superclassOf = (x2) => supersOf(x2).find((s) => s === null || !isIface(s)) ?? null;
+  var closures = /* @__PURE__ */ new WeakMap();
+  var closureOf = (x2) => {
+    let hit = closures.get(x2);
+    if (hit) return hit;
+    hit = { keys: /* @__PURE__ */ new Set([keyOfRef(x2)]), complete: true };
+    closures.set(x2, hit);
+    for (const s of supersOf(x2)) {
+      if (!s) {
+        hit.complete = false;
+        continue;
+      }
+      const c = closureOf(s);
+      for (const k2 of c.keys) hit.keys.add(k2);
+      if (!c.complete) hit.complete = false;
+    }
     return hit;
   };
-  var gapIn = (t, n) => {
-    if (n < 0) return false;
-    const g = gapsOf(t);
-    return g.before[g.last[n] + 1] - g.before[n] > 0;
+
+  // src/lib/langs/java/access.ts
+  var access = (jf, n, m2, recv) => {
+    if (m2.access === "public") return "yes";
+    if (m2.access === "private") {
+      const here = classAround(jf, n);
+      return !("fqn" in m2.owner) && here !== null && topOfType(here) === topOfType(m2.owner) ? "yes" : "no";
+    }
+    if (pkgOf(m2.owner) === jf.pkg) return "yes";
+    if (m2.access === "package") return "no";
+    const owner = keyOfRef(m2.owner);
+    let open = false;
+    for (let S2 = classAround(jf, n); S2; S2 = S2.outer) {
+      const c = closureOf(S2);
+      if (!c.keys.has(owner)) {
+        if (!c.complete) open = true;
+        continue;
+      }
+      if (m2.isStatic || recv.kind !== "expr") return "yes";
+      const q2 = closureOf(recv.type);
+      if (q2.keys.has(keyOfRef(S2))) return "yes";
+      if (!q2.complete) open = true;
+    }
+    return open ? "maybe" : "no";
   };
-  var headerGap = (t, decl) => {
-    for (let c = t.first[decl]; c >= 0; c = t.next[c]) if (t.field[c] !== "body" && gapIn(t, c)) return true;
-    return false;
+  var importable = (jf, m2) => m2.access === "public" || m2.access !== "private" && pkgOf(m2.owner) === jf.pkg;
+
+  // src/lib/langs/java/static-types.ts
+  var UNTYPED = { k: "unknown" };
+  var refTo = (T) => ({ k: "ref", key: typeKey(T), type: T });
+  var WIDENING = {
+    byte: ["short", "int", "long", "float", "double"],
+    short: ["int", "long", "float", "double"],
+    char: ["int", "long", "float", "double"],
+    int: ["long", "float", "double"],
+    long: ["float", "double"],
+    float: ["double"]
   };
-  var CLASS_BODIES = /* @__PURE__ */ new Set(["class_body", "interface_body", "annotation_type_body", "enum_body", "enum_body_declarations"]);
-  var unsureAt = (t, n) => {
-    if (gapsOf(t).top) return true;
-    for (let x2 = n, p = t.parent[n]; p >= 0; x2 = p, p = t.parent[p]) {
-      if (CLASS_BODIES.has(t.type[p]) && (TYPES.has(t.type[x2]) ? headerGap(t, x2) : gapIn(t, x2))) return true;
-      if (TYPES.has(t.type[p]) && t.field[x2] !== "body" && headerGap(t, p)) return true;
+  var BOXES = { int: "java.lang.Integer", long: "java.lang.Long", short: "java.lang.Short", byte: "java.lang.Byte", char: "java.lang.Character", boolean: "java.lang.Boolean", float: "java.lang.Float", double: "java.lang.Double" };
+  var UNBOXED = Object.fromEntries(Object.entries(BOXES).map(([prim, box]) => [box, prim]));
+  var PRIMITIVES = new Set(Object.keys(BOXES));
+  var ARRAY_SUPERTYPES = /* @__PURE__ */ new Set(["java.lang.Object", "java.lang.Cloneable", "java.io.Serializable"]);
+  var widens = (from, to) => from === to || (WIDENING[from] ?? []).includes(to);
+  var libParam = (p) => p === "?" ? { k: "var" } : p.endsWith("[]") ? { k: "array", elem: libParam(p.slice(0, -2)) } : PRIMITIVES.has(p) ? { k: "prim", name: p } : { k: "ref", key: p };
+  var sameType = (a, b2) => a.k === b2.k && (a.k === "prim" ? a.name === b2.name : a.k === "ref" ? a.key === b2.key : a.k === "array" ? sameType(a.elem, b2.elem) : a.k === "null");
+  var promote = (prim) => prim === "byte" || prim === "short" || prim === "char" ? "int" : prim;
+  var promoted = (a, b2, op) => {
+    if (a === "boolean" || b2 === "boolean") return a === b2 && ["&", "|", "^"].includes(op) ? { k: "prim", name: "boolean" } : UNTYPED;
+    if (op === "<<" || op === ">>" || op === ">>>") return { k: "prim", name: promote(a) };
+    for (const wide of ["double", "float", "long"]) if (a === wide || b2 === wide) return { k: "prim", name: wide };
+    return { k: "prim", name: "int" };
+  };
+
+  // src/lib/langs/java/generics.ts
+  var typeParamsOf = (T) => {
+    const t = T.file.t;
+    return code(t, child(t, T.node, "type_parameters")).map((tp) => namedChildren(t, tp).find((c) => t.type[c] === "type_identifier") ?? -1).map((id) => id >= 0 ? textOf(t, id) : "");
+  };
+  var classTypeVar = (T, n) => {
+    const t = T.file.t;
+    if (n < 0 || t.type[n] !== "type_identifier") return null;
+    const tp = typeParameterOf(T.file, n, textOf(t, n));
+    return tp >= 0 && t.parent[t.parent[tp]] === T.node ? textOf(t, n) : null;
+  };
+  var sameView = (a, b2) => a?.k === b2?.k && (a?.k === "type" ? a.t === b2.t : a?.name === b2?.name);
+  var viewOf = (X2, C3, name2, depth = 0) => {
+    if (X2 === C3) return { k: "var", name: name2 };
+    if (depth > 20) return null;
+    const t = X2.file.t;
+    let found;
+    for (const sn2 of supertypeNodes(t, X2.node)) {
+      const r = resolveParts(X2.file, sn2, typeParts(t, sn2));
+      if (r.k !== "type" || !closureOf(r.t).keys.has(typeKey(C3))) continue;
+      const up = viewOf(r.t, C3, name2, depth + 1);
+      let here = up?.k === "type" ? up : null;
+      if (up?.k === "var") {
+        const params2 = typeParamsOf(r.t);
+        const generic = t.type[sn2] === "generic_type" ? namedChildren(t, sn2).find((c) => t.type[c] === "type_arguments") : void 0;
+        const args2 = generic === void 0 ? [] : code(t, generic);
+        const arg = args2.length === params2.length ? args2[params2.indexOf(up.name)] ?? -1 : -1;
+        const a = arg >= 0 ? resolveParts(X2.file, arg, typeParts(t, arg)) : NONE;
+        here = a.k === "type" ? { k: "type", t: a.t } : a.k === "param" && classTypeVar(X2, arg) !== null ? { k: "var", name: textOf(t, arg) } : null;
+      }
+      if (found !== void 0 && !sameView(found, here)) return null;
+      found = here;
+    }
+    return found ?? null;
+  };
+  var viewType = (S2, C3, name2, free) => {
+    if (!S2 || !name2 || "fqn" in S2 || "fqn" in C3) return null;
+    const v2 = viewOf(S2, C3, name2);
+    if (v2?.k !== "var") return v2?.k === "type" ? v2.t : null;
+    if (!free) return null;
+    const t = S2.file.t;
+    const tp = code(t, child(t, S2.node, "type_parameters")).find((c) => textOf(t, namedChildren(t, c).find((x2) => t.type[x2] === "type_identifier") ?? c) === v2.name);
+    return tp === void 0 ? null : boundOf(S2.file, tp);
+  };
+  var boundOf = (jf, tp) => {
+    const t = jf.t;
+    const bound = namedChildren(t, tp).find((c) => t.type[c] === "type_bound");
+    const types = bound === void 0 ? [] : code(t, bound);
+    if (types.length !== 1) return null;
+    const r = resolveParts(jf, types[0], typeParts(t, types[0]));
+    return r.k === "type" ? r.t : null;
+  };
+  var fieldType = (S2, fd, free) => fd.type() ?? viewType(S2, fd.owner, fd.typeVar(), free);
+  var fieldStatic = (S2, fd, free) => {
+    const v2 = fd.typeVar() ? viewType(S2, fd.owner, fd.typeVar(), free) : null;
+    return v2 ? refTo(v2) : fd.static();
+  };
+
+  // src/lib/langs/java/signatures.ts
+  var NO_VARS = /* @__PURE__ */ new Set();
+  var constrained = (t, n, lone = NO_VARS) => {
+    const last = lastDescendant(t, n);
+    for (let x2 = n; x2 <= last; x2++) {
+      if (t.type[x2] !== "type_arguments") continue;
+      if (code(t, x2).some((c) => t.type[c] === "wildcard" ? code(t, c).some((b2) => !isAnnotation(t, b2)) : t.type[c] !== "type_identifier" || !lone.has(textOf(t, c)))) return true;
     }
     return false;
   };
-  var KINDS = { class_declaration: "class", interface_declaration: "interface", enum_declaration: "enum", record_declaration: "record", annotation_type_declaration: "annotation" };
-  var TYPES = new Set(Object.keys(KINDS));
-  var BODIES = /* @__PURE__ */ new Set(["class_body", "interface_body", "annotation_type_body", "enum_body_declarations"]);
-  var CONSTRUCTORS = /* @__PURE__ */ new Set(["constructor_declaration", "compact_constructor_declaration"]);
-  var ownerOfBody = (t, body2) => {
-    let p = t.parent[body2];
-    if (t.type[body2] === "enum_body_declarations" && p >= 0) p = t.parent[p];
-    return p >= 0 && TYPES.has(t.type[p]) ? p : -1;
+  var loneVars = (t, decl, params2) => {
+    const tps = child(t, decl, "type_parameters");
+    if (tps < 0) return NO_VARS;
+    const free = /* @__PURE__ */ new Set();
+    for (const tp of code(t, tps)) {
+      const parts2 = code(t, tp).filter((c) => !isAnnotation(t, c));
+      if (t.type[tp] === "type_parameter" && parts2.length === 1 && t.type[parts2[0]] === "type_identifier") free.add(textOf(t, parts2[0]));
+    }
+    if (free.size === 0) return NO_VARS;
+    const seen = /* @__PURE__ */ new Map();
+    for (const p of params2) {
+      const last = lastDescendant(t, p);
+      for (let x2 = p; x2 <= last; x2++) if (t.type[x2] === "type_identifier" && free.has(textOf(t, x2))) seen.set(textOf(t, x2), (seen.get(textOf(t, x2)) ?? 0) + 1);
+    }
+    return new Set([...free].filter((v2) => seen.get(v2) === 1));
   };
-  var isMember = (t, n) => {
+  var keyOfRes = (r) => r.k === "type" ? typeKey(r.t) : r.k === "lib" ? r.lib.fqn : r.k === "none" ? r.fqn ?? null : null;
+  var keyOfParams = (jf, params2) => {
+    const t = jf.t;
+    const keys = [];
+    for (const p of params2) {
+      const spread = t.type[p] === "spread_parameter";
+      const typeNode = spread ? spreadType(t, p) : child(t, p, "type");
+      const k2 = keyOfType(jf, typeNode, (spread ? 1 : 0) + dimsOf(t, child(t, p, "dimensions")));
+      if (k2 === null) return null;
+      keys.push(k2);
+    }
+    return keys.join(",");
+  };
+  var keyOfType = (jf, n, dims, depth = 0) => {
+    const t = jf.t;
+    if (n < 0 || depth > 8) return null;
+    if (isPrimitiveType(t, n)) return textOf(t, n) + "[]".repeat(dims);
+    if (t.type[n] === "array_type") return keyOfType(jf, child(t, n, "element"), dims + dimsOf(t, child(t, n, "dimensions")), depth);
+    const parts2 = typeParts(t, n);
+    const r = parts2.length > 0 ? resolveParts(jf, n, parts2) : NONE;
+    if (r.k === "param") {
+      const tp = typeParameterOf(jf, n, parts2[0]);
+      const bound = tp < 0 ? void 0 : namedChildren(t, tp).find((c) => t.type[c] === "type_bound");
+      return tp < 0 ? null : bound === void 0 ? \`java.lang.Object\${"[]".repeat(dims)}\` : keyOfType(jf, code(t, bound)[0] ?? -1, dims, depth + 1);
+    }
+    const name2 = keyOfRes(r);
+    return name2 === null ? null : name2 + "[]".repeat(dims);
+  };
+  var bindingDims = (t, b2) => {
+    const p = t.parent[b2.node];
+    return t.type[p] === "variable_declarator" && t.type[t.parent[p]] === "spread_parameter" ? 1 : dimsOf(t, child(t, p, "dimensions"));
+  };
+  var writtenKey = (jf, n) => {
+    const t = jf.t;
+    const ty = t.type[n];
+    if (isPrimitiveType(t, n)) return textOf(t, n);
+    if (ty === "annotated_type") {
+      const inner = code(t, n).find((c) => !isAnnotation(t, c));
+      return inner === void 0 ? void 0 : writtenKey(jf, inner);
+    }
+    if (ty === "array_type") {
+      const elem = writtenKey(jf, child(t, n, "element"));
+      return elem === void 0 ? void 0 : elem + "[]".repeat(dimsOf(t, child(t, n, "dimensions")));
+    }
+    if (ty !== "generic_type") {
+      for (let x2 = n; x2 <= lastDescendant(t, n); x2++) if (t.type[x2] === "type_arguments") return void 0;
+    }
+    const parts2 = typeParts(t, n);
+    if (parts2.length === 0) return void 0;
+    const base = keyOfRes(resolveParts(jf, n, parts2)) ?? void 0;
+    if (base === void 0 || ty !== "generic_type") return base;
+    const targs = argsKey(jf, n);
+    return targs === void 0 ? void 0 : base + targs;
+  };
+  var argsKey = (jf, n) => {
+    const t = jf.t;
+    const lists = code(t, n).filter((c) => t.type[c] === "type_arguments");
+    if (lists.length !== 1 || code(t, n).some((c) => t.type[c] === "scoped_type_identifier")) return void 0;
+    const out2 = [];
+    for (const c of code(t, lists[0])) {
+      if (t.type[c] !== "wildcard") {
+        const k3 = writtenKey(jf, c);
+        if (k3 === void 0) return void 0;
+        out2.push(k3);
+        continue;
+      }
+      const bound = code(t, c).filter((b2) => !isAnnotation(t, b2));
+      if (bound.length === 0) {
+        out2.push("?");
+        continue;
+      }
+      const k2 = writtenKey(jf, bound[bound.length - 1]);
+      if (k2 === void 0) return void 0;
+      out2.push(\`? \${hasToken(t, c, "super") ? "super" : "extends"} \${k2}\`);
+    }
+    return \`<\${out2.join(",")}>\`;
+  };
+  var arrayOf = (elem, dims) => dims > 0 ? arrayOf({ k: "array", elem }, dims - 1) : elem;
+  var staticType = (jf, n, dims = 0, lone = NO_VARS) => {
+    const t = jf.t;
+    if (n < 0) return UNTYPED;
+    if (isPrimitiveType(t, n)) return arrayOf({ k: "prim", name: textOf(t, n) }, dims);
+    if (t.type[n] === "array_type") return staticType(jf, child(t, n, "element"), dims + dimsOf(t, child(t, n, "dimensions")));
+    const parts2 = typeParts(t, n);
+    if (parts2.length === 0) return UNTYPED;
+    const r = resolveParts(jf, n, parts2);
+    const targs = constrained(t, n, lone) && t.type[n] === "generic_type" ? argsKey(jf, n) : void 0;
+    const args2 = constrained(t, n, lone) ? { args: true, ...targs !== void 0 ? { targs } : {} } : {};
+    const base = r.k === "type" ? { k: "ref", key: typeKey(r.t), type: r.t, ...args2 } : r.k === "lib" ? { k: "ref", key: r.lib.fqn, type: r.lib, ...args2 } : r.k === "param" ? { k: "var" } : r.k === "none" && r.fqn ? { k: "ref", key: r.fqn, ...args2 } : UNTYPED;
+    return arrayOf(base, dims);
+  };
+  var paramTypes = (jf, params2, lone = NO_VARS) => params2.map((p) => {
+    const t = jf.t;
+    return t.type[p] === "spread_parameter" ? staticType(jf, spreadType(t, p), 1, lone) : staticType(jf, child(t, p, "type"), dimsOf(t, child(t, p, "dimensions")), lone);
+  });
+
+  // src/lib/langs/java/members.ts
+  var recordComponents = (T) => parametersOf(T.file.t, T.node);
+  var declaredMethod = (T, decl, components2) => {
+    const t = T.file.t;
+    const ty = t.type[decl];
+    const ps = parametersOf(t, decl);
+    const compact2 = ty === "compact_constructor_declaration";
+    const isStatic = hasModifier(t, decl, "static");
+    const iface = isIface(T);
+    return {
+      name: CONSTRUCTORS.has(ty) ? T.name : textOf(t, child(t, decl, "name")),
+      owner: T,
+      node: decl,
+      unit: T.file.f.unitByNode.get(decl),
+      n: compact2 ? components2.length : ps.length,
+      varargs: (compact2 ? components2 : ps).some((c) => t.type[c] === "spread_parameter"),
+      isStatic,
+      abstract: ty === "annotation_type_element_declaration" || hasModifier(t, decl, "abstract") || iface && child(t, decl, "body") < 0 && !isStatic && !hasModifier(t, decl, "default") && !hasModifier(t, decl, "private"),
+      access: accessOf(t, decl, iface),
+      key: once(() => keyOfParams(T.file, compact2 ? components2 : ps)),
+      params: once(() => compact2 ? paramTypes(T.file, components2) : paramTypes(T.file, ps, loneVars(t, decl, ps)))
+    };
+  };
+  var declaredField = (T, typeNode, dims, isStatic, access2) => ({
+    owner: T,
+    access: access2,
+    isStatic,
+    type: once(() => typeNode >= 0 && dims === 0 ? typeOfNode(T.file, typeNode) : null),
+    static: once(() => staticType(T.file, typeNode, dims)),
+    typeVar: once(() => dims === 0 && !isStatic ? classTypeVar(T, typeNode) : null)
+  });
+  var implicitMethod = (T, name2, n, isStatic, key, at2) => ({
+    name: name2,
+    owner: T,
+    node: at2?.node ?? -1,
+    unit: at2?.unit,
+    n,
+    varargs: false,
+    isStatic,
+    abstract: false,
+    access: "public",
+    key: () => key,
+    params: () => key ? key.split(",").map(libParam) : []
+  });
+  var membersOf2 = memoize(
+    (T) => {
+      const found = { methods: /* @__PURE__ */ new Map(), ctors: [], fields: /* @__PURE__ */ new Map() };
+      const t = T.file.t;
+      const iface = isIface(T);
+      const addMethod = (m2) => pushTo(found.methods, m2.name, m2);
+      const components2 = T.kind === "record" ? recordComponents(T) : [];
+      for (const c of memberNodes(T)) {
+        const ty = t.type[c];
+        if (ty === "method_declaration" || ty === "annotation_type_element_declaration") addMethod(declaredMethod(T, c, components2));
+        else if (CONSTRUCTORS.has(ty)) found.ctors.push(declaredMethod(T, c, components2));
+        else if (ty === "field_declaration" || ty === "constant_declaration") {
+          for (let d = t.first[c]; d >= 0; d = t.next[d]) {
+            const name2 = t.field[d] === "declarator" ? child(t, d, "name") : -1;
+            if (name2 >= 0) found.fields.set(textOf(t, name2), declaredField(T, child(t, c, "type"), dimsOf(t, child(t, d, "dimensions")), iface || hasModifier(t, c, "static"), accessOf(t, c, iface)));
+          }
+        } else if (ty === "enum_constant") found.fields.set(textOf(t, child(t, c, "name")), { owner: T, access: "public", isStatic: true, type: () => T, static: () => refTo(T), typeVar: () => null });
+      }
+      if (T.kind === "enum") {
+        addMethod(implicitMethod(T, "values", 0, true, ""));
+        addMethod(implicitMethod(T, "valueOf", 1, true, "java.lang.String"));
+      }
+      for (const c of components2) {
+        const name2 = textOf(t, componentName(t, c));
+        found.fields.set(name2, declaredField(T, t.type[c] === "formal_parameter" ? child(t, c, "type") : -1, 0, false, "private"));
+        if (!(found.methods.get(name2) ?? []).some((m2) => m2.n === 0)) addMethod(implicitMethod(T, name2, 0, false, "", { node: c, unit: T.unit }));
+      }
+      return found;
+    },
+    { cache: /* @__PURE__ */ new WeakMap() }
+  );
+  var componentName = (t, c) => {
+    const name2 = child(t, c, "name");
+    return name2 >= 0 ? name2 : namedChildren(t, namedChildren(t, c).find((x2) => t.type[x2] === "variable_declarator") ?? -1)[0] ?? c;
+  };
+  var libMethods = memoize(
+    (x2) => {
+      const made = /* @__PURE__ */ new Map();
+      for (const m2 of x2.methods) pushTo(made, m2.name, { ...m2, owner: x2, node: -1, unit: void 0, key: () => m2.key, params: once(() => m2.params.map(libParam)) });
+      return made;
+    },
+    { cache: /* @__PURE__ */ new WeakMap() }
+  );
+  var declaredMethods = (x2, name2) => ("fqn" in x2 ? libMethods(x2).get(name2) : membersOf2(x2).methods.get(name2)) ?? [];
+  var methodCache = /* @__PURE__ */ new WeakMap();
+  var methodsOf = (x2, name2) => {
+    let byName = methodCache.get(x2);
+    if (!byName) methodCache.set(x2, byName = /* @__PURE__ */ new Map());
+    const hit = byName.get(name2);
+    if (hit) return hit;
+    byName.set(name2, { list: [], complete: false });
+    const own = declaredMethods(x2, name2);
+    let complete = "fqn" in x2 ? x2.members : !openOf(x2);
+    const inherited = [];
+    for (const s of supersOf(x2)) {
+      if (!s) {
+        complete = false;
+        continue;
+      }
+      const set = methodsOf(s, name2);
+      if (!set.complete) complete = false;
+      for (const m2 of set.list) if (inherits(x2, m2) && !(m2.isStatic && isIface(m2.owner)) && !inherited.includes(m2)) inherited.push(m2);
+    }
+    const same = (a, b2) => a.n === b2.n && a.varargs === b2.varargs && a.key() !== null && a.key() === b2.key();
+    const all2 = [...own, ...inherited.filter((m2) => !own.some((d) => same(d, m2)))];
+    const found = { list: all2.filter((m2) => !(isIface(m2.owner) && all2.some((c) => c !== m2 && !isIface(c.owner) && !c.abstract && same(c, m2)))), complete };
+    byName.set(name2, found);
+    return found;
+  };
+  var fieldOf = (x2, name2, depth = 0) => {
+    if (depth > 40) return { complete: false };
+    if ("fqn" in x2) {
+      if (x2.fields.has(name2)) return { found: "unknown", complete: true };
+      if (!x2.members) return { complete: false };
+    } else {
+      const own = membersOf2(x2).fields.get(name2);
+      if (own) return { found: own, complete: true };
+      if (openOf(x2)) return { complete: false };
+    }
+    let complete = true;
+    let found;
+    for (const s of supersOf(x2)) {
+      if (!s) {
+        complete = false;
+        continue;
+      }
+      const m2 = fieldOf(s, name2, depth + 1);
+      if (!m2.complete) complete = false;
+      if (m2.found === void 0 || m2.found !== "unknown" && !inherits(x2, m2.found)) continue;
+      found = found === void 0 || found === m2.found ? m2.found : "unknown";
+    }
+    return { ...found !== void 0 ? { found } : {}, complete };
+  };
+
+  // src/lib/langs/java/expressions.ts
+  var UNSURE = { k: "unknown" };
+  var typeOf = (v2) => v2.k === "value" ? v2.t : v2.k === "type" && v2.res.k === "type" ? v2.res.t : null;
+  var STRING = { k: "ref", key: "java.lang.String" };
+  var BOOLEAN = { k: "prim", name: "boolean" };
+  var exprType = perNode(UNTYPED, (jf, e) => {
+    const t = jf.t;
+    if (e < 0) return UNTYPED;
+    const text = () => textOf(t, e);
+    switch (t.type[e]) {
+      case "decimal_integer_literal":
+      case "hex_integer_literal":
+      case "octal_integer_literal":
+      case "binary_integer_literal":
+        return { k: "prim", name: /[lL]$/.test(text()) ? "long" : "int" };
+      case "decimal_floating_point_literal":
+      case "hex_floating_point_literal":
+        return { k: "prim", name: /[fF]$/.test(text()) ? "float" : "double" };
+      case "character_literal":
+        return { k: "prim", name: "char" };
+      case "true":
+      case "false":
+      case "instanceof_expression":
+        return BOOLEAN;
+      case "string_literal":
+        return STRING;
+      case "null_literal":
+        return { k: "null" };
+      case "class_literal":
+        return { k: "ref", key: "java.lang.Class" };
+      case "lambda_expression": {
+        const ps = child(t, e, "parameters");
+        return { k: "fn", arity: ps < 0 ? 0 : t.type[ps] === "identifier" ? 1 : namedChildren(t, ps).filter((c) => t.type[c] === "identifier" || t.type[c] === "formal_parameter" || t.type[c] === "spread_parameter").length };
+      }
+      case "method_reference":
+        return { k: "fn", arity: null };
+      case "this": {
+        const c = classAround(jf, e);
+        return c ? refTo(c) : UNTYPED;
+      }
+      case "parenthesized_expression":
+        return exprType(jf, code(t, e)[0] ?? -1);
+      case "cast_expression": {
+        const types = namedChildren(t, e).filter((c) => t.field[c] === "type");
+        return types.length === 1 ? staticType(jf, types[0]) : UNTYPED;
+      }
+      case "object_creation_expression": {
+        const body2 = anonymousBody(t, e);
+        const anon = body2 !== void 0 ? jf.byNode.get(body2) : void 0;
+        if (anon) return refTo(anon);
+        return qualifiedCreation(t, e) ? UNTYPED : staticType(jf, child(t, e, "type"));
+      }
+      case "array_creation_expression":
+        return staticType(jf, child(t, e, "type"), namedChildren(t, e).filter((c) => t.field[c] === "dimensions").reduce((n, c) => n + dimsOf(t, c), 0));
+      case "identifier":
+        return variableType(jf, e, text());
+      case "field_access": {
+        const obj = child(t, e, "object");
+        const field = child(t, e, "field");
+        if (t.type[field] === "this") {
+          const q2 = exprVal(jf, obj);
+          return q2.k === "type" && q2.res.k === "type" ? refTo(q2.res.t) : UNTYPED;
+        }
+        const T = typeOf(t.type[obj] === "super" ? superVal(jf, obj) : exprVal(jf, obj));
+        const fd = T ? fieldOf(T, textOf(t, field)) : { complete: false };
+        const self2 = selfOf(jf, obj);
+        return T && fd.found && fd.found !== "unknown" ? fieldStatic(self2 ?? T, fd.found, self2 !== null) : UNTYPED;
+      }
+      case "method_invocation": {
+        const m2 = callOf(jf, child(t, e, "name"));
+        if (!m2 || m2.node < 0 || "fqn" in m2.owner) return UNTYPED;
+        const rt2 = child(m2.owner.file.t, m2.node, "type");
+        const bound = resultView(jf, child(t, e, "name"), m2, rt2);
+        return bound ? refTo(bound) : rt2 >= 0 ? staticType(m2.owner.file, rt2) : UNTYPED;
+      }
+      case "array_access": {
+        const a = exprType(jf, child(t, e, "array"));
+        return a.k === "array" ? a.elem : UNTYPED;
+      }
+      case "binary_expression": {
+        const op = t.type[child(t, e, "operator")];
+        if (["==", "!=", "<", ">", "<=", ">=", "&&", "||"].includes(op)) return BOOLEAN;
+        const a = exprType(jf, child(t, e, "left"));
+        const b2 = exprType(jf, child(t, e, "right"));
+        if (op === "+" && (a.k === "ref" && a.key === STRING.key || b2.k === "ref" && b2.key === STRING.key)) return STRING;
+        return a.k === "prim" && b2.k === "prim" ? promoted(a.name, b2.name, op) : UNTYPED;
+      }
+      case "unary_expression": {
+        const op = t.type[child(t, e, "operator")];
+        if (op === "!") return BOOLEAN;
+        const a = exprType(jf, child(t, e, "operand"));
+        return a.k === "prim" && a.name !== "boolean" ? { k: "prim", name: promote(a.name) } : UNTYPED;
+      }
+      case "update_expression":
+        return exprType(jf, code(t, e)[0] ?? -1);
+      case "assignment_expression":
+        return exprType(jf, child(t, e, "left"));
+      case "ternary_expression": {
+        const a = exprType(jf, child(t, e, "consequence"));
+        const b2 = exprType(jf, child(t, e, "alternative"));
+        return sameType(a, b2) ? a : UNTYPED;
+      }
+      default:
+        return UNTYPED;
+    }
+  });
+  var variableAt = (jf, n, name2) => {
+    const at2 = jf.t.start[n];
+    for (let s = scopeOf(jf, n); s; s = s.parent) {
+      const vs = variablesSeen(jf, s, name2, at2);
+      if (vs.length > 0) return vs.length === 1 ? { k: "binding", b: vs[0] } : { k: "unsure" };
+      if (s.kind === "class") {
+        const T = jf.byNode.get(s.node);
+        if (!T) return { k: "unsure" };
+        if (!inBody(T, n)) continue;
+        const fd = fieldOf(T, name2);
+        if (fd.found !== void 0) return { k: "field", T, fd: fd.found };
+        if (!fd.complete) return { k: "unsure" };
+      }
+      if (s.kind === "module") break;
+    }
+    return { k: "imports" };
+  };
+  var variableType = (jf, n, name2) => {
+    const v2 = variableAt(jf, n, name2);
+    if (v2.k === "binding") return v2.b.typeNode !== void 0 ? staticType(jf, v2.b.typeNode, bindingDims(jf.t, v2.b)) : v2.b.init !== void 0 ? exprType(jf, v2.b.init) : UNTYPED;
+    if (v2.k === "field") return v2.fd === "unknown" ? UNTYPED : fieldStatic(v2.T, v2.fd, true);
+    if (v2.k === "unsure") return UNTYPED;
+    const sf = staticField(jf, name2);
+    return sf && sf !== "unknown" ? sf.static() : UNTYPED;
+  };
+  var nameVal = (jf, n, name2) => {
+    const v2 = variableAt(jf, n, name2);
+    if (v2.k === "binding") return { k: "value", t: typeOfBinding(jf, v2.b) };
+    if (v2.k === "field") return { k: "value", t: v2.fd === "unknown" ? null : fieldType(v2.T, v2.fd, true) };
+    if (v2.k === "unsure") return UNSURE;
+    const sf = staticField(jf, name2);
+    if (sf === null) return UNSURE;
+    if (sf !== void 0) return { k: "value", t: sf === "unknown" ? null : sf.type() };
+    const res = typeName2(jf, n, name2);
+    if (res.k === "none" && !res.fqn) return { k: "package", name: name2 };
+    return res.k === "param" || res.k === "unknown" ? UNSURE : { k: "type", res };
+  };
+  var staticField = (jf, name2) => {
+    for (const i2 of jf.statics.filter((i3) => i3.local === name2)) {
+      const c = ownerOf(fqnType(jf, namesOf(i2.spec), true));
+      if (!c) return null;
+      const fd = fieldOf(c, name2);
+      if (fd.found !== void 0 && (fd.found === "unknown" || fd.found.isStatic)) return fd.found;
+      if (!fd.complete) return null;
+    }
+    let found;
+    let known = true;
+    for (const i2 of jf.staticStars) {
+      const c = ownerOf(fqnType(jf, namesOf(i2.spec), true));
+      const fd = c ? fieldOf(c, name2) : { complete: false };
+      if (fd.found !== void 0 && (fd.found === "unknown" || fd.found.isStatic)) {
+        if (found !== void 0 && found !== fd.found) return null;
+        found = fd.found;
+      } else if (!fd.complete) known = false;
+    }
+    return found ?? (known ? void 0 : null);
+  };
+  var typeOfBinding = (jf, b2) => {
+    if (b2.typeNode !== void 0) {
+      if (bindingDims(jf.t, b2) > 0) return null;
+      const t = jf.t;
+      const tp = t.type[b2.typeNode] === "type_identifier" ? typeParameterOf(jf, b2.typeNode, textOf(t, b2.typeNode)) : -1;
+      return tp >= 0 ? boundOf(jf, tp) : typeOfNode(jf, b2.typeNode);
+    }
+    if (b2.init === void 0) return null;
+    const v2 = exprVal(jf, b2.init);
+    return v2.k === "value" ? v2.t : null;
+  };
+  var exprVal = perNode(UNSURE, (jf, e) => {
+    const t = jf.t;
+    switch (t.type[e]) {
+      case "this":
+        return { k: "value", t: classAround(jf, e) };
+      case "identifier":
+        return nameVal(jf, e, textOf(t, e));
+      case "type_identifier":
+      case "generic_type":
+      case "scoped_type_identifier":
+        return { k: "type", res: resolveParts(jf, e, typeParts(t, e)) };
+      case "parenthesized_expression":
+        return exprVal(jf, code(t, e)[0] ?? -1);
+      case "cast_expression": {
+        const types = namedChildren(t, e).filter((c) => t.field[c] === "type");
+        return types.length === 1 ? { k: "value", t: typeOfNode(jf, types[0]) } : UNSURE;
+      }
+      case "object_creation_expression": {
+        const body2 = anonymousBody(t, e);
+        if (body2 !== void 0) return { k: "value", t: jf.byNode.get(body2) ?? null };
+        return qualifiedCreation(t, e) ? UNSURE : { k: "value", t: typeOfNode(jf, child(t, e, "type")) };
+      }
+      case "field_access": {
+        const obj = child(t, e, "object");
+        const field = child(t, e, "field");
+        if (t.type[field] === "this") {
+          const q2 = exprVal(jf, obj);
+          return q2.k === "type" && q2.res.k === "type" ? { k: "value", t: q2.res.t } : UNSURE;
+        }
+        return memberVal(jf, t.type[obj] === "super" ? superVal(jf, obj) : exprVal(jf, obj), textOf(t, field), selfOf(jf, obj));
+      }
+      case "method_invocation": {
+        const m2 = callOf(jf, child(t, e, "name"));
+        if (!m2 || m2.node < 0 || "fqn" in m2.owner) return UNSURE;
+        const i2 = child(t, e, "type_arguments") < 0 ? identityArg(m2) : -1;
+        if (i2 >= 0) {
+          const v2 = exprVal(jf, code(t, child(t, e, "arguments"))[i2] ?? -1);
+          return v2.k === "value" ? v2 : UNSURE;
+        }
+        const rt2 = child(m2.owner.file.t, m2.node, "type");
+        const bound = resultView(jf, child(t, e, "name"), m2, rt2);
+        return { k: "value", t: bound ?? (rt2 >= 0 ? typeOfNode(m2.owner.file, rt2) : null) };
+      }
+      default:
+        return UNSURE;
+    }
+  });
+  var identityArg = (m2) => {
+    if ("fqn" in m2.owner || m2.node < 0 || m2.varargs) return -1;
+    const t = m2.owner.file.t;
+    const rt2 = child(t, m2.node, "type");
+    if (rt2 < 0 || t.type[rt2] !== "type_identifier") return -1;
+    const name2 = textOf(t, rt2);
+    if (!namedChildren(t, child(t, m2.node, "type_parameters")).some((tp) => namedChildren(t, tp).some((c) => t.type[c] === "type_identifier" && textOf(t, c) === name2))) return -1;
+    const names = (n) => n >= 0 && (t.type[n] === "type_identifier" && textOf(t, n) === name2 || namedChildren(t, n).some(names));
+    let at2 = -1;
+    for (const [i2, p] of namedChildren(t, child(t, m2.node, "parameters")).filter((c) => t.type[c] === "formal_parameter").entries()) {
+      const ty = child(t, p, "type");
+      if (t.type[ty] === "type_identifier" && textOf(t, ty) === name2 && child(t, p, "dimensions") < 0) {
+        if (at2 >= 0) return -1;
+        at2 = i2;
+      } else if (names(ty)) return -1;
+    }
+    return at2;
+  };
+  var superVal = (jf, n) => {
+    const c = classAround(jf, n);
+    const s = c ? superclassOf(c) : null;
+    return s && !("fqn" in s) ? { k: "value", t: s } : UNSURE;
+  };
+  var memberVal = (jf, q2, name2, self2) => {
+    if (q2.k === "package") {
+      const res = fqnType(jf, [...q2.name.split("."), name2]);
+      return res.k === "none" && !/^[A-Z]/.test(name2) ? { k: "package", name: \`\${q2.name}.\${name2}\` } : res.k === "type" ? { k: "type", res } : UNSURE;
+    }
+    const T = typeOf(q2);
+    if (!T) return UNSURE;
+    const fd = fieldOf(T, name2);
+    if (fd.found !== void 0) return { k: "value", t: fd.found === "unknown" ? null : fieldType(self2 ?? T, fd.found, self2 !== null) };
+    if (!fd.complete || q2.k !== "type") return UNSURE;
+    const m2 = memberType(T, name2);
+    return m2.found !== void 0 ? { k: "type", res: m2.found } : UNSURE;
+  };
+  var selfOf = (jf, q2) => {
+    const t = jf.t;
+    if (t.type[q2] === "this" || t.type[q2] === "super") return classAround(jf, q2);
+    if (t.type[q2] !== "field_access" || t.type[child(t, q2, "field")] !== "this") return null;
+    const v2 = exprVal(jf, q2);
+    return v2.k === "value" ? v2.t : null;
+  };
+
+  // src/lib/langs/java/overloads.ts
+  var refType = (s) => s.type ?? libNamed(s.key);
+  var fits = (a, p, loose) => {
+    if (a.k === "unknown" || p.k === "unknown" || p.k === "null" || p.k === "fn") return "maybe";
+    if (a.k === "fn") return p.k === "var" ? "maybe" : p.k === "ref" ? takesFn(p, a.arity) : "no";
+    if (p.k === "var") return a.k === "prim" && !loose ? "no" : "maybe";
+    if (a.k === "var") return p.k === "prim" ? loose ? "maybe" : "no" : "maybe";
+    if (a.k === "null") return p.k === "prim" ? "no" : "yes";
+    if (a.k === "prim") {
+      if (p.k === "prim") return widens(a.name, p.name) ? "yes" : "no";
+      if (!loose || p.k === "array") return "no";
+      return fits({ k: "ref", key: BOXES[a.name] }, p, true);
+    }
+    if (p.k === "prim") {
+      if (!loose || a.k === "array") return "no";
+      const prim = UNBOXED[a.key];
+      return prim && widens(prim, p.name) ? "yes" : "no";
+    }
+    if (a.k === "array") {
+      if (p.k === "array") return a.elem.k === "prim" || p.elem.k === "prim" ? a.elem.k === "prim" && p.elem.k === "prim" ? a.elem.name === p.elem.name ? "yes" : "no" : sameType(a.elem, p.elem) ? "yes" : "no" : fits(a.elem, p.elem, false);
+      return ARRAY_SUPERTYPES.has(p.key) ? "yes" : "no";
+    }
+    if (p.k === "array") return "no";
+    if (p.args && p.targs !== void 0 && a.key === p.key && a.targs === p.targs) return "yes";
+    const yes = p.args ? "maybe" : "yes";
+    if (a.key === p.key || p.key === "java.lang.Object") return yes;
+    const pt2 = refType(p);
+    const final = pt2 !== void 0 && isFinal(pt2);
+    const at2 = refType(a);
+    if (!at2) return final ? "no" : "maybe";
+    const c = closureOf(at2);
+    return c.keys.has(p.key) ? yes : c.complete || final ? "no" : "maybe";
+  };
+  var FINAL_LIB = /* @__PURE__ */ new Set(["java.lang.String", "java.lang.Class", "java.lang.StringBuilder", "java.lang.StringBuffer", "java.util.Optional", ...Object.values(BOXES)]);
+  var isFinal = (x2) => "fqn" in x2 ? FINAL_LIB.has(x2.fqn) : x2.kind === "enum" || x2.kind === "record" || x2.kind === "class" && hasModifier(x2.file.t, x2.node, "final");
+  var takesFn = (p, arity2) => {
+    const x2 = refType(p);
+    if (!x2) return "maybe";
+    if (!isIface(x2)) return "no";
+    const shape = fnShape(x2);
+    if (!shape) return "maybe";
+    if (shape.length !== 1) return "no";
+    return arity2 === null || shape[0].some((m2) => m2.varargs || m2.n === arity2) ? "maybe" : "no";
+  };
+  var OBJECT_PUBLIC = /* @__PURE__ */ new Set(["equals/1", "hashCode/0", "toString/0", "getClass/0", "notify/0", "notifyAll/0", "wait/0", "wait/1", "wait/2"]);
+  var shapes = /* @__PURE__ */ new WeakMap();
+  var fnShape = (x2) => {
+    if (shapes.has(x2)) return shapes.get(x2);
+    shapes.set(x2, null);
+    const names = /* @__PURE__ */ new Set();
+    const seen = /* @__PURE__ */ new Set();
+    const walk = (y2) => {
+      if (!y2) return false;
+      if (seen.has(y2)) return true;
+      seen.add(y2);
+      if ("fqn" in y2) {
+        if (!y2.members) return false;
+        for (const m2 of y2.methods) names.add(m2.name);
+      } else for (const name2 of membersOf2(y2).methods.keys()) names.add(name2);
+      return supersOf(y2).every(walk);
+    };
+    let shape = walk(x2) ? [] : null;
+    for (const name2 of names) {
+      if (!shape) break;
+      const set = methodsOf(x2, name2);
+      const live = set.list.filter((m2) => !m2.isStatic && !OBJECT_PUBLIC.has(\`\${m2.name}/\${m2.n}\`));
+      const abstract = live.filter((m2) => m2.abstract);
+      if (!set.complete || live.some((m2) => !m2.abstract && abstract.some((a) => a.n === m2.n && (a.key() === null || m2.key() === null)))) shape = null;
+      else if (abstract.length > 0) shape.push(abstract);
+    }
+    shapes.set(x2, shape);
+    return shape;
+  };
+  var applies = (m2, args2, phase) => {
+    const ps = m2.params();
+    if (phase < 3 ? ps.length !== args2.length : !m2.varargs || args2.length < ps.length - 1) return "no";
+    const last = ps[ps.length - 1];
+    let all2 = "yes";
+    for (let i2 = 0; i2 < args2.length; i2++) {
+      const p = phase === 3 && i2 >= ps.length - 1 ? last.k === "array" ? last.elem : last.k === "var" ? last : UNTYPED : ps[i2];
+      const f2 = fits(args2[i2], p, phase > 1);
+      if (f2 === "no") return "no";
+      if (f2 === "maybe") all2 = "maybe";
+    }
+    return all2;
+  };
+  var mayApply = (m2, args2) => applies(m2, args2, 1) !== "no" || applies(m2, args2, 2) !== "no" || applies(m2, args2, 3) !== "no";
+  var subtype = (a, b2) => {
+    if (a.k === "prim" && b2.k === "prim") return widens(a.name, b2.name);
+    if (b2.k === "ref" && b2.args) return a.k === "ref" && a.key === b2.key && b2.targs !== void 0 && a.targs === b2.targs;
+    if (a.k === "array" && b2.k === "array") return a.elem.k === "prim" ? sameType(a.elem, b2.elem) : subtype(a.elem, b2.elem);
+    if (a.k === "array" && b2.k === "ref") return ARRAY_SUPERTYPES.has(b2.key);
+    if (a.k !== "ref" || b2.k !== "ref") return false;
+    if (a.key === b2.key || b2.key === "java.lang.Object") return true;
+    const at2 = refType(a);
+    return !!at2 && closureOf(at2).keys.has(b2.key);
+  };
+  var moreSpecific = (m2, o) => {
+    const a = m2.params();
+    const b2 = o.params();
+    return a.length === b2.length && a.every((p, i2) => subtype(p, b2[i2]));
+  };
+  var byArguments = (cands, args2) => {
+    const first = cands.map((m2) => applies(m2, args2, 1));
+    if (first.includes("yes")) {
+      const may = cands.filter((_2, i2) => first[i2] !== "no");
+      if (may.length === 1) return may[0];
+      const best = may.filter((m2) => first[cands.indexOf(m2)] === "yes" && may.every((o) => o === m2 || moreSpecific(m2, o) && !moreSpecific(o, m2)));
+      return best.length === 1 ? best[0] : null;
+    }
+    const any = cands.filter((m2) => mayApply(m2, args2));
+    return any.length === 1 ? any[0] : null;
+  };
+  var reachable = (list, k2) => {
+    if (k2 === null) return [...list];
+    const fixed = list.filter((m2) => !m2.varargs && m2.n === k2);
+    return k2 === 0 && fixed.length === 1 ? fixed : list.filter((m2) => m2.varargs ? k2 >= m2.n - 1 : k2 === m2.n);
+  };
+
+  // src/lib/langs/java/calls.ts
+  var argTypes = (jf, call) => code(jf.t, child(jf.t, call, "arguments")).map((a) => exprType(jf, a));
+  var receiverOf = (q2, self2, T) => self2 ? { kind: "self", view: self2 } : q2.k === "type" ? { kind: "type" } : { kind: "expr", type: T };
+  var receivers = /* @__PURE__ */ new WeakMap();
+  var resultView = (jf, nameNode, m2, rt2) => {
+    const recv = receivers.get(jf)?.get(nameNode);
+    if (!recv || recv.kind === "type" || "fqn" in m2.owner) return null;
+    return viewType(recv.kind === "self" ? recv.view : recv.type, m2.owner, classTypeVar(m2.owner, rt2), recv.kind === "self");
+  };
+  var pick = (jf, n, owner, set, k2, recv) => {
+    const m2 = pickFrom(jf, n, owner, set, k2, recv);
+    if (m2) {
+      let byNode = receivers.get(jf);
+      if (!byNode) receivers.set(jf, byNode = /* @__PURE__ */ new Map());
+      byNode.set(n, recv);
+    }
+    return m2;
+  };
+  var pickFrom = (jf, n, owner, set, k2, recv) => {
+    const call = jf.t.parent[n];
+    if (k2 !== null && gapIn(jf.t, child(jf.t, call, "arguments"))) return null;
+    const usable2 = set.list.map((m3) => ({ m: m3, a: access(jf, n, m3, recv) })).filter((x2) => x2.a !== "no");
+    const possible = reachable(usable2.map((x2) => x2.m), k2);
+    if (usable2.some((x2) => x2.a === "maybe" && possible.includes(x2.m))) return null;
+    if (possible.length > 1) return set.complete && k2 !== null ? byArguments(possible, argTypes(jf, call)) : null;
+    if (possible.length !== 1) return null;
+    const m2 = possible[0];
+    if (k2 !== null && !mayApply(m2, argTypes(jf, call))) return null;
+    if (set.complete) return m2;
+    if (k2 !== 0 || m2.varargs || m2.n !== 0) return null;
+    for (let s = owner; s; s = superclassOf(s)) {
+      if (s === m2.owner) return s === owner || !m2.abstract ? m2 : null;
+      if (!("fqn" in s) && openOf(s)) return null;
+    }
+    return null;
+  };
+  var callOf = perNode(null, (jf, nameNode) => {
+    const t = jf.t;
+    const call = t.parent[nameNode];
+    const name2 = textOf(t, nameNode);
+    const k2 = argCount(t, call);
+    const obj = child(t, call, "object");
+    const sup = namedChildren(t, call).find((c) => t.type[c] === "super" && t.field[c] !== "object");
+    if (sup !== void 0) {
+      const q3 = exprVal(jf, obj);
+      const X2 = q3.k === "type" && q3.res.k === "type" ? q3.res.t : null;
+      const target = X2 ? isIface(X2) ? X2 : superclassOf(X2) : null;
+      return target ? pick(jf, nameNode, target, methodsOf(target, name2), k2, { kind: "self", view: null }) : null;
+    }
+    if (obj < 0) return unqualified(jf, nameNode, name2, k2);
+    const q2 = t.type[obj] === "super" ? superVal(jf, obj) : exprVal(jf, obj);
+    const T = typeOf(q2);
+    if (!T) return null;
+    const self2 = selfOf(jf, obj);
+    return pick(jf, nameNode, T, methodsOf(T, name2), k2, receiverOf(q2, self2, T));
+  });
+  var unqualified = (jf, n, name2, k2) => {
+    for (let s = scopeOf(jf, n); s; s = s.parent) {
+      if (s.kind !== "class") continue;
+      const T = jf.byNode.get(s.node);
+      if (!T) return null;
+      const set = methodsOf(T, name2);
+      if (set.list.length > 0) return pick(jf, n, T, set, k2, { kind: "self", view: T });
+      if (!set.complete) return null;
+    }
+    if (gapIn(jf.t, child(jf.t, jf.t.parent[n], "arguments"))) return null;
+    const candidates = [];
+    let complete = true;
+    for (const i2 of jf.statics.filter((i3) => i3.local === name2)) {
+      const c = fqnType(jf, namesOf(i2.spec), true);
+      if (c.k !== "type") return null;
+      const set = methodsOf(c.t, name2);
+      if (!set.complete) complete = false;
+      candidates.push(...set.list.filter((m2) => m2.isStatic));
+    }
+    const singles = candidates.length;
+    for (const i2 of jf.staticStars) {
+      const c = fqnType(jf, namesOf(i2.spec), true);
+      if (c.k !== "type") {
+        complete = false;
+        continue;
+      }
+      const set = methodsOf(c.t, name2);
+      if (!set.complete) complete = false;
+      for (const m2 of set.list) if (m2.isStatic && !candidates.slice(0, singles).some((x2) => x2.n === m2.n && x2.key() !== null && x2.key() === m2.key())) candidates.push(m2);
+    }
+    const possible = reachable(candidates.filter((m2) => importable(jf, m2)), k2);
+    const args2 = argTypes(jf, jf.t.parent[n]);
+    if (possible.length > 1 && complete) return byArguments(possible, args2);
+    if (possible.length !== 1 || !mayApply(possible[0], args2)) return null;
+    return complete || k2 === 0 && possible[0].n === 0 && !possible[0].varargs && candidates.indexOf(possible[0]) < singles ? possible[0] : null;
+  };
+  var ctorOf = (jf, n, T, k2, how, call = -1) => {
+    if (T.kind !== "class" && T.kind !== "record" || openOf(T)) return [];
+    if (call >= 0 && gapIn(jf.t, child(jf.t, call, "arguments"))) return [];
+    const reached = (c) => c.access === "protected" ? pkgOf(T) === jf.pkg || how === "super" || how === "anonymous" || how === "this" : access(jf, n, c, { kind: "type" }) === "yes";
+    const ctors = membersOf2(T).ctors.filter(reached);
+    const implicit = (params2, count2, varargs) => ({ name: T.name, owner: T, node: -1, unit: T.unit, n: count2, varargs, isStatic: false, abstract: false, access: "public", key: () => null, params: params2 });
+    if (T.kind === "class" && membersOf2(T).ctors.length === 0) ctors.push(implicit(() => [], 0, false));
+    if (T.kind === "record") {
+      const components2 = recordComponents(T);
+      const key = keyOfParams(T.file, components2);
+      const varargs = components2.some((c) => T.file.t.type[c] === "spread_parameter");
+      if (!membersOf2(T).ctors.some((c) => T.file.t.type[c.node] === "compact_constructor_declaration" || c.n === components2.length && key !== null && c.key() === key)) ctors.push(implicit(once(() => paramTypes(T.file, components2)), components2.length, varargs));
+    }
+    const possible = reachable(ctors, k2);
+    const args2 = call >= 0 ? argTypes(jf, call) : null;
+    const one = possible.length > 1 ? args2 ? byArguments(possible, args2) : null : possible.length === 1 && (!args2 || mayApply(possible[0], args2)) ? possible[0] : null;
+    const unit5 = one?.unit ?? (one ? T.unit : void 0);
+    return unit5 ? [{ ref: "call", units: [unit5], ...unit5 !== T.unit && T.unit ? { alt: T.unit } : {} }] : [];
+  };
+
+  // src/lib/langs/java/resolver.ts
+  var named = (u, ref) => u ? [{ ref, units: [u] }] : [];
+  var importSite = (jf, s) => {
+    const i2 = jf.f.imports.find((x2) => x2.node === s.node);
+    if (!i2) return [];
+    if (jf.singles.includes(i2)) {
+      const r = fqnType(jf, [...namesOf(i2.spec), s.name], true);
+      return r.k === "type" ? named(r.t.unit, s.ref) : [];
+    }
+    const c = fqnType(jf, namesOf(i2.spec), true);
+    if (c.k !== "type") return [];
+    const methods = membersOf2(c.t).methods.get(s.name) ?? [];
+    const type = memberTypesOf(c.t).get(s.name);
+    const units = [...methods.filter((m2) => m2.isStatic && importable(jf, m2)).map((m2) => m2.unit), ...type && importable(jf, { access: accessOf(type.file.t, type.node, isIface(c.t)), owner: c.t }) ? [type.unit] : []];
+    const known = [...new Set(units.filter((u) => u !== void 0))];
+    return known.length > 0 ? [{ ref: s.ref, units: known }] : [];
+  };
+  var constructorCall = (jf, n) => {
+    const t = jf.t;
+    const call = t.parent[n];
+    const c = classAround(jf, n);
+    const target = c && t.type[n] === "super" ? superclassOf(c) : c;
+    return target && !("fqn" in target) ? ctorOf(jf, n, target, argCount(t, call), t.type[n] === "super" ? "super" : "this", call) : [];
+  };
+  var methodReference = (jf, s) => {
+    const t = jf.t;
+    const n = s.node;
+    const ref = t.parent[n];
+    const parts2 = code(t, ref);
+    if (parts2.length > 1 && n === parts2[parts2.length - 1]) {
+      const q3 = t.type[parts2[0]] === "super" ? superVal(jf, parts2[0]) : exprVal(jf, parts2[0]);
+      const T = typeOf(q3);
+      const self2 = selfOf(jf, parts2[0]);
+      return T ? named(pick(jf, n, T, methodsOf(T, s.name), null, receiverOf(q3, self2, T))?.unit, s.ref) : [];
+    }
+    const q2 = exprVal(jf, n);
+    if (q2.k !== "type" || q2.res.k !== "type") return [];
+    return [...named(q2.res.t.unit, s.ref), ...hasToken(t, ref, "new") ? ctorOf(jf, n, q2.res.t, null, "ref").map((x2) => ({ ...x2, ref: s.ref })) : []];
+  };
+  var typeAt = (jf, s) => {
+    const t = jf.t;
+    const n = s.node;
     const p = t.parent[n];
-    if (p < 0) return false;
-    if (t.type[p] === "program") return true;
-    if (!BODIES.has(t.type[p])) return false;
-    const owner = ownerOfBody(t, p);
-    return owner >= 0 && isMember(t, owner);
+    if (t.type[n] === "type_identifier") {
+      const r = resolveParts(jf, n, typeParts(t, s.shape === "path" ? p : n));
+      return r.k === "type" ? r.t : null;
+    }
+    if (s.shape === "path") {
+      const r = resolveParts(jf, n, dotted(t, p));
+      return r.k === "type" ? r.t : null;
+    }
+    if (!mayBeType(t, n)) return null;
+    const q2 = isType2(t, n) ? { k: "type", res: typeName2(jf, n, s.name) } : nameVal(jf, n, s.name);
+    return q2.k === "type" && q2.res.k === "type" ? q2.res.t : null;
   };
-  var isAnonymousBody = (t, n) => t.type[n] === "class_body" && (t.type[t.parent[n]] === "object_creation_expression" || t.type[t.parent[n]] === "enum_constant");
+  var resolveSite = (jf, s) => {
+    const t = jf.t;
+    const n = s.node;
+    if (unsureAt(t, n) || jdkPackage(jf.pkg)) return [];
+    if (s.ref === "import") return importSite(jf, s);
+    if (t.type[n] === "this" || t.type[n] === "super") return constructorCall(jf, n);
+    const p = t.parent[n];
+    const pt2 = t.type[p];
+    if (pt2 === "method_invocation" && t.field[n] === "name") return named(callOf(jf, n)?.unit, s.ref);
+    if (pt2 === "method_reference") return methodReference(jf, s);
+    if (pt2 === "field_access" && t.field[n] === "field") {
+      const v2 = exprVal(jf, p);
+      return v2.k === "type" && v2.res.k === "type" ? named(v2.res.t.unit, s.ref) : [];
+    }
+    const creation = creationOf(t, n);
+    if (creation >= 0 && qualifiedCreation(t, creation)) return [];
+    const T = typeAt(jf, s);
+    if (!T) return [];
+    return creation >= 0 ? [...named(T.unit, "type"), ...ctorOf(jf, n, T, argCount(t, creation), anonymousBody(t, creation) !== void 0 ? "anonymous" : "new", creation)] : named(T.unit, s.ref);
+  };
+  var program = (files, ctx) => {
+    const jfileOf = readFiles(files, ctx);
+    const names = /* @__PURE__ */ new Set(["this", "super"]);
+    for (const f2 of files) {
+      for (const u of f2.units) names.add(u.name);
+      for (const T of jfileOf(f2).byNode.values()) if (T.kind === "record") for (const name2 of membersOf2(T).fields.keys()) names.add(name2);
+    }
+    return (f2, s) => names.has(s.name) ? resolveSite(jfileOf(f2), s) : [];
+  };
+  var JAVA_RESOLVER = { program };
+
+  // src/lib/langs/java/rules.ts
   var unit2 = (t, capture, node) => {
     const ty = t.type[node];
     const type = capture === "definition.class" && ty === "class_declaration" || capture === "definition.interface" && ty === "interface_declaration";
     if (!(type || capture === "definition.method" && ty === "method_declaration") || !isMember(t, node)) return null;
     return { kind: type ? "class" : "function", nameNode: child(t, node, "name"), outer: node };
   };
-  var isVar = (t, type) => type >= 0 && t.type[type] === "type_identifier" && textOf(t, type) === "var";
-  var spreadType = (t, n) => namedChildren(t, n).find((c) => t.type[c] !== "modifiers" && t.type[c] !== "variable_declarator" && t.type[c] !== "annotation" && t.type[c] !== "marker_annotation") ?? -1;
   var inArrowCase = (t, n) => {
     for (let x2 = t.parent[n]; x2 >= 0; x2 = t.parent[x2]) {
       if (t.type[x2] === "switch_label") return t.type[t.parent[x2]] === "switch_rule";
@@ -6976,9 +8451,9 @@ sun|misc reflect\`;
   };
   var binds2 = (t, n, emit) => {
     const ty = t.type[n];
-    if (TYPES.has(ty)) {
+    if (TYPE_DECLARATIONS.has(ty)) {
       const p = t.type[t.parent[n]];
-      emit(child(t, n, "name"), "type", { unitNode: n, ...p === "program" || BODIES.has(p) ? {} : { from: t.start[n] } });
+      emit(child(t, n, "name"), "type", { unitNode: n, ...p === "program" || TYPE_BODIES.has(p) ? {} : { from: t.start[n] } });
       return;
     }
     switch (ty) {
@@ -7061,7 +8536,7 @@ sun|misc reflect\`;
     }
   };
   var NAMED = /* @__PURE__ */ new Set([
-    ...TYPES,
+    ...TYPE_DECLARATIONS,
     "method_declaration",
     "constructor_declaration",
     "compact_constructor_declaration",
@@ -7103,28 +8578,11 @@ sun|misc reflect\`;
       return parts2.length > 1 && n === parts2[parts2.length - 1] ? { kind: "member", receiver: parts2[0], expr: n } : { kind: "bare", expr: n };
     }
     if (pt2 === "scoped_type_identifier") {
-      const parts2 = code(t, p).filter((c) => t.type[c] !== "annotation" && t.type[c] !== "marker_annotation");
+      const parts2 = code(t, p).filter((c) => !isAnnotation(t, c));
       return parts2.length > 1 && n === parts2[parts2.length - 1] ? { kind: "path", receiver: parts2[0], expr: n } : { kind: "bare", expr: n };
     }
     if (pt2 === "scoped_identifier" && f2 === "name") return { kind: "path", receiver: child(t, p, "scope"), expr: n };
     return { kind: "bare", expr: n };
-  };
-  var anonymousBody = (t, creation) => namedChildren(t, creation).find((c) => t.type[c] === "class_body");
-  var qualifiedCreation = (t, creation) => code(t, creation).some((c) => t.field[c] === "" && t.type[c] !== "class_body" && t.type[c] !== "annotation" && t.type[c] !== "marker_annotation");
-  var creationOf = (t, n) => {
-    let x2 = n;
-    let q2 = t.parent[n];
-    if (q2 >= 0 && t.type[q2] === "scoped_type_identifier") {
-      const parts2 = code(t, q2);
-      if (x2 !== parts2[parts2.length - 1]) return -1;
-      x2 = q2;
-      q2 = t.parent[q2];
-    }
-    if (q2 >= 0 && t.type[q2] === "generic_type") {
-      x2 = q2;
-      q2 = t.parent[q2];
-    }
-    return q2 >= 0 && t.type[q2] === "object_creation_expression" && t.field[x2] === "type" ? q2 : -1;
   };
   var isCallee2 = (t, e) => {
     const p = t.parent[e];
@@ -7135,10 +8593,7 @@ sun|misc reflect\`;
     const creation = creationOf(t, e);
     return creation >= 0 && anonymousBody(t, creation) === void 0;
   };
-  var isType2 = (t, n) => t.type[n] === "type_identifier" || t.type[t.parent[n]] === "marker_annotation" || t.type[t.parent[n]] === "annotation" || t.type[t.parent[n]] === "record_pattern";
-  var namesOf = (spec) => spec ? spec.split(".") : [];
-  var dotted = (t, n) => n < 0 ? [] : t.type[n] === "scoped_identifier" ? [...dotted(t, child(t, n, "scope")), textOf(t, child(t, n, "name"))] : [textOf(t, n)];
-  var importsOf2 = (t) => {
+  var imports2 = perTree((t) => {
     const out2 = [];
     for (const n of namedChildren(t, 0)) {
       if (t.type[n] !== "import_declaration") continue;
@@ -7153,14 +8608,12 @@ sun|misc reflect\`;
       out2.push({ local: segs[segs.length - 1], spec: segs.slice(0, -1).join("."), level: 0, name: segs[segs.length - 1], node: last, bind: last, stmt: n });
     }
     return out2;
+  });
+  var keywordOf = (type) => {
+    const kind = TYPE_KINDS[type];
+    return kind === "annotation" ? "@interface" : kind;
   };
-  var importCache2 = /* @__PURE__ */ new WeakMap();
-  var imports2 = (t) => {
-    let hit = importCache2.get(t);
-    if (!hit) importCache2.set(t, hit = importsOf2(t));
-    return hit;
-  };
-  var KEYWORD = { class_declaration: "class", interface_declaration: "interface", enum_declaration: "enum", record_declaration: "record", annotation_type_declaration: "@interface" };
+  var BLOCKS2 = /* @__PURE__ */ new Set(["block", "switch_block", "switch_rule", "for_statement", "enhanced_for_statement", "catch_clause", "try_with_resources_statement"]);
   var JAVA = {
     unit: unit2,
     extraUnits: (t) => {
@@ -7175,14 +8628,14 @@ sun|misc reflect\`;
     // \`class Foo\`, \`Foo.run()\`, a constructor \`Foo()\`.
     label: (t, u, parent) => {
       const ty = t.type[u.node];
-      if (KEYWORD[ty]) return \`\${KEYWORD[ty]} \${u.name}\`;
+      if (TYPE_DECLARATIONS.has(ty)) return \`\${keywordOf(ty)} \${u.name}\`;
       return CONSTRUCTORS.has(ty) || !parent ? \`\${u.name}()\` : \`\${parent.name}.\${u.name}()\`;
     },
     scope: (t, n) => {
       const ty = t.type[n];
-      if (TYPES.has(ty) || isAnonymousBody(t, n)) return "class";
+      if (TYPE_DECLARATIONS.has(ty) || isAnonymousBody(t, n)) return "class";
       if (ty === "method_declaration" || CONSTRUCTORS.has(ty) || ty === "lambda_expression") return "function";
-      if (ty === "block" || ty === "switch_block" || ty === "switch_rule" || ty === "for_statement" || ty === "enhanced_for_statement" || ty === "catch_clause" || ty === "try_with_resources_statement") return "block";
+      if (BLOCKS2.has(ty)) return "block";
       return null;
     },
     binds: binds2,
@@ -7192,1429 +8645,174 @@ sun|misc reflect\`;
     isType: isType2,
     imports: imports2
   };
-  var packageOf = (t) => {
-    const pd = namedChildren(t, 0).find((c) => t.type[c] === "package_declaration");
-    const name2 = pd !== void 0 ? namedChildren(t, pd).find((c) => t.type[c] === "scoped_identifier" || t.type[c] === "identifier") : void 0;
-    return name2 !== void 0 ? dotted(t, name2).join(".") : "";
-  };
-  var rootOf = (path, pkg) => {
-    const dir = path.split("/").slice(0, -1);
-    const segs = pkg ? pkg.split(".") : [];
-    if (segs.length > dir.length) return null;
-    for (let i2 = 0; i2 < segs.length; i2++) if (dir[dir.length - segs.length + i2] !== segs[i2]) return null;
-    return dir.slice(0, dir.length - segs.length).join("/");
-  };
-  var SOURCE_SET = /^(.*\\/)?src\\/([^/]+)\\/java$/;
-  var rootsSeen = (root) => {
-    const m2 = SOURCE_SET.exec(root);
-    return m2 && m2[2] !== "main" ? [root, \`\${m2[1] ?? ""}src/main/java\`] : [root];
-  };
-  var at = (root, rel) => root ? \`\${root}/\${rel}\` : rel;
-  var typeFile = (segs) => {
-    if (segs.length === 0) return null;
-    let i2 = segs.findIndex((s) => /^[A-Z]/.test(s));
-    if (i2 < 0) i2 = segs.length - 1;
-    return { pkg: segs.slice(0, i2).join("."), top: segs[i2], rel: [...segs.slice(0, i2), \`\${segs[i2]}.java\`].join("/"), nested: segs.slice(i2 + 1) };
-  };
-  var JAVA_LANG = new Set(
-    "AbstractMethodError Appendable ArithmeticException ArrayIndexOutOfBoundsException ArrayStoreException AssertionError AutoCloseable Boolean BootstrapMethodError Byte Character CharSequence Class ClassCastException ClassCircularityError ClassFormatError ClassLoader ClassNotFoundException ClassValue CloneNotSupportedException Cloneable Comparable Deprecated Double Enum EnumConstantNotPresentException Error Exception ExceptionInInitializerError Float FunctionalInterface IllegalAccessError IllegalAccessException IllegalArgumentException IllegalCallerException IllegalMonitorStateException IllegalStateException IllegalThreadStateException IncompatibleClassChangeError IndexOutOfBoundsException InheritableThreadLocal InstantiationError InstantiationException Integer InternalError InterruptedException Iterable LayerInstantiationException LinkageError Long Math NegativeArraySizeException NoClassDefFoundError NoSuchFieldError NoSuchFieldException NoSuchMethodError NoSuchMethodException NullPointerException Number NumberFormatException Object OutOfMemoryError Override Readable ReflectiveOperationException Runnable Runtime RuntimeException SafeVarargs SecurityException Short StackOverflowError StackTraceElement StackWalker StrictMath String StringBuffer StringBuilder StringIndexOutOfBoundsException SuppressWarnings System Thread ThreadDeath ThreadGroup ThreadLocal Throwable TypeNotPresentException UnknownError UnsatisfiedLinkError UnsupportedClassVersionError UnsupportedOperationException VerifyError VirtualMachineError Void".split(" ")
-  );
-  var libOf = (line) => {
-    const [fqn, kind, supers, methods, fields3, types] = line.replace(/!([0-9a-z]+)/g, (_2, n) => JDK_ALIASES[parseInt(n, 36)]).replace(/@([0-9a-z]+)\\./g, (_2, n) => \`\${JDK_PACKAGES[parseInt(n, 36)]}.\`).split("|");
-    return {
-      fqn,
-      iface: kind.toLowerCase() === "i",
-      supers: supers ? supers.split(",") : [],
-      members: kind === "i" || kind === "c",
-      methods: (methods ? methods.split(" ") : []).map((m2) => {
-        const flags2 = m2.split(":");
-        const sig = flags2.pop();
-        const list = sig.slice(sig.indexOf("(") + 1, -1);
-        const varargs = list.endsWith("...");
-        const written2 = list ? list.replace(/\\.\\.\\.$/, "").split(",") : [];
-        const params2 = written2.map((p, i2) => varargs && i2 === written2.length - 1 && p !== "?" ? \`\${p}[]\` : p);
-        const key = params2.includes("?") ? null : params2.join(",");
-        return { name: sig.slice(0, sig.indexOf("(")), n: params2.length, varargs, access: flags2.includes("p") ? "protected" : "public", isStatic: flags2.includes("s"), abstract: flags2.includes("a"), key, params: params2 };
-      }),
-      fields: new Set(fields3 ? fields3.split(" ") : []),
-      types: new Set(types ? types.split(" ") : [])
-    };
-  };
-  var libs = null;
-  var libNamed = (fqn) => (libs ?? (libs = new Map(JDK_TYPES.split("\\n").map((line) => {
-    const l3 = libOf(line);
-    return [l3.fqn, l3];
-  })))).get(fqn);
-  var OBJECT = () => libNamed("java.lang.Object");
-  var exportsSet = null;
-  var jdkPackage = (pkg) => /^java(\\.|$)/.test(pkg) || (exportsSet ?? (exportsSet = new Set(
-    JDK_EXPORTS.split("\\n").flatMap((line) => {
-      const [around, names] = line.split("|");
-      return names.split(" ").map((n) => \`\${around}.\${n}\`);
-    })
-  ))).has(pkg);
-  var interfaceObject = null;
-  var INTERFACE_OBJECT = () => interfaceObject ?? (interfaceObject = { ...OBJECT(), iface: true, methods: OBJECT().methods.filter((m2) => m2.access === "public").map((m2) => ({ ...m2, abstract: true })) });
-  var outlines = /* @__PURE__ */ new WeakMap();
-  var outlineOf = (f2) => {
-    const t = f2.flat;
-    let hit = outlines.get(t);
-    if (hit) return hit;
-    const pkg = packageOf(t);
-    const isStatic = (i2) => hasToken(t, i2.stmt, "static");
-    const declared = /* @__PURE__ */ new Set();
-    const tops = /* @__PURE__ */ new Set();
-    const params2 = /* @__PURE__ */ new Set();
-    for (let n = 0; n < t.count; n++) {
-      if (TYPES.has(t.type[n])) {
-        declared.add(textOf(t, child(t, n, "name")));
-        if (t.parent[n] === 0) tops.add(textOf(t, child(t, n, "name")));
-      } else if (t.type[n] === "type_parameter") {
-        for (const c of namedChildren(t, n)) if (t.type[c] === "type_identifier") params2.add(textOf(t, c));
-      }
-    }
-    hit = {
-      pkg,
-      root: rootOf(f2.path, pkg),
-      singles: f2.imports.filter((i2) => i2.name !== "*" && !isStatic(i2)),
-      statics: f2.imports.filter((i2) => i2.name !== "*" && isStatic(i2)),
-      staticStars: f2.imports.filter((i2) => i2.name === "*" && isStatic(i2)),
-      declared,
-      tops,
-      params: params2,
-      lombok: f2.imports.some((i2) => i2.spec === "lombok" || i2.spec.startsWith("lombok.")) || t.text.includes("@lombok.")
-    };
-    outlines.set(t, hit);
-    return hit;
-  };
-  var typeParts = (t, n) => {
-    if (n < 0) return [];
-    switch (t.type[n]) {
-      case "type_identifier":
-        return isVar(t, n) ? [] : [textOf(t, n)];
-      case "generic_type":
-        return typeParts(t, namedChildren(t, n)[0] ?? -1);
-      case "annotated_type":
-        return typeParts(t, namedChildren(t, n).find((c) => t.type[c] !== "annotation" && t.type[c] !== "marker_annotation") ?? -1);
-      case "scoped_type_identifier": {
-        const parts2 = code(t, n).filter((c) => t.type[c] !== "annotation" && t.type[c] !== "marker_annotation");
-        const head = typeParts(t, parts2[0] ?? -1);
-        return parts2.length > 1 && head.length > 0 ? [...head, textOf(t, parts2[parts2.length - 1])] : [];
-      }
-      default:
-        return [];
-    }
-  };
-  var supertypeNodes = (t, n) => {
-    if (t.type[n] === "class_body") {
-      const creation = t.parent[n];
-      return t.type[creation] === "object_creation_expression" && child(t, creation, "type") >= 0 ? [child(t, creation, "type")] : [];
-    }
-    const out2 = [];
-    const sup = child(t, n, "superclass");
-    if (sup >= 0) out2.push(...code(t, sup));
-    for (const l3 of [child(t, n, "interfaces"), namedChildren(t, n).find((c) => t.type[c] === "extends_interfaces") ?? -1]) {
-      if (l3 >= 0) {
-        for (const tl of namedChildren(t, l3)) if (t.type[tl] === "type_list") out2.push(...code(t, tl));
-      }
-    }
-    return out2;
-  };
-  var mayBeType = (t, n) => {
-    if (t.type[n] === "type_identifier") return true;
-    const p = t.parent[n];
-    const pt2 = t.type[p];
-    if ((pt2 === "marker_annotation" || pt2 === "annotation") && t.field[n] === "name") return true;
-    if (pt2 === "record_pattern" || (pt2 === "method_invocation" || pt2 === "field_access") && t.field[n] === "object") return true;
-    return pt2 === "method_reference" && code(t, p)[0] === n;
-  };
+
+  // src/lib/langs/java/wants.ts
   var BODY_BLOCKS = /* @__PURE__ */ new Set(["block", "constructor_body", "lambda_expression", "static_initializer"]);
-  var javaWants = (files, ctx, changed) => {
-    const out2 = [];
-    const asked = /* @__PURE__ */ new Set();
-    const want = (p) => {
-      if (!asked.has(p)) out2.push(p);
-      asked.add(p);
-    };
-    const look = (own, rel, pkg) => {
+  var lookupsOf = (o, root, ctx, want) => {
+    const own = rootsSeen(root);
+    const imported = /* @__PURE__ */ new Map();
+    for (const i2 of [...o.singles, ...o.statics]) imported.set(i2.local, i2);
+    const look = (rel, pkg) => {
       if (/^javax?\\./.test(\`\${pkg}.\`) || jdkPackage(pkg)) return;
       for (const r of own) {
-        if (ctx.exists?.(at(r, rel)) === false) continue;
-        return want(at(r, rel));
+        if (ctx.exists?.(inRoot(r, rel)) === false) continue;
+        return want(inRoot(r, rel));
       }
     };
-    const lookFqn = (own, segs) => {
+    const byFqn = (segs) => {
       const tf = typeFile(segs);
-      if (tf) look(own, tf.rel, tf.pkg);
+      if (tf) look(tf.rel, tf.pkg);
     };
+    const besides = (name2) => look(packageFile(o.pkg, name2), o.pkg);
+    const written2 = (segs, declared) => {
+      const [first] = segs;
+      if (!first || declared.has(first) || o.params.has(first)) return;
+      const i2 = imported.get(first);
+      if (i2) return byFqn([...namesOf(i2.spec), ...o.singles.includes(i2) ? [first] : []]);
+      if (/^[A-Z]/.test(first)) return besides(first);
+      if (segs.length > 1) byFqn(segs);
+    };
+    return { imported, besides, byFqn, written: written2 };
+  };
+  var wantNamesUsed = (f2, o, look) => {
+    const t = f2.flat;
+    for (const i2 of o.singles) look.byFqn([...namesOf(i2.spec), i2.local]);
+    for (const i2 of [...o.statics, ...o.staticStars]) look.byFqn(namesOf(i2.spec));
+    for (const s of f2.sites) {
+      if (s.shape !== "bare" || !/^[A-Z]/.test(s.name) || !mayBeType(t, s.node)) continue;
+      if (!o.declared.has(s.name) && !o.params.has(s.name) && !look.imported.has(s.name)) look.besides(s.name);
+    }
+    for (let n = 0; n < t.count; n++) if (t.type[n] === "scoped_type_identifier" && t.type[t.parent[n]] !== "scoped_type_identifier") look.written(typeParts(t, n), o.declared);
+  };
+  var wantHeaderJavaLang = (f2, o, look) => {
+    const t = f2.flat;
+    for (let n = 0; n < t.count; n++) {
+      if (t.type[n] !== "type_identifier" || !JAVA_LANG.has(textOf(t, n)) || o.declared.has(textOf(t, n)) || look.imported.has(textOf(t, n))) continue;
+      let x2 = t.parent[n];
+      while (x2 > 0 && !BODY_BLOCKS.has(t.type[x2])) x2 = t.parent[x2];
+      if (x2 <= 0) look.besides(textOf(t, n));
+    }
+  };
+  var wantSupertypes = (f2, o, look, changed) => {
+    const t = f2.flat;
+    for (let n = 0; n < t.count; n++) if (TYPE_DECLARATIONS.has(t.type[n]) || changed && t.type[n] === "class_body" && t.type[t.parent[n]] === "object_creation_expression") for (const s of supertypeNodes(t, n)) look.written(typeParts(t, s), o.tops);
+  };
+  var javaWants = (files, ctx, changed) => {
+    const out2 = [];
+    const want = (path) => void out2.push(path);
     for (const f2 of files) {
       const o = outlineOf(f2);
       if (o.root === null || jdkPackage(o.pkg)) continue;
-      const own = rootsSeen(o.root);
-      const pkgDir = o.pkg ? o.pkg.split(".") : [];
-      const besides = (name2) => look(own, [...pkgDir, \`\${name2}.java\`].join("/"), o.pkg);
-      const imported = /* @__PURE__ */ new Map();
-      for (const i2 of [...o.singles, ...o.statics]) imported.set(i2.local, i2);
-      const t = f2.flat;
-      const lookType = (segs, declared) => {
-        const [first] = segs;
-        if (!first || declared.has(first) || o.params.has(first)) return;
-        const i2 = imported.get(first);
-        if (i2) return lookFqn(own, [...namesOf(i2.spec), ...o.singles.includes(i2) ? [first] : []]);
-        if (/^[A-Z]/.test(first)) return besides(first);
-        if (segs.length > 1) lookFqn(own, segs);
-      };
+      const look = lookupsOf(o, o.root, ctx, want);
       const isChanged = changed(f2.path);
-      if (isChanged) {
-        for (const i2 of o.singles) lookFqn(own, [...namesOf(i2.spec), i2.local]);
-        for (const i2 of [...o.statics, ...o.staticStars]) lookFqn(own, namesOf(i2.spec));
-        for (const s of f2.sites) {
-          if (s.shape !== "bare" || !/^[A-Z]/.test(s.name) || !mayBeType(t, s.node)) continue;
-          if (!o.declared.has(s.name) && !o.params.has(s.name) && !imported.has(s.name)) besides(s.name);
-        }
-        for (let n = 0; n < t.count; n++) if (t.type[n] === "scoped_type_identifier" && t.type[t.parent[n]] !== "scoped_type_identifier") lookType(typeParts(t, n), o.declared);
-      } else {
-        for (let n = 0; n < t.count; n++) {
-          if (t.type[n] !== "type_identifier" || !JAVA_LANG.has(textOf(t, n)) || o.declared.has(textOf(t, n)) || imported.has(textOf(t, n))) continue;
-          let x2 = t.parent[n];
-          while (x2 > 0 && !BODY_BLOCKS.has(t.type[x2])) x2 = t.parent[x2];
-          if (x2 <= 0) besides(textOf(t, n));
-        }
-      }
-      for (let n = 0; n < t.count; n++) if (TYPES.has(t.type[n]) || isChanged && t.type[n] === "class_body" && t.type[t.parent[n]] === "object_creation_expression") for (const s of supertypeNodes(t, n)) lookType(typeParts(t, s), o.tops);
+      if (isChanged) wantNamesUsed(f2, o, look);
+      else wantHeaderJavaLang(f2, o, look);
+      wantSupertypes(f2, o, look, isChanged);
     }
+    return [...new Set(out2)];
+  };
+
+  // src/lib/langs/python/modules.ts
+  var STDLIB = new Set(
+    "__future__ abc aifc annotationlib antigravity argparse array ast asynchat asyncio asyncore atexit audioop base64 bdb binascii bisect builtins bz2 cProfile calendar cgi cgitb chunk cmath cmd code codecs codeop collections colorsys compileall compression concurrent configparser contextlib contextvars copy copyreg crypt csv ctypes curses dataclasses datetime dbm decimal difflib dis distutils doctest email encodings ensurepip enum errno faulthandler fcntl filecmp fileinput fnmatch fractions ftplib functools gc genericpath getopt getpass gettext glob graphlib grp gzip hashlib heapq hmac html http idlelib imaplib imghdr imp importlib inspect io ipaddress itertools json keyword lib2to3 linecache locale logging lzma mailbox mailcap marshal math mimetypes mmap modulefinder msilib msvcrt multiprocessing netrc nis nntplib nt ntpath nturl2path numbers opcode operator optparse os ossaudiodev pathlib pdb pickle pickletools pipes pkgutil platform plistlib poplib posix posixpath pprint profile pstats pty pwd py_compile pyclbr pydoc pydoc_data pyexpat queue quopri random re readline reprlib resource rlcompleter runpy sched secrets select selectors shelve shlex shutil signal site smtpd smtplib sndhdr socket socketserver spwd sqlite3 sre_compile sre_constants sre_parse ssl stat statistics string stringprep struct subprocess sunau symtable sys sysconfig syslog tabnanny tarfile telnetlib tempfile termios textwrap this threading time timeit tkinter token tokenize tomllib trace traceback tracemalloc tty turtle turtledemo types typing unicodedata unittest urllib uu uuid venv warnings wave weakref webbrowser winreg winsound wsgiref xdrlib xml xmlrpc zipapp zipfile zipimport zlib zoneinfo".split(" ")
+  );
+  var isPackage = (path) => /(^|\\/)__init__\\.py$/.test(path);
+  var packageMarkers = (path) => {
+    const dirs = path.split("/").slice(0, -1);
+    const out2 = [];
+    for (let k2 = dirs.length; k2 >= 1; k2--) out2.push([...dirs.slice(0, k2), "__init__.py"].join("/"));
     return out2;
   };
-  var UNTYPED = { k: "unknown" };
-  var WIDENING = {
-    byte: ["short", "int", "long", "float", "double"],
-    short: ["int", "long", "float", "double"],
-    char: ["int", "long", "float", "double"],
-    int: ["long", "float", "double"],
-    long: ["float", "double"],
-    float: ["double"]
-  };
-  var BOXES = { int: "java.lang.Integer", long: "java.lang.Long", short: "java.lang.Short", byte: "java.lang.Byte", char: "java.lang.Character", boolean: "java.lang.Boolean", float: "java.lang.Float", double: "java.lang.Double" };
-  var UNBOXED = Object.fromEntries(Object.entries(BOXES).map(([prim, box]) => [box, prim]));
-  var PRIMITIVES = new Set(Object.keys(BOXES));
-  var NO_VARS = /* @__PURE__ */ new Set();
-  var isAnnotation = (t, n) => t.type[n] === "annotation" || t.type[n] === "marker_annotation";
-  var constrained = (t, n, lone = NO_VARS) => {
-    const last = gapsOf(t).last[n];
-    for (let x2 = n; x2 <= last; x2++) {
-      if (t.type[x2] !== "type_arguments") continue;
-      if (code(t, x2).some((c) => t.type[c] === "wildcard" ? code(t, c).some((b2) => !isAnnotation(t, b2)) : t.type[c] !== "type_identifier" || !lone.has(textOf(t, c)))) return true;
-    }
-    return false;
-  };
-  var loneVars = (t, decl, params2) => {
-    const tps = child(t, decl, "type_parameters");
-    if (tps < 0) return NO_VARS;
-    const free = /* @__PURE__ */ new Set();
-    for (const tp of code(t, tps)) {
-      const parts2 = code(t, tp).filter((c) => !isAnnotation(t, c));
-      if (t.type[tp] === "type_parameter" && parts2.length === 1 && t.type[parts2[0]] === "type_identifier") free.add(textOf(t, parts2[0]));
-    }
-    if (free.size === 0) return NO_VARS;
-    const seen = /* @__PURE__ */ new Map();
-    for (const p of params2) {
-      const last = gapsOf(t).last[p];
-      for (let x2 = p; x2 <= last; x2++) if (t.type[x2] === "type_identifier" && free.has(textOf(t, x2))) seen.set(textOf(t, x2), (seen.get(textOf(t, x2)) ?? 0) + 1);
-    }
-    return new Set([...free].filter((v2) => seen.get(v2) === 1));
-  };
-  var libParam = (p) => p === "?" ? { k: "var" } : p.endsWith("[]") ? { k: "array", elem: libParam(p.slice(0, -2)) } : PRIMITIVES.has(p) ? { k: "prim", name: p } : { k: "ref", key: p };
-  var sameType = (a, b2) => a.k === b2.k && (a.k === "prim" ? a.name === b2.name : a.k === "ref" ? a.key === b2.key : a.k === "array" ? sameType(a.elem, b2.elem) : a.k === "null");
-  var promote = (prim) => prim === "byte" || prim === "short" || prim === "char" ? "int" : prim;
-  var promoted = (a, b2, op) => {
-    if (a === "boolean" || b2 === "boolean") return a === b2 && ["&", "|", "^"].includes(op) ? { k: "prim", name: "boolean" } : UNTYPED;
-    if (op === "<<" || op === ">>" || op === ">>>") return { k: "prim", name: promote(a) };
-    for (const wide of ["double", "float", "long"]) if (a === wide || b2 === wide) return { k: "prim", name: wide };
-    return { k: "prim", name: "int" };
-  };
-  var UNKNOWN = { k: "unknown" };
-  var NONE = { k: "none" };
-  var UNSURE = { k: "unknown" };
-  var openCache = /* @__PURE__ */ new WeakMap();
-  var openOf = (T) => {
-    let hit = openCache.get(T);
-    if (hit !== void 0) return hit;
-    hit = T.file.lombok;
-    const t = T.file.t;
-    const anonymous = T.kind === "anonymous" || T.kind === "constant";
-    if (!anonymous && headerGap(t, T.node)) hit = true;
-    const body2 = anonymous ? T.node : child(t, T.node, "body");
-    for (let c = body2 >= 0 ? t.first[body2] : -1; c >= 0 && !hit; c = t.next[c]) {
-      for (const m2 of t.type[c] === "enum_body_declarations" ? namedChildren(t, c) : [c]) {
-        if (t.type[m2] === "ERROR" || t.start[m2] === t.end[m2]) hit = true;
-        else if (TYPES.has(t.type[m2])) hit || (hit = headerGap(t, m2));
-        else if (t.type[m2] !== "block" && t.type[m2] !== "static_initializer") hit || (hit = headerGap(t, m2));
-      }
-    }
-    openCache.set(T, hit);
-    return hit;
-  };
-  var modifiersOf = (t, decl) => namedChildren(t, decl).find((c) => t.type[c] === "modifiers") ?? -1;
-  var has = (t, decl, word) => {
-    const mods = modifiersOf(t, decl);
-    return mods >= 0 && hasToken(t, mods, word);
-  };
-  var accessOf = (t, decl, inInterface) => has(t, decl, "private") ? "private" : has(t, decl, "protected") ? "protected" : inInterface || has(t, decl, "public") ? "public" : "package";
-  var lazy = (make) => {
-    let done = false;
-    let value;
-    return () => {
-      if (!done) {
-        value = make();
-        done = true;
-      }
-      return value;
-    };
-  };
-  var program = (files, ctx) => {
-    const known = new Set(ctx.known);
-    const exists = (p) => ctx.exists ? ctx.exists(p) : known.has(p) ? true : void 0;
-    const byPath = new Map(files.map((f2) => [f2.path, f2]));
-    let ids = 0;
-    const jfiles = /* @__PURE__ */ new Map();
-    const jfileOf = (f2) => {
-      let hit = jfiles.get(f2);
-      if (hit) return hit;
-      const t = f2.flat;
-      hit = { ...outlineOf(f2), f: f2, t, byNode: /* @__PURE__ */ new Map(), top: /* @__PURE__ */ new Map() };
-      jfiles.set(f2, hit);
-      for (let n = 0; n < t.count; n++) {
-        const named = TYPES.has(t.type[n]);
-        if (!named && !isAnonymousBody(t, n)) continue;
-        let outer = null;
-        for (let x2 = t.parent[n]; x2 >= 0 && !outer; x2 = t.parent[x2]) outer = hit.byNode.get(x2) ?? null;
-        const kind = named ? KINDS[t.type[n]] : t.type[t.parent[n]] === "enum_constant" ? "constant" : "anonymous";
-        const jt = { id: ids++, file: hit, node: n, name: named ? textOf(t, child(t, n, "name")) : "", kind, outer, unit: named ? f2.unitByNode.get(n) : void 0 };
-        hit.byNode.set(n, jt);
-        if (named && t.parent[n] === 0) hit.top.set(jt.name, jt);
-      }
-      return hit;
-    };
-    const isIface = (x2) => "fqn" in x2 ? x2.iface : x2.kind === "interface" || x2.kind === "annotation";
-    const typeKey = (T) => {
-      if (!isMember(T.file.t, T.node)) return \`#\${T.id}\`;
-      const names2 = [];
-      for (let x2 = T; x2; x2 = x2.outer) names2.unshift(x2.name);
-      return [...T.file.pkg ? [T.file.pkg] : [], ...names2].join(".");
-    };
-    const pkgOf = (x2) => "fqn" in x2 ? x2.fqn.slice(0, x2.fqn.lastIndexOf(".")) : x2.file.pkg;
-    const topAt = (path, pkg, name2) => {
-      if (exists(path) === false) return "absent";
-      const f2 = byPath.get(path);
-      if (!f2) return "unknown";
-      const jf = jfileOf(f2);
-      return jf.pkg === pkg ? jf.top.get(name2) ?? "absent" : "absent";
-    };
-    const typeIn = (from, pkg, name2, rel) => {
-      if (from.root === null) return "unknown";
-      for (const r of rootsSeen(from.root)) {
-        const got = topAt(at(r, rel), pkg, name2);
-        if (got !== "absent") return got;
-      }
-      return "absent";
-    };
-    const fqnType = (from, segs, imported = false) => {
-      const tf = typeFile(segs);
-      if (!tf) return NONE;
-      const l3 = libNamed(segs.join("."));
-      if (jdkPackage(tf.pkg)) return l3 ? { k: "lib", lib: l3 } : { k: "none", fqn: segs.join(".") };
-      const got = typeIn(from, tf.pkg, tf.top, tf.rel);
-      if (l3 && (got === "absent" || got === "unknown" && from.root !== null && rootsSeen(from.root).every((r) => exists(at(r, tf.rel)) !== true))) return { k: "lib", lib: l3 };
-      if (got === "unknown") return UNKNOWN;
-      if (got === "absent") return { k: "none", fqn: segs.join(".") };
-      let res = { k: "type", t: got };
-      for (const name2 of tf.nested) {
-        if (res.k !== "type") return UNKNOWN;
-        const own = membersOf(res.t).types.get(name2);
-        if (imported) {
-          if (!own) return NONE;
-          res = { k: "type", t: own };
-          continue;
-        }
-        const m2 = memberType(res.t, name2);
-        if (m2.found === void 0) return m2.complete ? NONE : UNKNOWN;
-        res = m2.found;
-      }
-      return res;
-    };
-    const memberCache = /* @__PURE__ */ new Map();
-    const membersOf = (T) => {
-      let hit = memberCache.get(T);
-      if (hit) return hit;
-      const found = { methods: /* @__PURE__ */ new Map(), ctors: [], fields: /* @__PURE__ */ new Map(), types: /* @__PURE__ */ new Map() };
-      memberCache.set(T, found);
-      const t = T.file.t;
-      const iface = T.kind === "interface" || T.kind === "annotation";
-      const addMethod = (m2) => found.methods.set(m2.name, [...found.methods.get(m2.name) ?? [], m2]);
-      const components2 = T.kind === "record" ? recordComponents(T) : [];
-      const method = (decl) => {
-        const ty = t.type[decl];
-        const ps = namedChildren(t, child(t, decl, "parameters")).filter((c) => t.type[c] === "formal_parameter" || t.type[c] === "spread_parameter");
-        const compact2 = ty === "compact_constructor_declaration";
-        const isStatic = has(t, decl, "static");
-        return {
-          name: CONSTRUCTORS.has(ty) ? T.name : textOf(t, child(t, decl, "name")),
-          owner: T,
-          node: decl,
-          unit: T.file.f.unitByNode.get(decl),
-          n: compact2 ? components2.length : ps.length,
-          varargs: (compact2 ? components2 : ps).some((c) => t.type[c] === "spread_parameter"),
-          isStatic,
-          abstract: ty === "annotation_type_element_declaration" || has(t, decl, "abstract") || iface && child(t, decl, "body") < 0 && !isStatic && !has(t, decl, "default") && !has(t, decl, "private"),
-          access: accessOf(t, decl, iface),
-          key: lazy(() => keyOfParams(T.file, compact2 ? components2 : ps)),
-          params: lazy(() => compact2 ? paramTypes(T.file, components2) : paramTypes(T.file, ps, loneVars(t, decl, ps)))
-        };
+  var layoutOf = memoize(
+    (ctx) => {
+      const known = new Set(ctx.known);
+      const exists = (path) => known.has(path) || ctx.text(path) !== void 0 || ctx.exists?.(path) === true;
+      const missing = (path) => ctx.exists ? ctx.exists(path) === false : !exists(path);
+      const isPackageDir = (d) => {
+        if (d.length === 0) return false;
+        const marker = [...d, "__init__.py"].join("/");
+        return exists(marker) ? true : missing(marker) ? false : void 0;
       };
-      const field = (typeNode, dims, isStatic, access2) => ({
-        owner: T,
-        access: access2,
-        isStatic,
-        type: lazy(() => typeNode >= 0 && dims === 0 ? typeOfNode(T.file, typeNode) : null),
-        static: lazy(() => staticType(T.file, typeNode, dims)),
-        typeVar: lazy(() => dims === 0 && !isStatic ? classTypeVar(T, typeNode) : null)
-      });
-      const body2 = T.kind === "anonymous" || T.kind === "constant" ? T.node : child(t, T.node, "body");
-      for (const c of namedChildren(t, body2).flatMap((c2) => t.type[c2] === "enum_body_declarations" ? namedChildren(t, c2) : [c2])) {
-        const ty = t.type[c];
-        if (ty === "method_declaration" || ty === "annotation_type_element_declaration") addMethod(method(c));
-        else if (CONSTRUCTORS.has(ty)) found.ctors.push(method(c));
-        else if (ty === "field_declaration" || ty === "constant_declaration") {
-          for (let d = t.first[c]; d >= 0; d = t.next[d]) {
-            const name2 = t.field[d] === "declarator" ? child(t, d, "name") : -1;
-            if (name2 >= 0) found.fields.set(textOf(t, name2), field(child(t, c, "type"), dimsOf(t, child(t, d, "dimensions")), iface || has(t, c, "static"), accessOf(t, c, iface)));
-          }
-        } else if (ty === "enum_constant") found.fields.set(textOf(t, child(t, c, "name")), { owner: T, access: "public", isStatic: true, type: () => T, static: () => ({ k: "ref", key: typeKey(T), type: T }), typeVar: () => null });
-        else if (TYPES.has(ty)) found.types.set(textOf(t, child(t, c, "name")), T.file.byNode.get(c));
-      }
-      const implicit = (name2, n, isStatic, key, at3) => ({ name: name2, owner: T, node: at3?.node ?? -1, unit: at3?.unit, n, varargs: false, isStatic, abstract: false, access: "public", key: () => key, params: () => key ? key.split(",").map(libParam) : [] });
-      if (T.kind === "enum") {
-        addMethod(implicit("values", 0, true, ""));
-        addMethod(implicit("valueOf", 1, true, "java.lang.String"));
-      }
-      for (const c of components2) {
-        const name2 = textOf(t, child(t, c, "name") >= 0 ? child(t, c, "name") : namedChildren(t, namedChildren(t, c).find((x2) => t.type[x2] === "variable_declarator") ?? -1)[0] ?? c);
-        found.fields.set(name2, field(t.type[c] === "formal_parameter" ? child(t, c, "type") : -1, 0, false, "private"));
-        if (!(found.methods.get(name2) ?? []).some((m2) => m2.n === 0)) addMethod(implicit(name2, 0, false, "", { node: c, unit: T.unit }));
-      }
-      return found;
-    };
-    const recordComponents = (T) => namedChildren(T.file.t, child(T.file.t, T.node, "parameters")).filter((c) => T.file.t.type[c] === "formal_parameter" || T.file.t.type[c] === "spread_parameter");
-    const keyOfParams = (jf, params2) => {
-      const t = jf.t;
-      const keys = [];
-      for (const p of params2) {
-        const spread = t.type[p] === "spread_parameter";
-        const typeNode = spread ? spreadType(t, p) : child(t, p, "type");
-        const k2 = keyOfType(jf, typeNode, (spread ? 1 : 0) + dimsOf(t, child(t, p, "dimensions")));
-        if (k2 === null) return null;
-        keys.push(k2);
-      }
-      return keys.join(",");
-    };
-    const dimsOf = (t, dims) => dims < 0 ? 0 : (textOf(t, dims).match(/\\[/g) ?? []).length;
-    const bindingDims = (t, b2) => {
-      const p = t.parent[b2.node];
-      return t.type[p] === "variable_declarator" && t.type[t.parent[p]] === "spread_parameter" ? 1 : dimsOf(t, child(t, p, "dimensions"));
-    };
-    const keyOfType = (jf, n, dims, depth = 0) => {
-      const t = jf.t;
-      if (n < 0 || depth > 8) return null;
-      const ty = t.type[n];
-      if (ty === "integral_type" || ty === "floating_point_type" || ty === "boolean_type") return textOf(t, n) + "[]".repeat(dims);
-      if (ty === "array_type") return keyOfType(jf, child(t, n, "element"), dims + dimsOf(t, child(t, n, "dimensions")), depth);
-      const parts2 = typeParts(t, n);
-      const r = parts2.length > 0 ? resolveParts(jf, n, parts2) : NONE;
-      if (r.k === "param") {
-        const tp = typeParameterOf(jf, n, parts2[0]);
-        const bound = tp < 0 ? void 0 : namedChildren(t, tp).find((c) => t.type[c] === "type_bound");
-        return tp < 0 ? null : bound === void 0 ? \`java.lang.Object\${"[]".repeat(dims)}\` : keyOfType(jf, code(t, bound)[0] ?? -1, dims, depth + 1);
-      }
-      const name2 = r.k === "type" ? typeKey(r.t) : r.k === "lib" ? r.lib.fqn : r.k === "none" ? r.fqn ?? null : null;
-      return name2 === null ? null : name2 + "[]".repeat(dims);
-    };
-    const typeParameterOf = (jf, n, name2) => {
-      for (let s = scopeOf(jf, n); s; s = s.parent) {
-        const bs = visible2(jf, s.names.get(name2), jf.t.start[n]).filter((b2) => b2.kind === "type");
-        if (bs.length > 0) return isTypeParam(jf, bs[bs.length - 1]) ? jf.t.parent[bs[bs.length - 1].node] : -1;
-      }
-      return -1;
-    };
-    const writtenKey = (jf, n) => {
-      const t = jf.t;
-      const ty = t.type[n];
-      if (ty === "integral_type" || ty === "floating_point_type" || ty === "boolean_type") return textOf(t, n);
-      if (ty === "annotated_type") {
-        const inner = code(t, n).find((c) => !isAnnotation(t, c));
-        return inner === void 0 ? void 0 : writtenKey(jf, inner);
-      }
-      if (ty === "array_type") {
-        const elem = writtenKey(jf, child(t, n, "element"));
-        return elem === void 0 ? void 0 : elem + "[]".repeat(dimsOf(t, child(t, n, "dimensions")));
-      }
-      if (ty !== "generic_type") {
-        for (let x2 = n; x2 <= gapsOf(t).last[n]; x2++) if (t.type[x2] === "type_arguments") return void 0;
-      }
-      const parts2 = typeParts(t, n);
-      if (parts2.length === 0) return void 0;
-      const r = resolveParts(jf, n, parts2);
-      const base = r.k === "type" ? typeKey(r.t) : r.k === "lib" ? r.lib.fqn : r.k === "none" && r.fqn ? r.fqn : void 0;
-      if (base === void 0 || ty !== "generic_type") return base;
-      const targs = argsKey(jf, n);
-      return targs === void 0 ? void 0 : base + targs;
-    };
-    const argsKey = (jf, n) => {
-      const t = jf.t;
-      const lists = code(t, n).filter((c) => t.type[c] === "type_arguments");
-      if (lists.length !== 1 || code(t, n).some((c) => t.type[c] === "scoped_type_identifier")) return void 0;
-      const out2 = [];
-      for (const c of code(t, lists[0])) {
-        if (t.type[c] !== "wildcard") {
-          const k3 = writtenKey(jf, c);
-          if (k3 === void 0) return void 0;
-          out2.push(k3);
-          continue;
+      const rootOf2 = (dir) => {
+        const here = isPackageDir(dir);
+        if (here !== true) return here === false ? dir.join("/") : null;
+        let top = dir;
+        for (; ; ) {
+          const above = isPackageDir(top.slice(0, -1));
+          if (above === void 0) return null;
+          if (!above) return top.slice(0, -1).join("/");
+          top = top.slice(0, -1);
         }
-        const bound = code(t, c).filter((b2) => !isAnnotation(t, b2));
-        if (bound.length === 0) {
-          out2.push("?");
-          continue;
-        }
-        const k2 = writtenKey(jf, bound[bound.length - 1]);
-        if (k2 === void 0) return void 0;
-        out2.push(\`? \${hasToken(t, c, "super") ? "super" : "extends"} \${k2}\`);
-      }
-      return \`<\${out2.join(",")}>\`;
-    };
-    const staticType = (jf, n, dims = 0, lone = NO_VARS) => {
-      const t = jf.t;
-      const wrap = (x2, d) => d > 0 ? wrap({ k: "array", elem: x2 }, d - 1) : x2;
-      if (n < 0) return UNTYPED;
-      const ty = t.type[n];
-      if (ty === "integral_type" || ty === "floating_point_type" || ty === "boolean_type") return wrap({ k: "prim", name: textOf(t, n) }, dims);
-      if (ty === "array_type") return staticType(jf, child(t, n, "element"), dims + dimsOf(t, child(t, n, "dimensions")));
-      const parts2 = typeParts(t, n);
-      if (parts2.length === 0) return UNTYPED;
-      const r = resolveParts(jf, n, parts2);
-      const targs = constrained(t, n, lone) && t.type[n] === "generic_type" ? argsKey(jf, n) : void 0;
-      const args2 = constrained(t, n, lone) ? { args: true, ...targs !== void 0 ? { targs } : {} } : {};
-      const base = r.k === "type" ? { k: "ref", key: typeKey(r.t), type: r.t, ...args2 } : r.k === "lib" ? { k: "ref", key: r.lib.fqn, type: r.lib, ...args2 } : r.k === "param" ? { k: "var" } : r.k === "none" && r.fqn ? { k: "ref", key: r.fqn, ...args2 } : UNTYPED;
-      return wrap(base, dims);
-    };
-    const paramTypes = (jf, params2, lone = NO_VARS) => params2.map((p) => {
-      const t = jf.t;
-      return t.type[p] === "spread_parameter" ? staticType(jf, spreadType(t, p), 1, lone) : staticType(jf, child(t, p, "type"), dimsOf(t, child(t, p, "dimensions")), lone);
-    });
-    const exprTypes = /* @__PURE__ */ new Map();
-    const exprType = (jf, e) => {
-      let byNode = exprTypes.get(jf);
-      if (!byNode) exprTypes.set(jf, byNode = /* @__PURE__ */ new Map());
-      const hit = byNode.get(e);
-      if (hit) return hit;
-      byNode.set(e, UNTYPED);
-      const v2 = exprTypeUncached(jf, e);
-      byNode.set(e, v2);
-      return v2;
-    };
-    const STRING = { k: "ref", key: "java.lang.String" };
-    const BOOLEAN = { k: "prim", name: "boolean" };
-    const exprTypeUncached = (jf, e) => {
-      const t = jf.t;
-      if (e < 0) return UNTYPED;
-      const text = () => textOf(t, e);
-      switch (t.type[e]) {
-        case "decimal_integer_literal":
-        case "hex_integer_literal":
-        case "octal_integer_literal":
-        case "binary_integer_literal":
-          return { k: "prim", name: /[lL]$/.test(text()) ? "long" : "int" };
-        case "decimal_floating_point_literal":
-        case "hex_floating_point_literal":
-          return { k: "prim", name: /[fF]$/.test(text()) ? "float" : "double" };
-        case "character_literal":
-          return { k: "prim", name: "char" };
-        case "true":
-        case "false":
-        case "instanceof_expression":
-          return BOOLEAN;
-        case "string_literal":
-          return STRING;
-        case "null_literal":
-          return { k: "null" };
-        case "class_literal":
-          return { k: "ref", key: "java.lang.Class" };
-        case "lambda_expression": {
-          const ps = child(t, e, "parameters");
-          return { k: "fn", arity: ps < 0 ? 0 : t.type[ps] === "identifier" ? 1 : namedChildren(t, ps).filter((c) => t.type[c] === "identifier" || t.type[c] === "formal_parameter" || t.type[c] === "spread_parameter").length };
-        }
-        case "method_reference":
-          return { k: "fn", arity: null };
-        case "this": {
-          const c = classAround(jf, e);
-          return c ? { k: "ref", key: typeKey(c), type: c } : UNTYPED;
-        }
-        case "parenthesized_expression":
-          return exprType(jf, code(t, e)[0] ?? -1);
-        case "cast_expression": {
-          const types = namedChildren(t, e).filter((c) => t.field[c] === "type");
-          return types.length === 1 ? staticType(jf, types[0]) : UNTYPED;
-        }
-        case "object_creation_expression": {
-          const body2 = anonymousBody(t, e);
-          const anon = body2 !== void 0 ? jf.byNode.get(body2) : void 0;
-          if (anon) return { k: "ref", key: typeKey(anon), type: anon };
-          return qualifiedCreation(t, e) ? UNTYPED : staticType(jf, child(t, e, "type"));
-        }
-        case "array_creation_expression":
-          return staticType(jf, child(t, e, "type"), namedChildren(t, e).filter((c) => t.field[c] === "dimensions").reduce((n, c) => n + (textOf(t, c).match(/\\[/g) ?? []).length, 0));
-        case "identifier":
-          return variableType(jf, e, text());
-        case "field_access": {
-          const obj = child(t, e, "object");
-          const field = child(t, e, "field");
-          if (t.type[field] === "this") {
-            const q2 = exprVal(jf, obj);
-            return q2.k === "type" && q2.res.k === "type" ? { k: "ref", key: typeKey(q2.res.t), type: q2.res.t } : UNTYPED;
-          }
-          const T = typeOf(t.type[obj] === "super" ? superVal(jf, obj) : exprVal(jf, obj));
-          const fd = T ? fieldOf(T, textOf(t, field)) : { complete: false };
-          const self2 = selfOf(jf, obj);
-          return T && fd.found && fd.found !== "unknown" ? fieldStatic(self2 ?? T, fd.found, self2 !== null) : UNTYPED;
-        }
-        case "method_invocation": {
-          const m2 = callOf(jf, child(t, e, "name"));
-          if (!m2 || m2.node < 0 || "fqn" in m2.owner) return UNTYPED;
-          const rt2 = child(m2.owner.file.t, m2.node, "type");
-          const bound = resultView(jf, child(t, e, "name"), m2, rt2);
-          return bound ? { k: "ref", key: typeKey(bound), type: bound } : rt2 >= 0 ? staticType(m2.owner.file, rt2) : UNTYPED;
-        }
-        case "array_access": {
-          const a = exprType(jf, child(t, e, "array"));
-          return a.k === "array" ? a.elem : UNTYPED;
-        }
-        case "binary_expression": {
-          const op = t.type[child(t, e, "operator")];
-          if (["==", "!=", "<", ">", "<=", ">=", "&&", "||"].includes(op)) return BOOLEAN;
-          const a = exprType(jf, child(t, e, "left"));
-          const b2 = exprType(jf, child(t, e, "right"));
-          if (op === "+" && (a.k === "ref" && a.key === STRING.key || b2.k === "ref" && b2.key === STRING.key)) return STRING;
-          return a.k === "prim" && b2.k === "prim" ? promoted(a.name, b2.name, op) : UNTYPED;
-        }
-        case "unary_expression": {
-          const op = t.type[child(t, e, "operator")];
-          if (op === "!") return BOOLEAN;
-          const a = exprType(jf, child(t, e, "operand"));
-          return a.k === "prim" && a.name !== "boolean" ? { k: "prim", name: promote(a.name) } : UNTYPED;
-        }
-        case "update_expression":
-          return exprType(jf, code(t, e)[0] ?? -1);
-        case "assignment_expression":
-          return exprType(jf, child(t, e, "left"));
-        case "ternary_expression": {
-          const a = exprType(jf, child(t, e, "consequence"));
-          const b2 = exprType(jf, child(t, e, "alternative"));
-          return sameType(a, b2) ? a : UNTYPED;
-        }
-        default:
-          return UNTYPED;
-      }
-    };
-    const variableType = (jf, n, name2) => {
-      const at3 = jf.t.start[n];
-      for (let s = scopeOf(jf, n); s; s = s.parent) {
-        const vs = visible2(jf, s.names.get(name2), at3).filter((b2) => b2.kind === "local" || b2.kind === "param");
-        if (vs.length > 0) {
-          if (vs.length > 1) return UNTYPED;
-          const b2 = vs[0];
-          if (b2.typeNode !== void 0) return staticType(jf, b2.typeNode, bindingDims(jf.t, b2));
-          return b2.init !== void 0 ? exprType(jf, b2.init) : UNTYPED;
-        }
-        if (s.kind === "class") {
-          const T = jf.byNode.get(s.node);
-          if (!T) return UNTYPED;
-          if (!inBody(T, n)) continue;
-          const fd = fieldOf(T, name2);
-          if (fd.found !== void 0) return fd.found === "unknown" ? UNTYPED : fieldStatic(T, fd.found, true);
-          if (!fd.complete) return UNTYPED;
-        }
-        if (s.kind === "module") break;
-      }
-      const sf = staticField(jf, name2);
-      return sf && sf !== "unknown" ? sf.static() : UNTYPED;
-    };
-    const closures = /* @__PURE__ */ new Map();
-    const closureOf = (x2) => {
-      let hit = closures.get(x2);
-      if (hit) return hit;
-      hit = { keys: /* @__PURE__ */ new Set([keyOfRef(x2)]), complete: true };
-      closures.set(x2, hit);
-      for (const s of supersOf(x2)) {
-        if (!s) {
-          hit.complete = false;
-          continue;
-        }
-        const c = closureOf(s);
-        for (const k2 of c.keys) hit.keys.add(k2);
-        if (!c.complete) hit.complete = false;
-      }
-      return hit;
-    };
-    const keyOfRef = (x2) => "fqn" in x2 ? x2.fqn : typeKey(x2);
-    const refType = (s) => s.type ?? libNamed(s.key);
-    const fits = (a, p, loose) => {
-      if (a.k === "unknown" || p.k === "unknown" || p.k === "null" || p.k === "fn") return "maybe";
-      if (a.k === "fn") return p.k === "var" ? "maybe" : p.k === "ref" ? takesFn(p, a.arity) : "no";
-      if (p.k === "var") return a.k === "prim" && !loose ? "no" : "maybe";
-      if (a.k === "var") return p.k === "prim" ? loose ? "maybe" : "no" : "maybe";
-      if (a.k === "null") return p.k === "prim" ? "no" : "yes";
-      if (a.k === "prim") {
-        if (p.k === "prim") return a.name === p.name || (WIDENING[a.name] ?? []).includes(p.name) ? "yes" : "no";
-        if (!loose || p.k === "array") return "no";
-        return fits({ k: "ref", key: BOXES[a.name] }, p, true);
-      }
-      if (p.k === "prim") {
-        if (!loose || a.k === "array") return "no";
-        const prim = UNBOXED[a.key];
-        return prim && (prim === p.name || (WIDENING[prim] ?? []).includes(p.name)) ? "yes" : "no";
-      }
-      if (a.k === "array") {
-        if (p.k === "array") return a.elem.k === "prim" || p.elem.k === "prim" ? a.elem.k === "prim" && p.elem.k === "prim" ? a.elem.name === p.elem.name ? "yes" : "no" : sameType(a.elem, p.elem) ? "yes" : "no" : fits(a.elem, p.elem, false);
-        return ["java.lang.Object", "java.lang.Cloneable", "java.io.Serializable"].includes(p.key) ? "yes" : "no";
-      }
-      if (p.k === "array") return "no";
-      if (p.args && p.targs !== void 0 && a.key === p.key && a.targs === p.targs) return "yes";
-      const yes = p.args ? "maybe" : "yes";
-      if (a.key === p.key || p.key === "java.lang.Object") return yes;
-      const pt2 = refType(p);
-      const final = pt2 !== void 0 && isFinal(pt2);
-      const at3 = refType(a);
-      if (!at3) return final ? "no" : "maybe";
-      const c = closureOf(at3);
-      return c.keys.has(p.key) ? yes : c.complete || final ? "no" : "maybe";
-    };
-    const FINAL_LIB = /* @__PURE__ */ new Set(["java.lang.String", "java.lang.Class", "java.lang.StringBuilder", "java.lang.StringBuffer", "java.util.Optional", ...Object.values(BOXES)]);
-    const isFinal = (x2) => "fqn" in x2 ? FINAL_LIB.has(x2.fqn) : x2.kind === "enum" || x2.kind === "record" || x2.kind === "class" && has(x2.file.t, x2.node, "final");
-    const takesFn = (p, arity2) => {
-      const x2 = refType(p);
-      if (!x2) return "maybe";
-      if (!isIface(x2)) return "no";
-      const shape = fnShape(x2);
-      if (!shape) return "maybe";
-      if (shape.length !== 1) return "no";
-      return arity2 === null || shape[0].some((m2) => m2.varargs || m2.n === arity2) ? "maybe" : "no";
-    };
-    const OBJECT_PUBLIC = /* @__PURE__ */ new Set(["equals/1", "hashCode/0", "toString/0", "getClass/0", "notify/0", "notifyAll/0", "wait/0", "wait/1", "wait/2"]);
-    const shapes = /* @__PURE__ */ new Map();
-    const fnShape = (x2) => {
-      if (shapes.has(x2)) return shapes.get(x2);
-      shapes.set(x2, null);
-      const names2 = /* @__PURE__ */ new Set();
-      const seen = /* @__PURE__ */ new Set();
-      const walk = (y2) => {
-        if (!y2) return false;
-        if (seen.has(y2)) return true;
-        seen.add(y2);
-        if ("fqn" in y2) {
-          if (!y2.members) return false;
-          for (const m2 of y2.methods) names2.add(m2.name);
-        } else for (const name2 of membersOf(y2).methods.keys()) names2.add(name2);
-        return supersOf(y2).every(walk);
       };
-      let shape = walk(x2) ? [] : null;
-      for (const name2 of names2) {
-        if (!shape) break;
-        const set = methodsOf(x2, name2);
-        const live = set.list.filter((m2) => !m2.isStatic && !OBJECT_PUBLIC.has(\`\${m2.name}/\${m2.n}\`));
-        const abstract = live.filter((m2) => m2.abstract);
-        if (!set.complete || live.some((m2) => !m2.abstract && abstract.some((a) => a.n === m2.n && (a.key() === null || m2.key() === null)))) shape = null;
-        else if (abstract.length > 0) shape.push(abstract);
+      const sourceRoots = /* @__PURE__ */ new Set();
+      const shown = /* @__PURE__ */ new Set();
+      for (const path of known) {
+        const segs = path.split("/");
+        for (let k2 = 1; k2 < segs.length; k2++) shown.add(segs.slice(0, k2).join("/"));
+        if (!path.endsWith(".py")) continue;
+        shown.add(path.slice(0, -3));
+        const dir = segs.slice(0, -1);
+        const root = isPackageDir(dir) ? rootOf2(dir) : null;
+        if (root !== null) sourceRoots.add(root);
       }
-      shapes.set(x2, shape);
-      return shape;
-    };
-    const applies = (m2, args2, phase) => {
-      const ps = m2.params();
-      if (phase < 3 ? ps.length !== args2.length : !m2.varargs || args2.length < ps.length - 1) return "no";
-      const last = ps[ps.length - 1];
-      let all2 = "yes";
-      for (let i2 = 0; i2 < args2.length; i2++) {
-        const p = phase === 3 && i2 >= ps.length - 1 ? last.k === "array" ? last.elem : last.k === "var" ? last : UNTYPED : ps[i2];
-        const f2 = fits(args2[i2], p, phase > 1);
-        if (f2 === "no") return "no";
-        if (f2 === "maybe") all2 = "maybe";
-      }
-      return all2;
-    };
-    const subtype = (a, b2) => {
-      if (a.k === "prim" && b2.k === "prim") return a.name === b2.name || (WIDENING[a.name] ?? []).includes(b2.name);
-      if (b2.k === "ref" && b2.args) return a.k === "ref" && a.key === b2.key && b2.targs !== void 0 && a.targs === b2.targs;
-      if (a.k === "array" && b2.k === "array") return a.elem.k === "prim" ? sameType(a.elem, b2.elem) : subtype(a.elem, b2.elem);
-      if (a.k === "array" && b2.k === "ref") return ["java.lang.Object", "java.lang.Cloneable", "java.io.Serializable"].includes(b2.key);
-      if (a.k !== "ref" || b2.k !== "ref") return false;
-      if (a.key === b2.key || b2.key === "java.lang.Object") return true;
-      const at3 = refType(a);
-      return !!at3 && closureOf(at3).keys.has(b2.key);
-    };
-    const moreSpecific = (m2, o) => {
-      const a = m2.params();
-      const b2 = o.params();
-      return a.length === b2.length && a.every((p, i2) => subtype(p, b2[i2]));
-    };
-    const byArguments = (cands, args2) => {
-      const first = cands.map((m2) => applies(m2, args2, 1));
-      if (first.includes("yes")) {
-        const may = cands.filter((_2, i2) => first[i2] !== "no");
-        if (may.length === 1) return may[0];
-        const best = may.filter((m2) => first[cands.indexOf(m2)] === "yes" && may.every((o) => o === m2 || moreSpecific(m2, o) && !moreSpecific(o, m2)));
-        return best.length === 1 ? best[0] : null;
-      }
-      const any = cands.filter((m2) => applies(m2, args2, 1) !== "no" || applies(m2, args2, 2) !== "no" || applies(m2, args2, 3) !== "no");
-      return any.length === 1 ? any[0] : null;
-    };
-    const argTypes = (jf, call) => code(jf.t, child(jf.t, call, "arguments")).map((a) => exprType(jf, a));
-    const typeParamsOf = (T) => {
-      const t = T.file.t;
-      return code(t, child(t, T.node, "type_parameters")).map((tp) => namedChildren(t, tp).find((c) => t.type[c] === "type_identifier") ?? -1).map((id) => id >= 0 ? textOf(t, id) : "");
-    };
-    const classTypeVar = (T, n) => {
-      const t = T.file.t;
-      if (n < 0 || t.type[n] !== "type_identifier") return null;
-      const tp = typeParameterOf(T.file, n, textOf(t, n));
-      return tp >= 0 && t.parent[t.parent[tp]] === T.node ? textOf(t, n) : null;
-    };
-    const viewOf = (X2, C3, name2, depth = 0) => {
-      if (X2 === C3) return { k: "var", name: name2 };
-      if (depth > 20) return null;
-      const t = X2.file.t;
-      let found;
-      for (const sn2 of supertypeNodes(t, X2.node)) {
-        const r = resolveParts(X2.file, sn2, typeParts(t, sn2));
-        if (r.k !== "type" || !closureOf(r.t).keys.has(typeKey(C3))) continue;
-        const up = viewOf(r.t, C3, name2, depth + 1);
-        let here = up?.k === "type" ? up : null;
-        if (up?.k === "var") {
-          const params2 = typeParamsOf(r.t);
-          const generic = t.type[sn2] === "generic_type" ? namedChildren(t, sn2).find((c) => t.type[c] === "type_arguments") : void 0;
-          const args2 = generic === void 0 ? [] : code(t, generic);
-          const arg = args2.length === params2.length ? args2[params2.indexOf(up.name)] ?? -1 : -1;
-          const a = arg >= 0 ? resolveParts(X2.file, arg, typeParts(t, arg)) : NONE;
-          here = a.k === "type" ? { k: "type", t: a.t } : a.k === "param" && classTypeVar(X2, arg) !== null ? { k: "var", name: textOf(t, arg) } : null;
-        }
-        if (found !== void 0 && !(found?.k === here?.k && (found?.k === "type" ? found.t === here.t : found?.name === here?.name))) return null;
-        found = here;
-      }
-      return found ?? null;
-    };
-    const viewType = (S3, C3, name2, free) => {
-      if (!S3 || !name2 || "fqn" in S3 || "fqn" in C3) return null;
-      const v2 = viewOf(S3, C3, name2);
-      if (v2?.k !== "var") return v2?.k === "type" ? v2.t : null;
-      if (!free) return null;
-      const t = S3.file.t;
-      const tp = code(t, child(t, S3.node, "type_parameters")).find((c) => textOf(t, namedChildren(t, c).find((x2) => t.type[x2] === "type_identifier") ?? c) === v2.name);
-      return tp === void 0 ? null : boundOf(S3.file, tp);
-    };
-    const boundOf = (jf, tp) => {
-      const t = jf.t;
-      const bound = namedChildren(t, tp).find((c) => t.type[c] === "type_bound");
-      const types = bound === void 0 ? [] : code(t, bound);
-      if (types.length !== 1) return null;
-      const r = resolveParts(jf, types[0], typeParts(t, types[0]));
-      return r.k === "type" ? r.t : null;
-    };
-    const fieldType = (S3, fd, free) => fd.type() ?? viewType(S3, fd.owner, fd.typeVar(), free);
-    const fieldStatic = (S3, fd, free) => {
-      const v2 = fd.typeVar() ? viewType(S3, fd.owner, fd.typeVar(), free) : null;
-      return v2 ? { k: "ref", key: typeKey(v2), type: v2 } : fd.static();
-    };
-    const superCache = /* @__PURE__ */ new Map();
-    const supersOf = (x2) => {
-      const hit = superCache.get(x2);
-      if (hit) return hit;
-      superCache.set(x2, [null]);
-      let supers;
-      if ("fqn" in x2) supers = x2.supers.length > 0 ? x2.supers.map((s) => libNamed(s) ?? null) : x2 === OBJECT() || x2 === INTERFACE_OBJECT() ? [] : [x2.iface ? INTERFACE_OBJECT() : OBJECT()];
-      else {
-        const t = x2.file.t;
-        const written2 = supertypeNodes(t, x2.node).map((n) => {
-          const r = resolveParts(x2.file, n, typeParts(t, n));
-          return r.k === "type" ? r.t : r.k === "lib" ? r.lib : null;
-        });
-        if (x2.kind !== "anonymous" && x2.kind !== "constant" && headerGap(t, x2.node)) supers = [null];
-        else if (x2.kind === "class") supers = child(t, x2.node, "superclass") >= 0 ? written2 : [OBJECT(), ...written2];
-        else if (x2.kind === "interface") supers = written2.length > 0 ? written2 : [INTERFACE_OBJECT()];
-        else if (x2.kind === "enum") supers = [libNamed("java.lang.Enum"), ...written2];
-        else if (x2.kind === "record") supers = [libNamed("java.lang.Record"), ...written2];
-        else if (x2.kind === "annotation") supers = [libNamed("java.lang.annotation.Annotation")];
-        else if (x2.kind === "constant") supers = [x2.outer];
-        else supers = written2[0] && isIface(written2[0]) ? [OBJECT(), written2[0]] : written2.length > 0 ? written2 : [null];
-      }
-      superCache.set(x2, supers);
-      return supers;
-    };
-    const superclassOf = (x2) => supersOf(x2).find((s) => s === null || !isIface(s)) ?? null;
-    const inherits = (x2, m2) => m2.access !== "private" && !(m2.access === "package" && pkgOf(m2.owner) !== pkgOf(x2));
-    const methodCache = /* @__PURE__ */ new Map();
-    const libMethods = /* @__PURE__ */ new Map();
-    const declaredMethods = (x2, name2) => {
-      if (!("fqn" in x2)) return membersOf(x2).methods.get(name2) ?? [];
-      let byName = libMethods.get(x2);
-      if (!byName) {
-        const made = /* @__PURE__ */ new Map();
-        for (const m2 of x2.methods) made.set(m2.name, [...made.get(m2.name) ?? [], { ...m2, owner: x2, node: -1, unit: void 0, key: () => m2.key, params: lazy(() => m2.params.map(libParam)) }]);
-        libMethods.set(x2, byName = made);
-      }
-      return byName.get(name2) ?? [];
-    };
-    const methodsOf = (x2, name2) => {
-      let byName = methodCache.get(x2);
-      if (!byName) methodCache.set(x2, byName = /* @__PURE__ */ new Map());
-      const hit = byName.get(name2);
-      if (hit) return hit;
-      byName.set(name2, { list: [], complete: false });
-      const own = declaredMethods(x2, name2);
-      let complete = "fqn" in x2 ? x2.members : !openOf(x2);
-      const inherited = [];
-      for (const s of supersOf(x2)) {
-        if (!s) {
-          complete = false;
-          continue;
-        }
-        const set = methodsOf(s, name2);
-        if (!set.complete) complete = false;
-        for (const m2 of set.list) if (inherits(x2, m2) && !(m2.isStatic && isIface(m2.owner)) && !inherited.includes(m2)) inherited.push(m2);
-      }
-      const same = (a, b2) => a.n === b2.n && a.varargs === b2.varargs && a.key() !== null && a.key() === b2.key();
-      const all2 = [...own, ...inherited.filter((m2) => !own.some((d) => same(d, m2)))];
-      const found = { list: all2.filter((m2) => !(isIface(m2.owner) && all2.some((c) => c !== m2 && !isIface(c.owner) && !c.abstract && same(c, m2)))), complete };
-      byName.set(name2, found);
-      return found;
-    };
-    const memberType = (x2, name2, depth = 0) => {
-      if (depth > 40) return { complete: false };
-      if ("fqn" in x2) {
-        const nested = x2.types.has(name2) ? libNamed(\`\${x2.fqn}.\${name2}\`) : void 0;
-        if (x2.types.has(name2)) return { found: nested ? { k: "lib", lib: nested } : UNKNOWN, complete: true };
-        if (!x2.members) return { complete: false };
-      } else {
-        const own = membersOf(x2).types.get(name2);
-        if (own) return { found: { k: "type", t: own }, complete: true };
-        if (openOf(x2)) return { complete: false };
-      }
-      let complete = true;
-      let found;
-      for (const s of supersOf(x2)) {
-        if (!s) {
-          complete = false;
-          continue;
-        }
-        const m2 = memberType(s, name2, depth + 1);
-        if (!m2.complete) complete = false;
-        if (m2.found === void 0) continue;
-        if (m2.found.k === "type" && m2.found.t.outer && !inherits(x2, { access: accessOf(m2.found.t.file.t, m2.found.t.node, isIface(m2.found.t.outer)), owner: m2.found.t.outer })) continue;
-        found = found === void 0 || found.k === "type" && m2.found.k === "type" && found.t === m2.found.t ? m2.found : UNKNOWN;
-      }
-      return { ...found !== void 0 ? { found } : {}, complete };
-    };
-    const fieldOf = (x2, name2, depth = 0) => {
-      if (depth > 40) return { complete: false };
-      if ("fqn" in x2) {
-        if (x2.fields.has(name2)) return { found: "unknown", complete: true };
-        if (!x2.members) return { complete: false };
-      } else {
-        const own = membersOf(x2).fields.get(name2);
-        if (own) return { found: own, complete: true };
-        if (openOf(x2)) return { complete: false };
-      }
-      let complete = true;
-      let found;
-      for (const s of supersOf(x2)) {
-        if (!s) {
-          complete = false;
-          continue;
-        }
-        const m2 = fieldOf(s, name2, depth + 1);
-        if (!m2.complete) complete = false;
-        if (m2.found === void 0 || m2.found !== "unknown" && !inherits(x2, m2.found)) continue;
-        found = found === void 0 || found === m2.found ? m2.found : "unknown";
-      }
-      return { ...found !== void 0 ? { found } : {}, complete };
-    };
-    const scopeOf = (jf, n) => jf.f.scopes[jf.f.enclosing[n]];
-    const visible2 = (jf, bs, at3) => (bs ?? []).filter((b2) => {
-      if (b2.from !== void 0 && b2.from > at3) return false;
-      const t = jf.t;
-      if (t.type[t.parent[b2.node]] !== "resource") return true;
-      const body2 = child(t, t.parent[t.parent[t.parent[b2.node]]], "body");
-      return body2 >= 0 && at3 < t.end[body2];
-    });
-    const isTypeParam = (jf, b2) => jf.t.type[jf.t.parent[b2.node]] === "type_parameter";
-    const inBody = (T, n) => {
-      if (T.kind === "anonymous" || T.kind === "constant") return true;
-      const t = T.file.t;
-      const within = (x2) => x2 >= 0 && t.start[x2] <= t.start[n] && t.end[n] <= t.end[x2];
-      return within(child(t, T.node, "body")) || T.kind === "record" && within(child(t, T.node, "parameters"));
-    };
-    const typeName4 = (jf, n, name2) => {
-      const at3 = jf.t.start[n];
-      for (let s = scopeOf(jf, n); s; s = s.parent) {
-        const bs = visible2(jf, s.names.get(name2), at3).filter((b2) => b2.kind === "type");
-        if (s.kind === "class") {
-          if (bs.some((b2) => isTypeParam(jf, b2))) return { k: "param" };
-          const T = jf.byNode.get(s.node);
-          if (!T) return UNKNOWN;
-          if (inBody(T, n)) {
-            const m2 = memberType(T, name2);
-            if (m2.found !== void 0) return m2.found;
-            if (!m2.complete) return UNKNOWN;
-          }
-          continue;
-        }
-        if (s.kind === "module") break;
-        if (bs.length > 0) {
-          const b2 = bs[bs.length - 1];
-          const local = jf.byNode.get(jf.t.parent[b2.node]);
-          return isTypeParam(jf, b2) ? { k: "param" } : local ? { k: "type", t: local } : UNKNOWN;
-        }
-      }
-      return topType(jf, name2);
-    };
-    const ownerOf = (r) => r.k === "type" ? r.t : r.k === "lib" ? r.lib : null;
-    const topType = (jf, name2) => {
-      const own = jf.top.get(name2);
-      if (own) return { k: "type", t: own };
-      const single = jf.singles.find((i2) => i2.local === name2);
-      if (single) return fqnType(jf, [...namesOf(single.spec), name2], true);
-      for (const i2 of jf.statics.filter((i3) => i3.local === name2)) {
-        const c = ownerOf(fqnType(jf, namesOf(i2.spec), true));
-        if (!c) return UNKNOWN;
-        const m2 = memberType(c, name2);
-        if (m2.found !== void 0) return m2.found;
-        if (!m2.complete) return UNKNOWN;
-      }
-      if (!/^[A-Z]/.test(name2)) return NONE;
-      if (jf.root === null) return UNKNOWN;
-      const got = typeIn(jf, jf.pkg, name2, [...jf.pkg ? jf.pkg.split(".") : [], \`\${name2}.java\`].join("/"));
-      if (got !== "absent") return got === "unknown" ? UNKNOWN : { k: "type", t: got };
-      if (!JAVA_LANG.has(name2)) return UNKNOWN;
-      const l3 = libNamed(\`java.lang.\${name2}\`);
-      return l3 ? { k: "lib", lib: l3 } : { k: "none", fqn: \`java.lang.\${name2}\` };
-    };
-    const resolveParts = (jf, n, parts2) => {
-      if (parts2.length === 0) return NONE;
-      let res = typeName4(jf, n, parts2[0]);
-      if (parts2.length === 1) return res;
-      if (res.k === "none" && !res.fqn) return fqnType(jf, parts2);
-      for (const name2 of parts2.slice(1)) {
-        if (res.k !== "type" && res.k !== "lib") return res.k === "none" ? UNKNOWN : res;
-        const m2 = memberType(res.k === "type" ? res.t : res.lib, name2);
-        if (m2.found === void 0) return m2.complete ? NONE : UNKNOWN;
-        res = m2.found;
-      }
-      return res;
-    };
-    const typeOfNode = (jf, n) => {
-      const r = resolveParts(jf, n, typeParts(jf.t, n));
-      return r.k === "type" ? r.t : null;
-    };
-    const classAround = (jf, n) => {
-      for (let s = scopeOf(jf, n); s; s = s.parent) if (s.kind === "class") return jf.byNode.get(s.node) ?? null;
-      return null;
-    };
-    const nameVal = (jf, n, name2) => {
-      const at3 = jf.t.start[n];
-      for (let s = scopeOf(jf, n); s; s = s.parent) {
-        const vs = visible2(jf, s.names.get(name2), at3).filter((b2) => b2.kind === "local" || b2.kind === "param");
-        if (vs.length > 0) return vs.length === 1 ? { k: "value", t: typeOfBinding(jf, vs[0]) } : UNSURE;
-        if (s.kind === "class") {
-          const T = jf.byNode.get(s.node);
-          if (!T) return UNSURE;
-          if (!inBody(T, n)) continue;
-          const fd = fieldOf(T, name2);
-          if (fd.found !== void 0) return { k: "value", t: fd.found === "unknown" ? null : fieldType(T, fd.found, true) };
-          if (!fd.complete) return UNSURE;
-        }
-        if (s.kind === "module") break;
-      }
-      const sf = staticField(jf, name2);
-      if (sf === null) return UNSURE;
-      if (sf !== void 0) return { k: "value", t: sf === "unknown" ? null : sf.type() };
-      const res = typeName4(jf, n, name2);
-      if (res.k === "none" && !res.fqn) return { k: "package", name: name2 };
-      return res.k === "param" || res.k === "unknown" ? UNSURE : { k: "type", res };
-    };
-    const staticField = (jf, name2) => {
-      for (const i2 of jf.statics.filter((i3) => i3.local === name2)) {
-        const c = ownerOf(fqnType(jf, namesOf(i2.spec), true));
-        if (!c) return null;
-        const fd = fieldOf(c, name2);
-        if (fd.found !== void 0 && (fd.found === "unknown" || fd.found.isStatic)) return fd.found;
-        if (!fd.complete) return null;
-      }
-      let found;
-      let known2 = true;
-      for (const i2 of jf.staticStars) {
-        const c = ownerOf(fqnType(jf, namesOf(i2.spec), true));
-        const fd = c ? fieldOf(c, name2) : { complete: false };
-        if (fd.found !== void 0 && (fd.found === "unknown" || fd.found.isStatic)) {
-          if (found !== void 0 && found !== fd.found) return null;
-          found = fd.found;
-        } else if (!fd.complete) known2 = false;
-      }
-      return found ?? (known2 ? void 0 : null);
-    };
-    const typeOfBinding = (jf, b2) => {
-      if (b2.typeNode !== void 0) {
-        if (bindingDims(jf.t, b2) > 0) return null;
-        const t = jf.t;
-        const tp = t.type[b2.typeNode] === "type_identifier" ? typeParameterOf(jf, b2.typeNode, textOf(t, b2.typeNode)) : -1;
-        return tp >= 0 ? boundOf(jf, tp) : typeOfNode(jf, b2.typeNode);
-      }
-      if (b2.init === void 0) return null;
-      const v2 = exprVal(jf, b2.init);
-      return v2.k === "value" ? v2.t : null;
-    };
-    const exprCache = /* @__PURE__ */ new Map();
-    const exprVal = (jf, e) => {
-      let byNode = exprCache.get(jf);
-      if (!byNode) exprCache.set(jf, byNode = /* @__PURE__ */ new Map());
-      const hit = byNode.get(e);
-      if (hit) return hit;
-      byNode.set(e, UNSURE);
-      const v2 = exprValUncached(jf, e);
-      byNode.set(e, v2);
-      return v2;
-    };
-    const exprValUncached = (jf, e) => {
-      const t = jf.t;
-      switch (t.type[e]) {
-        case "this":
-          return { k: "value", t: classAround(jf, e) };
-        case "identifier":
-          return nameVal(jf, e, textOf(t, e));
-        case "type_identifier":
-        case "generic_type":
-        case "scoped_type_identifier":
-          return { k: "type", res: resolveParts(jf, e, typeParts(t, e)) };
-        case "parenthesized_expression":
-          return exprVal(jf, code(t, e)[0] ?? -1);
-        case "cast_expression": {
-          const types = namedChildren(t, e).filter((c) => t.field[c] === "type");
-          return types.length === 1 ? { k: "value", t: typeOfNode(jf, types[0]) } : UNSURE;
-        }
-        case "object_creation_expression": {
-          const body2 = anonymousBody(t, e);
-          if (body2 !== void 0) return { k: "value", t: jf.byNode.get(body2) ?? null };
-          return qualifiedCreation(t, e) ? UNSURE : { k: "value", t: typeOfNode(jf, child(t, e, "type")) };
-        }
-        case "field_access": {
-          const obj = child(t, e, "object");
-          const field = child(t, e, "field");
-          if (t.type[field] === "this") {
-            const q2 = exprVal(jf, obj);
-            return q2.k === "type" && q2.res.k === "type" ? { k: "value", t: q2.res.t } : UNSURE;
-          }
-          return memberVal(jf, t.type[obj] === "super" ? superVal(jf, obj) : exprVal(jf, obj), textOf(t, field), selfOf(jf, obj));
-        }
-        case "method_invocation": {
-          const m2 = callOf(jf, child(t, e, "name"));
-          if (!m2 || m2.node < 0 || "fqn" in m2.owner) return UNSURE;
-          const i2 = child(t, e, "type_arguments") < 0 ? identityArg(m2) : -1;
-          if (i2 >= 0) {
-            const v2 = exprVal(jf, code(t, child(t, e, "arguments"))[i2] ?? -1);
-            return v2.k === "value" ? v2 : UNSURE;
-          }
-          const rt2 = child(m2.owner.file.t, m2.node, "type");
-          const bound = resultView(jf, child(t, e, "name"), m2, rt2);
-          return { k: "value", t: bound ?? (rt2 >= 0 ? typeOfNode(m2.owner.file, rt2) : null) };
-        }
-        default:
-          return UNSURE;
-      }
-    };
-    const identityArg = (m2) => {
-      if ("fqn" in m2.owner || m2.node < 0 || m2.varargs) return -1;
-      const t = m2.owner.file.t;
-      const rt2 = child(t, m2.node, "type");
-      if (rt2 < 0 || t.type[rt2] !== "type_identifier") return -1;
-      const name2 = textOf(t, rt2);
-      if (!namedChildren(t, child(t, m2.node, "type_parameters")).some((tp) => namedChildren(t, tp).some((c) => t.type[c] === "type_identifier" && textOf(t, c) === name2))) return -1;
-      const names2 = (n) => n >= 0 && (t.type[n] === "type_identifier" && textOf(t, n) === name2 || namedChildren(t, n).some(names2));
-      let at3 = -1;
-      for (const [i2, p] of namedChildren(t, child(t, m2.node, "parameters")).filter((c) => t.type[c] === "formal_parameter").entries()) {
-        const ty = child(t, p, "type");
-        if (t.type[ty] === "type_identifier" && textOf(t, ty) === name2 && child(t, p, "dimensions") < 0) {
-          if (at3 >= 0) return -1;
-          at3 = i2;
-        } else if (names2(ty)) return -1;
-      }
-      return at3;
-    };
-    const superVal = (jf, n) => {
-      const c = classAround(jf, n);
-      const s = c ? superclassOf(c) : null;
-      return s && !("fqn" in s) ? { k: "value", t: s } : UNSURE;
-    };
-    const resultView = (jf, nameNode, m2, rt2) => {
-      const recv = receivers.get(jf)?.get(nameNode);
-      if (!recv || recv.kind === "type" || "fqn" in m2.owner) return null;
-      return viewType(recv.kind === "self" ? recv.view : recv.type, m2.owner, classTypeVar(m2.owner, rt2), recv.kind === "self");
-    };
-    const memberVal = (jf, q2, name2, self2) => {
-      if (q2.k === "package") {
-        const res = fqnType(jf, [...q2.name.split("."), name2]);
-        return res.k === "none" && !/^[A-Z]/.test(name2) ? { k: "package", name: \`\${q2.name}.\${name2}\` } : res.k === "type" ? { k: "type", res } : UNSURE;
-      }
-      const T = q2.k === "value" ? q2.t : q2.k === "type" && q2.res.k === "type" ? q2.res.t : null;
-      if (!T) return UNSURE;
-      const fd = fieldOf(T, name2);
-      if (fd.found !== void 0) return { k: "value", t: fd.found === "unknown" ? null : fieldType(self2 ?? T, fd.found, self2 !== null) };
-      if (!fd.complete || q2.k !== "type") return UNSURE;
-      const m2 = memberType(T, name2);
-      return m2.found !== void 0 ? { k: "type", res: m2.found } : UNSURE;
-    };
-    const reachable = (list, k2) => {
-      if (k2 === null) return [...list];
-      const fixed = list.filter((m2) => !m2.varargs && m2.n === k2);
-      return k2 === 0 && fixed.length === 1 ? fixed : list.filter((m2) => m2.varargs ? k2 >= m2.n - 1 : k2 === m2.n);
-    };
-    const topOfType = (T) => T.outer ? topOfType(T.outer) : T;
-    const access = (jf, n, m2, recv) => {
-      if (m2.access === "public") return "yes";
-      if (m2.access === "private") {
-        const here = classAround(jf, n);
-        return !("fqn" in m2.owner) && here !== null && topOfType(here) === topOfType(m2.owner) ? "yes" : "no";
-      }
-      if (pkgOf(m2.owner) === jf.pkg) return "yes";
-      if (m2.access === "package") return "no";
-      const owner = keyOfRef(m2.owner);
-      let open = false;
-      for (let S3 = classAround(jf, n); S3; S3 = S3.outer) {
-        const c = closureOf(S3);
-        if (!c.keys.has(owner)) {
-          if (!c.complete) open = true;
-          continue;
-        }
-        if (m2.isStatic || recv.kind !== "expr") return "yes";
-        const q2 = closureOf(recv.type);
-        if (q2.keys.has(keyOfRef(S3))) return "yes";
-        if (!q2.complete) open = true;
-      }
-      return open ? "maybe" : "no";
-    };
-    const importable = (jf, m2) => m2.access === "public" || m2.access !== "private" && pkgOf(m2.owner) === jf.pkg;
-    const mayApply = (m2, args2) => applies(m2, args2, 1) !== "no" || applies(m2, args2, 2) !== "no" || applies(m2, args2, 3) !== "no";
-    const receivers = /* @__PURE__ */ new Map();
-    const pick = (jf, n, owner, set, k2, recv) => {
-      const m2 = pickUncached(jf, n, owner, set, k2, recv);
-      if (m2) {
-        let byNode = receivers.get(jf);
-        if (!byNode) receivers.set(jf, byNode = /* @__PURE__ */ new Map());
-        byNode.set(n, recv);
-      }
-      return m2;
-    };
-    const pickUncached = (jf, n, owner, set, k2, recv) => {
-      const call = jf.t.parent[n];
-      if (k2 !== null && gapIn(jf.t, child(jf.t, call, "arguments"))) return null;
-      const usable = set.list.map((m3) => ({ m: m3, a: access(jf, n, m3, recv) })).filter((x2) => x2.a !== "no");
-      const possible = reachable(usable.map((x2) => x2.m), k2);
-      if (usable.some((x2) => x2.a === "maybe" && possible.includes(x2.m))) return null;
-      if (possible.length > 1) return set.complete && k2 !== null ? byArguments(possible, argTypes(jf, call)) : null;
-      if (possible.length !== 1) return null;
-      const m2 = possible[0];
-      if (k2 !== null && !mayApply(m2, argTypes(jf, call))) return null;
-      if (set.complete) return m2;
-      if (k2 !== 0 || m2.varargs || m2.n !== 0) return null;
-      for (let s = owner; s; s = superclassOf(s)) {
-        if (s === m2.owner) return s === owner || !m2.abstract ? m2 : null;
-        if (!("fqn" in s) && openOf(s)) return null;
-      }
-      return null;
-    };
-    const argCount = (t, call) => code(t, child(t, call, "arguments")).length;
-    const callCache = /* @__PURE__ */ new Map();
-    const callOf = (jf, nameNode) => {
-      let byNode = callCache.get(jf);
-      if (!byNode) callCache.set(jf, byNode = /* @__PURE__ */ new Map());
-      if (byNode.has(nameNode)) return byNode.get(nameNode);
-      byNode.set(nameNode, null);
-      const m2 = callUncached(jf, nameNode);
-      byNode.set(nameNode, m2);
-      return m2;
-    };
-    const selfOf = (jf, q2) => {
-      const t = jf.t;
-      if (t.type[q2] === "this" || t.type[q2] === "super") return classAround(jf, q2);
-      if (t.type[q2] !== "field_access" || t.type[child(t, q2, "field")] !== "this") return null;
-      const v2 = exprVal(jf, q2);
-      return v2.k === "value" ? v2.t : null;
-    };
-    const callUncached = (jf, nameNode) => {
-      const t = jf.t;
-      const call = t.parent[nameNode];
-      const name2 = textOf(t, nameNode);
-      const k2 = argCount(t, call);
-      const obj = child(t, call, "object");
-      const sup = namedChildren(t, call).find((c) => t.type[c] === "super" && t.field[c] !== "object");
-      if (sup !== void 0) {
-        const q3 = exprVal(jf, obj);
-        const X2 = q3.k === "type" && q3.res.k === "type" ? q3.res.t : null;
-        const target = X2 ? isIface(X2) ? X2 : superclassOf(X2) : null;
-        return target ? pick(jf, nameNode, target, methodsOf(target, name2), k2, { kind: "self", view: null }) : null;
-      }
-      if (obj < 0) return unqualified(jf, nameNode, name2, k2);
-      const q2 = t.type[obj] === "super" ? superVal(jf, obj) : exprVal(jf, obj);
-      const T = q2.k === "value" ? q2.t : q2.k === "type" && q2.res.k === "type" ? q2.res.t : null;
-      if (!T) return null;
-      const self2 = selfOf(jf, obj);
-      return pick(jf, nameNode, T, methodsOf(T, name2), k2, self2 ? { kind: "self", view: self2 } : q2.k === "type" ? { kind: "type" } : { kind: "expr", type: T });
-    };
-    const unqualified = (jf, n, name2, k2) => {
-      for (let s = scopeOf(jf, n); s; s = s.parent) {
-        if (s.kind !== "class") continue;
-        const T = jf.byNode.get(s.node);
-        if (!T) return null;
-        const set = methodsOf(T, name2);
-        if (set.list.length > 0) return pick(jf, n, T, set, k2, { kind: "self", view: T });
-        if (!set.complete) return null;
-      }
-      if (gapIn(jf.t, child(jf.t, jf.t.parent[n], "arguments"))) return null;
-      const candidates = [];
-      let complete = true;
-      for (const i2 of jf.statics.filter((i3) => i3.local === name2)) {
-        const c = fqnType(jf, namesOf(i2.spec), true);
-        if (c.k !== "type") return null;
-        const set = methodsOf(c.t, name2);
-        if (!set.complete) complete = false;
-        candidates.push(...set.list.filter((m2) => m2.isStatic));
-      }
-      const singles = candidates.length;
-      for (const i2 of jf.staticStars) {
-        const c = fqnType(jf, namesOf(i2.spec), true);
-        if (c.k !== "type") {
-          complete = false;
-          continue;
-        }
-        const set = methodsOf(c.t, name2);
-        if (!set.complete) complete = false;
-        for (const m2 of set.list) if (m2.isStatic && !candidates.slice(0, singles).some((x2) => x2.n === m2.n && x2.key() !== null && x2.key() === m2.key())) candidates.push(m2);
-      }
-      const possible = reachable(candidates.filter((m2) => importable(jf, m2)), k2);
-      const args2 = argTypes(jf, jf.t.parent[n]);
-      if (possible.length > 1 && complete) return byArguments(possible, args2);
-      if (possible.length !== 1 || !mayApply(possible[0], args2)) return null;
-      return complete || k2 === 0 && possible[0].n === 0 && !possible[0].varargs && candidates.indexOf(possible[0]) < singles ? possible[0] : null;
-    };
-    const ctorOf = (jf, n, T, k2, how, call = -1) => {
-      if (T.kind !== "class" && T.kind !== "record" || openOf(T)) return [];
-      if (call >= 0 && gapIn(jf.t, child(jf.t, call, "arguments"))) return [];
-      const usable = (c) => c.access !== "protected" || pkgOf(T) === jf.pkg || how === "super" || how === "anonymous" || how === "this";
-      const ctors = membersOf(T).ctors.filter((c) => c.access === "protected" ? usable(c) : access(jf, n, c, { kind: "type" }) === "yes");
-      const implicit = (params2, count2, varargs) => ({ name: T.name, owner: T, node: -1, unit: T.unit, n: count2, varargs, isStatic: false, abstract: false, access: "public", key: () => null, params: params2 });
-      if (T.kind === "class" && membersOf(T).ctors.length === 0) ctors.push(implicit(() => [], 0, false));
-      if (T.kind === "record") {
-        const components2 = recordComponents(T);
-        const key = keyOfParams(T.file, components2);
-        const varargs = components2.some((c) => T.file.t.type[c] === "spread_parameter");
-        if (!membersOf(T).ctors.some((c) => T.file.t.type[c.node] === "compact_constructor_declaration" || c.n === components2.length && key !== null && c.key() === key)) ctors.push(implicit(lazy(() => paramTypes(T.file, components2)), components2.length, varargs));
-      }
-      const possible = reachable(ctors, k2);
-      const args2 = call >= 0 ? argTypes(jf, call) : null;
-      const one = possible.length > 1 ? args2 ? byArguments(possible, args2) : null : possible.length === 1 && (!args2 || mayApply(possible[0], args2)) ? possible[0] : null;
-      const unit5 = one?.unit ?? (one ? T.unit : void 0);
-      return unit5 ? [{ ref: "call", units: [unit5], ...unit5 !== T.unit && T.unit ? { alt: T.unit } : {} }] : [];
-    };
-    const typeOf = (v2) => v2.k === "value" ? v2.t : v2.k === "type" && v2.res.k === "type" ? v2.res.t : null;
-    const resolveSite = (f2, s) => {
-      const jf = jfileOf(f2);
-      const t = jf.t;
-      const n = s.node;
-      if (unsureAt(t, n) || jdkPackage(jf.pkg)) return [];
-      const p = t.parent[n];
-      const pt2 = t.type[p];
-      const one = (u, ref = s.ref) => u ? [{ ref, units: [u] }] : [];
-      if (s.ref === "import") {
-        const i2 = f2.imports.find((x2) => x2.node === n);
-        if (!i2) return [];
-        if (jf.singles.includes(i2)) {
-          const r = fqnType(jf, [...namesOf(i2.spec), s.name], true);
-          return r.k === "type" ? one(r.t.unit) : [];
-        }
-        const c = fqnType(jf, namesOf(i2.spec), true);
-        if (c.k !== "type") return [];
-        const own = membersOf(c.t);
-        const type = own.types.get(s.name);
-        const units = [...(own.methods.get(s.name) ?? []).filter((m2) => m2.isStatic && importable(jf, m2)).map((m2) => m2.unit), ...type && importable(jf, { access: accessOf(type.file.t, type.node, isIface(c.t)), owner: c.t }) ? [type.unit] : []];
-        const known2 = [...new Set(units.filter((u) => u !== void 0))];
-        return known2.length > 0 ? [{ ref: s.ref, units: known2 }] : [];
-      }
-      if (t.type[n] === "this" || t.type[n] === "super") {
-        const c = classAround(jf, n);
-        const target = c && t.type[n] === "super" ? superclassOf(c) : c;
-        return target && !("fqn" in target) ? ctorOf(jf, n, target, argCount(t, p), t.type[n] === "super" ? "super" : "this", p) : [];
-      }
-      if (pt2 === "method_invocation" && t.field[n] === "name") return one(callOf(jf, n)?.unit);
-      if (pt2 === "method_reference") {
-        const parts2 = code(t, p);
-        if (parts2.length > 1 && n === parts2[parts2.length - 1]) {
-          const q3 = t.type[parts2[0]] === "super" ? superVal(jf, parts2[0]) : exprVal(jf, parts2[0]);
-          const T2 = typeOf(q3);
-          const self2 = selfOf(jf, parts2[0]);
-          return T2 ? one(pick(jf, n, T2, methodsOf(T2, s.name), null, self2 ? { kind: "self", view: self2 } : q3.k === "type" ? { kind: "type" } : { kind: "expr", type: T2 })?.unit) : [];
-        }
-        const q2 = exprVal(jf, n);
-        if (q2.k !== "type" || q2.res.k !== "type") return [];
-        return [...one(q2.res.t.unit), ...hasToken(t, p, "new") ? ctorOf(jf, n, q2.res.t, null, "ref").map((x2) => ({ ...x2, ref: s.ref })) : []];
-      }
-      if (pt2 === "field_access" && t.field[n] === "field") {
-        const v2 = exprVal(jf, p);
-        return v2.k === "type" && v2.res.k === "type" ? one(v2.res.t.unit) : [];
-      }
-      const creation = creationOf(t, n);
-      if (creation >= 0 && qualifiedCreation(t, creation)) return [];
-      let T = null;
-      if (t.type[n] === "type_identifier") {
-        const r = resolveParts(jf, n, typeParts(t, s.shape === "path" ? p : n));
-        T = r.k === "type" ? r.t : null;
-      } else if (s.shape === "path") {
-        const r = resolveParts(jf, n, dotted(t, p));
-        T = r.k === "type" ? r.t : null;
-      } else if (mayBeType(t, n)) {
-        const q2 = isType2(t, n) ? { k: "type", res: typeName4(jf, n, s.name) } : nameVal(jf, n, s.name);
-        T = q2.k === "type" && q2.res.k === "type" ? q2.res.t : null;
-      }
-      if (!T) return [];
-      return creation >= 0 ? [...one(T.unit, "type"), ...ctorOf(jf, n, T, argCount(t, creation), anonymousBody(t, creation) !== void 0 ? "anonymous" : "new", creation)] : one(T.unit);
-    };
-    const names = /* @__PURE__ */ new Set(["this", "super"]);
-    for (const f2 of files) {
-      for (const u of f2.units) names.add(u.name);
-      for (const T of jfileOf(f2).byNode.values()) if (T.kind === "record") for (const name2 of membersOf(T).fields.keys()) names.add(name2);
-    }
-    return (f2, s) => names.has(s.name) ? resolveSite(f2, s) : [];
+      if ([...known].some((p) => p.startsWith("src/"))) sourceRoots.add("src");
+      sourceRoots.delete("");
+      return { exists, missing, rootOf: rootOf2, sourceRoots: [...sourceRoots].sort(), shown };
+    },
+    { cache: /* @__PURE__ */ new WeakMap() }
+  );
+  var filesUnder = (root, parts2) => {
+    const base = [...root ? [root] : [], ...parts2].join("/");
+    return [\`\${base}/__init__.py\`, \`\${base}.py\`];
   };
-  var JAVA_RESOLVER = { program };
+  var pythonModuleFiles = (from, spec, level, ctx) => {
+    const dir = from.split("/").slice(0, -1);
+    const parts2 = spec ? spec.split(".") : [];
+    if (level > 0) {
+      const base = [...dir.slice(0, Math.max(0, dir.length - (level - 1))), ...parts2].join("/");
+      return parts2.length === 0 ? [base ? \`\${base}/__init__.py\` : "__init__.py"] : [\`\${base}/__init__.py\`, \`\${base}.py\`];
+    }
+    if (parts2.length === 0 || STDLIB.has(parts2[0])) return [];
+    const layout = layoutOf(ctx);
+    const own = layout.rootOf(dir);
+    if (own === null) return [];
+    const held = [];
+    for (const root of /* @__PURE__ */ new Set([own, "", ...layout.sourceRoots])) {
+      const files = filesUnder(root, parts2);
+      if (files.some(layout.exists)) held.push(files.filter(layout.exists));
+      else if (!files.every(layout.missing) && !(parts2.length > 1 && filesUnder(root, parts2.slice(0, 1)).every(layout.missing))) return [];
+    }
+    return held.length === 1 ? held[0] : [];
+  };
+  var pythonModuleTries = (from, spec, level, ctx) => {
+    if (level > 0) return [{ files: pythonModuleFiles(from, spec, level, ctx) }];
+    const dir = from.split("/").slice(0, -1);
+    const parts2 = spec ? spec.split(".") : [];
+    if (parts2.length === 0 || STDLIB.has(parts2[0])) return [];
+    const layout = layoutOf(ctx);
+    const roots = [.../* @__PURE__ */ new Set([layout.rootOf(dir) ?? "", "", ...layout.sourceRoots])];
+    const under = (root, names) => [...root ? [root] : [], ...names].join("/");
+    if (!roots.some((root) => layout.shown.has(under(root, parts2.slice(0, 1))))) return [];
+    const likely = (root, names) => {
+      const [pkg, mod] = filesUnder(root, names);
+      return layout.shown.has(under(root, names)) ? [pkg, mod] : [mod, pkg];
+    };
+    return roots.map((root) => parts2.length === 1 ? { files: likely(root, parts2) } : { first: likely(root, parts2.slice(0, 1)), files: likely(root, parts2) });
+  };
 
-  // src/lib/langs/python.ts
-  var COMPREHENSIONS = /* @__PURE__ */ new Set(["list_comprehension", "set_comprehension", "dictionary_comprehension", "generator_expression"]);
-  var PATTERNS = /* @__PURE__ */ new Set(["pattern_list", "tuple_pattern", "list_pattern", "tuple", "list", "parenthesized_expression", "list_splat_pattern", "list_splat", "as_pattern_target", "expression_list"]);
+  // src/lib/langs/python/nodes.ts
+  var PATTERNS3 = /* @__PURE__ */ new Set(["pattern_list", "tuple_pattern", "list_pattern", "tuple", "list", "parenthesized_expression", "list_splat_pattern", "list_splat", "as_pattern_target", "expression_list"]);
   var targets = (t, n, out2 = []) => {
     if (n < 0) return out2;
     const ty = t.type[n];
     if (ty === "identifier") out2.push(n);
-    else if (PATTERNS.has(ty)) for (const c of namedChildren(t, n)) targets(t, c, out2);
+    else if (PATTERNS3.has(ty)) for (const c of namedChildren(t, n)) targets(t, c, out2);
     return out2;
   };
   var attributeTargets = (t, n, out2 = []) => {
     if (n < 0) return out2;
     if (t.type[n] === "attribute") out2.push(n);
-    else if (PATTERNS.has(t.type[n])) for (const c of namedChildren(t, n)) attributeTargets(t, c, out2);
+    else if (PATTERNS3.has(t.type[n])) for (const c of namedChildren(t, n)) attributeTargets(t, c, out2);
     return out2;
   };
   var classOfMethod = (t, fn) => {
@@ -8623,11 +8821,9 @@ sun|misc reflect\`;
     if (p >= 0 && t.type[p] === "block") p = t.parent[p];
     return p >= 0 && t.type[p] === "class_definition" ? p : -1;
   };
-  var seenInClassFrom = (t, n) => {
-    let stmt = n;
-    if (t.parent[stmt] >= 0 && (t.type[t.parent[stmt]] === "decorated_definition" || t.type[t.parent[stmt]] === "expression_statement")) stmt = t.parent[stmt];
-    const block = t.parent[stmt];
-    return block >= 0 && t.type[block] === "block" && t.type[t.parent[block]] === "class_definition" ? t.end[stmt] : void 0;
+  var inClassBody = (t, stmt) => {
+    const block = stmt >= 0 ? t.parent[stmt] : -1;
+    return block >= 0 && t.type[block] === "block" && t.type[t.parent[block]] === "class_definition";
   };
   var decorators = (t, def) => {
     const p = t.parent[def];
@@ -8635,475 +8831,13 @@ sun|misc reflect\`;
     return namedChildren(t, p).filter((c) => t.type[c] === "decorator").map((c) => textOf(t, c).replace(/^@\\s*/, "").split("(")[0].trim());
   };
   var isOverload = (t, def) => decorators(t, def).some((d) => /^(?:[\\w.]+\\.)?overload$/.test(d));
-  var PROPERTIES = /* @__PURE__ */ new Set(["property", "cached_property", "functools.cached_property"]);
-  var PARAM_NAME = { default_parameter: "name", typed_default_parameter: "name" };
-  var paramOf = (t, p) => {
-    const ty = t.type[p];
-    if (ty === "identifier") return { name: p, type: -1 };
-    if (ty in PARAM_NAME) return { name: child(t, p, PARAM_NAME[ty]), type: child(t, p, "type") };
-    if (ty === "typed_parameter") {
-      const id = namedChildren(t, p).find((c) => t.type[c] === "identifier" || t.type[c] === "list_splat_pattern" || t.type[c] === "dictionary_splat_pattern");
-      if (id === void 0) return null;
-      const name2 = t.type[id] === "identifier" ? id : namedChildren(t, id)[0] ?? -1;
-      return name2 >= 0 ? { name: name2, type: t.type[id] === "identifier" ? child(t, p, "type") : -1 } : null;
-    }
-    if (ty === "list_splat_pattern" || ty === "dictionary_splat_pattern") {
-      const id = namedChildren(t, p)[0];
-      return id !== void 0 ? { name: id, type: -1 } : null;
-    }
-    return null;
-  };
-  var importsOf3 = (t) => {
-    const out2 = [];
-    const ids = (n) => namedChildren(t, n).filter((c) => t.type[c] === "identifier");
-    const flat = (n) => textOf(t, n).replace(/\\s+/g, "");
-    for (let n = 0; n < t.count; n++) {
-      const ty = t.type[n];
-      if (ty === "import_statement") {
-        for (const c of namedChildren(t, n)) {
-          if (t.type[c] === "dotted_name") {
-            const first2 = ids(c)[0];
-            if (first2 !== void 0) out2.push({ local: textOf(t, first2), spec: textOf(t, first2), level: 0, name: null, node: -1, bind: first2, stmt: n });
-          } else if (t.type[c] === "aliased_import") {
-            const alias = child(t, c, "alias");
-            out2.push({ local: textOf(t, alias), spec: flat(child(t, c, "name")), level: 0, name: null, node: -1, bind: alias, stmt: n });
-          }
-        }
-      } else if (ty === "import_from_statement") {
-        const mod = child(t, n, "module_name");
-        let spec = "";
-        let level = 0;
-        if (mod >= 0 && t.type[mod] === "relative_import") {
-          const prefix = namedChildren(t, mod).find((c) => t.type[c] === "import_prefix");
-          level = prefix !== void 0 ? textOf(t, prefix).length : 0;
-          const d = namedChildren(t, mod).find((c) => t.type[c] === "dotted_name");
-          spec = d !== void 0 ? flat(d) : "";
-        } else if (mod >= 0) spec = flat(mod);
-        for (const c of namedChildren(t, n)) {
-          if (c === mod) continue;
-          if (t.type[c] === "wildcard_import") out2.push({ local: "", spec, level, name: "*", node: c, bind: -1, stmt: n });
-          else if (t.type[c] === "dotted_name") {
-            const last = ids(c).pop();
-            if (last !== void 0) out2.push({ local: textOf(t, last), spec, level, name: flat(c), node: last, bind: last, stmt: n });
-          } else if (t.type[c] === "aliased_import") {
-            const last = ids(child(t, c, "name")).pop();
-            const alias = child(t, c, "alias");
-            if (last !== void 0) out2.push({ local: textOf(t, alias), spec, level, name: flat(child(t, c, "name")), node: last, bind: alias, stmt: n });
-          }
-        }
-      }
-    }
-    const first = firstPathChange(t);
-    if (first >= 0) {
-      for (const i2 of out2) if (i2.level === 0 && (t.start[i2.stmt] > first || inFunction(t, i2.stmt))) i2.unproven = true;
-    }
-    return out2;
-  };
-  var inFunction = (t, n) => {
-    for (let x2 = t.parent[n]; x2 >= 0; x2 = t.parent[x2]) if (t.type[x2] === "function_definition" || t.type[x2] === "lambda") return true;
-    return false;
-  };
-  var importCache3 = /* @__PURE__ */ new WeakMap();
-  var imports3 = (t) => {
-    let hit = importCache3.get(t);
-    if (!hit) importCache3.set(t, hit = importsOf3(t));
-    return hit;
-  };
-  var binds3 = (t, n, emit) => {
-    switch (t.type[n]) {
-      case "function_definition": {
-        emit(child(t, n, "name"), "def", { unitNode: n, from: seenInClassFrom(t, n) });
-        const cls = classOfMethod(t, n);
-        const decos = decorators(t, n);
-        let first = true;
-        for (const p of namedChildren(t, child(t, n, "parameters"))) {
-          const x2 = paramOf(t, p);
-          if (!x2 || x2.name < 0) continue;
-          if (first && cls >= 0 && !decos.includes("staticmethod") && t.type[p] === "identifier") emit(x2.name, decos.includes("classmethod") ? "selfclass" : "self");
-          else emit(x2.name, "param", { typeNode: x2.type });
-          first = false;
-        }
-        return;
-      }
-      case "lambda":
-        for (const p of namedChildren(t, child(t, n, "parameters"))) {
-          const x2 = paramOf(t, p);
-          if (x2 && x2.name >= 0) emit(x2.name, "param");
-        }
-        return;
-      case "class_definition":
-        emit(child(t, n, "name"), "type", { unitNode: n, from: seenInClassFrom(t, n) });
-        return;
-      case "type_alias_statement":
-        emit(aliasName(t, n), "type", { unitNode: n });
-        return;
-      case "assignment": {
-        const left = child(t, n, "left");
-        const ids = targets(t, left);
-        const single = ids.length === 1 && ids[0] === left;
-        const atModule = t.parent[n] >= 0 && t.type[t.parent[n]] === "expression_statement" && t.parent[t.parent[n]] === 0;
-        const from = seenInClassFrom(t, n);
-        for (const id of ids) emit(id, "local", single ? { init: child(t, n, "right"), typeNode: child(t, n, "type"), ...atModule ? { unitNode: n } : {}, from } : { from });
-        return;
-      }
-      case "augmented_assignment":
-        for (const id of targets(t, child(t, n, "left"))) emit(id, "local");
-        return;
-      case "for_statement":
-      case "for_in_clause":
-        for (const id of targets(t, child(t, n, "left"))) emit(id, "local");
-        return;
-      case "as_pattern": {
-        const alias = child(t, n, "alias");
-        for (const id of targets(t, alias >= 0 && t.type[alias] === "as_pattern_target" ? alias : -1)) emit(id, "local");
-        if (alias >= 0 && t.type[alias] === "identifier") emit(alias, "local");
-        return;
-      }
-      case "named_expression":
-        emit(child(t, n, "name"), "local", { to: "function" });
-        return;
-      case "global_statement":
-        for (const id of namedChildren(t, n)) if (t.type[id] === "identifier") emit(id, "global");
-        return;
-      case "nonlocal_statement":
-        for (const id of namedChildren(t, n)) if (t.type[id] === "identifier") emit(id, "nonlocal");
-        return;
-      case "case_pattern":
-        for (const c of namedChildren(t, n)) {
-          if (t.type[c] !== "dotted_name") continue;
-          const ids = namedChildren(t, c);
-          if (ids.length === 1 && t.type[ids[0]] === "identifier") emit(ids[0], "local");
-        }
-        return;
-      // \`def f[T, *Ts, **P]\`, \`class Box[T: int]\`: PEP 695's type parameters, not \`list[T]\`'s arguments.
-      case "type_parameter":
-        if (t.field[n] === "type_parameters") for (const c of namedChildren(t, n)) for (const id of typeParameterNames(t, c)) emit(id, "param");
-        return;
-      case "import_statement":
-      case "import_from_statement":
-        for (const i2 of imports3(t)) if (i2.stmt === n && i2.bind >= 0) emit(i2.bind, "import", { import: i2 });
-        return;
-    }
-  };
-  var aliasName = (t, n) => namedChildren(t, child(t, n, "left"))[0] ?? -1;
-  var typeParameterNames = (t, n) => {
-    if (n < 0) return [];
-    if (t.type[n] === "identifier") return [n];
-    if (t.type[n] === "type" || t.type[n] === "splat_type") return typeParameterNames(t, namedChildren(t, n)[0] ?? -1);
-    if (t.type[n] === "constrained_type") return typeParameterNames(t, namedChildren(t, n)[0] ?? -1);
-    return [];
-  };
-  var written = (t, n) => {
-    let x2 = n;
-    while (t.parent[x2] >= 0 && PATTERNS.has(t.type[t.parent[x2]])) x2 = t.parent[x2];
-    const p = t.parent[x2];
-    if (p < 0) return false;
-    if ((t.type[p] === "assignment" || t.type[p] === "augmented_assignment" || t.type[p] === "for_statement") && t.field[x2] === "left") return true;
-    return t.type[p] === "delete_statement";
-  };
   var annotationName = (t, content) => {
     const str = t.parent[content];
     const annotation = str >= 0 ? t.parent[str] : -1;
     return t.type[str] === "string" && annotation >= 0 && t.type[annotation] === "type" && (t.field[annotation] === "type" || t.field[annotation] === "return_type") && namedChildren(t, str).length === 3 && /^[A-Za-z_]\\w*$/.test(textOf(t, content));
   };
-  var role3 = (t, n) => {
-    if (t.type[n] === "string_content") return annotationName(t, n) ? { kind: "bare", expr: n } : { kind: "skip" };
-    const p = t.parent[n];
-    if (p < 0) return { kind: "bare", expr: n };
-    const pt2 = t.type[p];
-    const f2 = t.field[n];
-    if (pt2 === "attribute" && f2 === "attribute") return written(t, p) ? { kind: "skip" } : { kind: "member", receiver: child(t, p, "object"), expr: p };
-    if (pt2 === "keyword_argument" && f2 === "name") return { kind: "skip" };
-    if (pt2 === "dotted_name" || pt2 === "relative_import" || pt2 === "aliased_import" || pt2 === "import_prefix") return { kind: "skip" };
-    if (pt2 === "global_statement" || pt2 === "nonlocal_statement") return { kind: "skip" };
-    if ((pt2 === "function_definition" || pt2 === "class_definition") && f2 === "name") return { kind: "decl" };
-    return { kind: "bare", expr: n };
-  };
-  var isCallee3 = (t, e) => {
-    const p = t.parent[e];
-    return p >= 0 && t.type[p] === "call" && t.field[e] === "function";
-  };
-  var isType3 = (t, n) => {
-    for (let x2 = t.parent[n], k2 = 0; x2 >= 0 && k2 < 8; x2 = t.parent[x2], k2++) {
-      if (t.type[x2] === "type") return true;
-      if (t.type[x2] === "block" || t.type[x2] === "call") return false;
-    }
-    return false;
-  };
-  var unit3 = (t, capture, node) => {
-    const outerOf = (n) => t.parent[n] >= 0 && t.type[t.parent[n]] === "decorated_definition" ? t.parent[n] : n;
-    if (capture === "definition.class" && t.type[node] === "class_definition") return { kind: "class", nameNode: child(t, node, "name"), outer: outerOf(node) };
-    if (capture === "definition.function" && t.type[node] === "function_definition") return { kind: "function", nameNode: child(t, node, "name"), outer: outerOf(node) };
-    if (capture === "definition.constant" && t.type[node] === "assignment") {
-      const left = child(t, node, "left");
-      if (left < 0 || t.type[left] !== "identifier") return null;
-      return { kind: "value", nameNode: left, outer: t.parent[node] };
-    }
-    return null;
-  };
-  var PYTHON = {
-    unit: unit3,
-    // \`type X = ...\` (PEP 695) declares a type, though \`tags.scm\` predates it.
-    extraUnits: (t) => {
-      const out2 = [];
-      for (let n = 0; n < t.count; n++) if (t.type[n] === "type_alias_statement" && aliasName(t, n) >= 0) out2.push({ kind: "type", nameNode: aliasName(t, n), outer: n, node: n });
-      return out2;
-    },
-    // An \`@overload\` signature joins the definitions after it; a property's setter and deleter join its getter.
-    continues: (t, previous2, node) => {
-      if (t.type[previous2] !== "function_definition" || t.type[node] !== "function_definition") return false;
-      const name2 = textOf(t, child(t, node, "name"));
-      return isOverload(t, previous2) || decorators(t, node).some((d) => d === \`\${name2}.setter\` || d === \`\${name2}.deleter\`);
-    },
-    // A property reads as a value, so its card drops the \`()\`: \`Dependant.is_gen_callable\`.
-    label: (t, u, parent) => {
-      const label = labelOf({ name: u.name, kind: u.kind, ...parent ? { parent: parent.name } : {} }, "py");
-      return u.kind === "method" && decorators(t, u.node).some((d) => PROPERTIES.has(d)) ? label.replace(/\\(\\)$/, "") : label;
-    },
-    scope: (t, n) => {
-      const ty = t.type[n];
-      if (ty === "function_definition" || ty === "lambda") return "function";
-      if (ty === "class_definition") return "class";
-      if (COMPREHENSIONS.has(ty) || ty === "type_alias_statement" && child(t, n, "type_parameters") >= 0) return "block";
-      return null;
-    },
-    // A default value is read where the function is defined, and so is an annotation, but where the function declares type parameters (PEP 695), which annotations see.
-    outside: (t, n) => {
-      const f2 = t.field[n];
-      const p = t.type[t.parent[n]];
-      if ((p === "default_parameter" || p === "typed_default_parameter") && f2 === "value") return true;
-      const annotation = (p === "typed_parameter" || p === "typed_default_parameter") && f2 === "type" || p === "function_definition" && f2 === "return_type";
-      if (!annotation) return false;
-      const fn = p === "function_definition" ? t.parent[n] : t.parent[t.parent[t.parent[n]]];
-      return !(fn >= 0 && t.type[fn] === "function_definition" && child(t, fn, "type_parameters") >= 0);
-    },
-    binds: binds3,
-    identifiers: /* @__PURE__ */ new Set(["identifier", "string_content"]),
-    role: role3,
-    isCallee: isCallee3,
-    isType: isType3,
-    imports: imports3,
-    classOf: (t, n) => {
-      if (t.type[n] !== "class_definition") return null;
-      const sup = child(t, n, "superclasses");
-      const bases = sup >= 0 ? namedChildren(t, sup).filter((c) => t.type[c] !== "keyword_argument" && textOf(t, c) !== "object") : [];
-      return { bases: bases.map((b2) => t.type[b2] === "subscript" ? child(t, b2, "value") : b2) };
-    }
-  };
-  var unwrapType = (t, n) => {
-    while (n >= 0 && (t.type[n] === "type" || t.type[n] === "parenthesized_expression")) n = namedChildren(t, n)[0] ?? -1;
-    return n;
-  };
-  var typeName2 = (t, typeNode) => {
-    const n = unwrapType(t, typeNode);
-    if (n < 0) return null;
-    const ty = t.type[n];
-    if (ty === "identifier") return { kind: "name", node: n };
-    if (ty === "string") {
-      const content = namedChildren(t, n)[1];
-      return content !== void 0 && annotationName(t, content) ? { kind: "name", node: content } : null;
-    }
-    if (ty === "attribute") return { kind: "qualified", qualifier: child(t, n, "object"), name: textOf(t, child(t, n, "attribute")) };
-    if (ty === "binary_operator") {
-      const real = [child(t, n, "left"), child(t, n, "right")].map((s) => unwrapType(t, s)).filter((s) => s >= 0 && textOf(t, s) !== "None");
-      return real.length === 1 ? typeName2(t, real[0]) : null;
-    }
-    if (ty === "generic_type" || ty === "subscript") {
-      const head = namedChildren(t, n)[0];
-      if (head === void 0) return null;
-      if (!/^(typing\\.)?Optional$/.test(textOf(t, head))) return t.type[head] === "identifier" || t.type[head] === "attribute" ? typeName2(t, head) : null;
-      const args2 = namedChildren(t, n).slice(1).flatMap((a) => t.type[a] === "type_parameter" ? namedChildren(t, a) : [a]);
-      return args2.length === 1 ? typeName2(t, args2[0]) : null;
-    }
-    return null;
-  };
-  var hint2 = (t, e) => {
-    switch (t.type[e]) {
-      case "identifier":
-        return { kind: "name", node: e };
-      case "attribute":
-        return { kind: "member", object: child(t, e, "object"), name: textOf(t, child(t, e, "attribute")) };
-      case "call": {
-        const fn = child(t, e, "function");
-        if (fn >= 0 && t.type[fn] === "identifier" && textOf(t, fn) === "super" && namedChildren(t, child(t, e, "arguments")).length === 0) return { kind: "super" };
-        return { kind: "call", callee: fn };
-      }
-      case "parenthesized_expression": {
-        const inner = namedChildren(t, e)[0];
-        return inner !== void 0 ? hint2(t, inner) : null;
-      }
-      default:
-        return null;
-    }
-  };
-  var fields2 = (t, cls) => {
-    const out2 = [];
-    const body2 = child(t, cls, "body");
-    if (body2 < 0) return out2;
-    for (const st2 of namedChildren(t, body2)) {
-      if (t.type[st2] !== "expression_statement") continue;
-      const a = namedChildren(t, st2)[0];
-      if (a === void 0 || t.type[a] !== "assignment") continue;
-      const left = child(t, a, "left");
-      if (left >= 0 && t.type[left] === "identifier" && child(t, a, "type") >= 0) out2.push({ name: textOf(t, left), typeNode: child(t, a, "type"), init: -1, onSelf: false });
-    }
-    const end = t.end[cls];
-    for (let n = body2; n < t.count && t.start[n] < end; n++) {
-      if (t.type[n] !== "assignment" && t.type[n] !== "augmented_assignment") continue;
-      let fn = t.parent[n];
-      while (fn >= 0 && fn !== cls && !(t.type[fn] === "function_definition" && classOfMethod(t, fn) === cls)) fn = t.parent[fn];
-      if (fn < 0 || fn === cls) continue;
-      const first = namedChildren(t, child(t, fn, "parameters"))[0];
-      if (first === void 0 || t.type[first] !== "identifier") continue;
-      const left = child(t, n, "left");
-      for (const target of attributeTargets(t, left)) {
-        const obj = child(t, target, "object");
-        if (obj < 0 || t.type[obj] !== "identifier" || textOf(t, obj) !== textOf(t, first)) continue;
-        const single = target === left && t.type[n] === "assignment";
-        const type = single ? child(t, n, "type") : -1;
-        out2.push({ name: textOf(t, child(t, target, "attribute")), typeNode: type, init: single && type < 0 ? child(t, n, "right") : -1, onSelf: true });
-      }
-    }
-    return out2;
-  };
-  var selfClass = (t, n) => {
-    for (let x2 = t.parent[n]; x2 >= 0; x2 = t.parent[x2]) {
-      if (t.type[x2] === "function_definition") return classOfMethod(t, x2);
-      if (t.type[x2] === "lambda" || t.type[x2] === "class_definition") return -1;
-    }
-    return -1;
-  };
-  var literal = (t, n) => {
-    if (t.type[n] !== "string") return null;
-    const parts2 = namedChildren(t, n);
-    if (parts2.length === 2) return "";
-    return parts2.length === 3 && t.type[parts2[1]] === "string_content" ? textOf(t, parts2[1]) : null;
-  };
-  var starCache = /* @__PURE__ */ new WeakMap();
-  var starNames = (f2) => {
-    const t = f2.flat;
-    let hit = starCache.get(t);
-    if (hit) return hit;
-    let names = null;
-    for (let n = 0; n < t.count && names !== "unknown"; n++) {
-      const ty = t.type[n];
-      if (ty !== "identifier" || textOf(t, n) !== "__all__") continue;
-      const p = t.parent[n];
-      if (!(t.type[p] === "assignment" && t.field[n] === "left") && !(t.type[p] === "augmented_assignment" && t.field[n] === "left") && !(t.type[p] === "attribute" && t.field[n] === "object")) continue;
-      if (names !== null || t.type[p] !== "assignment" || t.parent[t.parent[p]] !== 0) {
-        names = "unknown";
-        break;
-      }
-      const right2 = child(t, p, "right");
-      const items = right2 >= 0 && (t.type[right2] === "list" || t.type[right2] === "tuple") ? namedChildren(t, right2).map((c) => literal(t, c)) : [null];
-      names = items.every((x2) => x2 !== null) ? new Set(items) : "unknown";
-    }
-    hit = names === "unknown" ? "unknown" : names ? (name2) => names.has(name2) : (name2) => !name2.startsWith("_");
-    starCache.set(t, hit);
-    return hit;
-  };
-  var BUILTINS = new Set(
-    "abs all any ascii bin bool breakpoint bytearray bytes callable chr classmethod compile complex delattr dict dir divmod enumerate eval exec filter float format frozenset getattr globals hasattr hash help hex id input int isinstance issubclass iter len list locals map max memoryview min next object oct open ord pow print property range repr reversed round set setattr slice sorted staticmethod str sum super tuple type vars zip __import__ NotImplemented Ellipsis None True False".split(" ")
-  );
-  var deferring = /* @__PURE__ */ new WeakMap();
-  var defersAnnotations = (t) => {
-    let hit = deferring.get(t);
-    if (hit === void 0) {
-      hit = false;
-      for (let n = 0; n < t.count && !hit; n++) if (t.type[n] === "future_import_statement" && /\\bannotations\\b/.test(textOf(t, n))) hit = true;
-      deferring.set(t, hit);
-    }
-    return hit;
-  };
-  var inClassAnnotation = (t, n) => {
-    let x2 = n;
-    while (x2 >= 0 && !(t.type[x2] === "type" && t.field[x2] === "type" && t.type[t.parent[x2]] === "assignment")) {
-      if (t.type[x2] === "function_definition" || t.type[x2] === "lambda" || t.type[x2] === "class_definition" || t.type[x2] === "block") return false;
-      x2 = t.parent[x2];
-    }
-    const stmt = x2 >= 0 ? t.parent[t.parent[x2]] : -1;
-    const block = stmt >= 0 ? t.parent[stmt] : -1;
-    return stmt >= 0 && t.type[stmt] === "expression_statement" && block >= 0 && t.type[block] === "block" && t.type[t.parent[block]] === "class_definition";
-  };
-  var inMethodAnnotation = (t, n) => {
-    let x2 = n;
-    while (x2 >= 0 && t.type[x2] !== "type") {
-      if (t.type[x2] === "function_definition" || t.type[x2] === "lambda" || t.type[x2] === "class_definition" || t.type[x2] === "block") return false;
-      x2 = t.parent[x2];
-    }
-    if (x2 < 0) return false;
-    const p = t.parent[x2];
-    const fn = t.type[p] === "function_definition" && t.field[x2] === "return_type" ? p : (t.type[p] === "typed_parameter" || t.type[p] === "typed_default_parameter") && t.field[x2] === "type" ? t.parent[t.parent[p]] : -1;
-    if (fn < 0 || t.type[fn] !== "function_definition") return false;
-    let up = t.parent[fn];
-    if (up >= 0 && t.type[up] === "decorated_definition") up = t.parent[up];
-    return up >= 0 && t.type[up] === "block" && t.type[t.parent[up]] === "class_definition";
-  };
-  var PYTHON_TYPING = {
-    hint: hint2,
-    typeName: typeName2,
-    // An \`@overload\` group's result depends on the call: unknown.
-    returnType: (t, n) => t.type[n] === "function_definition" && !isOverload(t, n) ? child(t, n, "return_type") : -1,
-    property: (t, n) => t.type[n] === "function_definition" && decorators(t, n).some((d) => /^(?:functools\\.)?(?:property|cached_property)$/.test(d)),
-    nests: () => true,
-    fields: (t, n) => t.type[n] === "class_definition" ? fields2(t, n) : [],
-    mro: true,
-    builtins: BUILTINS,
-    selfClass,
-    starNames,
-    // Deferred, a class body's annotation is read once the body ran (Python 3.14 defers them all, so without the future import the version decides).
-    // A method's annotations, deferred, are read in the module (\`get_type_hints\`) or the class (type checkers): a class binding below them names nothing sure.
-    deferredAnnotation: (t, n) => inClassAnnotation(t, n) ? defersAnnotations(t) ? "deferred" : "unknown" : inMethodAnnotation(t, n) ? "unknown" : null
-  };
-  var STDLIB = new Set(
-    "__future__ abc aifc annotationlib antigravity argparse array ast asynchat asyncio asyncore atexit audioop base64 bdb binascii bisect builtins bz2 cProfile calendar cgi cgitb chunk cmath cmd code codecs codeop collections colorsys compileall compression concurrent configparser contextlib contextvars copy copyreg crypt csv ctypes curses dataclasses datetime dbm decimal difflib dis distutils doctest email encodings ensurepip enum errno faulthandler fcntl filecmp fileinput fnmatch fractions ftplib functools gc genericpath getopt getpass gettext glob graphlib grp gzip hashlib heapq hmac html http idlelib imaplib imghdr imp importlib inspect io ipaddress itertools json keyword lib2to3 linecache locale logging lzma mailbox mailcap marshal math mimetypes mmap modulefinder msilib msvcrt multiprocessing netrc nis nntplib nt ntpath nturl2path numbers opcode operator optparse os ossaudiodev pathlib pdb pickle pickletools pipes pkgutil platform plistlib poplib posix posixpath pprint profile pstats pty pwd py_compile pyclbr pydoc pydoc_data pyexpat queue quopri random re readline reprlib resource rlcompleter runpy sched secrets select selectors shelve shlex shutil signal site smtpd smtplib sndhdr socket socketserver spwd sqlite3 sre_compile sre_constants sre_parse ssl stat statistics string stringprep struct subprocess sunau symtable sys sysconfig syslog tabnanny tarfile telnetlib tempfile termios textwrap this threading time timeit tkinter token tokenize tomllib trace traceback tracemalloc tty turtle turtledemo types typing unicodedata unittest urllib uu uuid venv warnings wave weakref webbrowser winreg winsound wsgiref xdrlib xml xmlrpc zipapp zipfile zipimport zlib zoneinfo".split(" ")
-  );
-  var packageMarkers = (path) => {
-    const dirs = path.split("/").slice(0, -1);
-    const out2 = [];
-    for (let k2 = dirs.length; k2 >= 1; k2--) out2.push([...dirs.slice(0, k2), "__init__.py"].join("/"));
-    return out2;
-  };
-  var layouts = /* @__PURE__ */ new WeakMap();
-  var layoutOf = (ctx) => {
-    let hit = layouts.get(ctx);
-    if (hit) return hit;
-    const known = new Set(ctx.known);
-    const exists = (path) => known.has(path) || ctx.text(path) !== void 0 || ctx.exists?.(path) === true;
-    const missing = (path) => ctx.exists ? ctx.exists(path) === false : !exists(path);
-    const isPackage = (d) => {
-      if (d.length === 0) return false;
-      const marker = [...d, "__init__.py"].join("/");
-      return exists(marker) ? true : missing(marker) ? false : void 0;
-    };
-    const rootOf2 = (dir) => {
-      const here = isPackage(dir);
-      if (here !== true) return here === false ? dir.join("/") : null;
-      let top = dir;
-      for (; ; ) {
-        const above = isPackage(top.slice(0, -1));
-        if (above === void 0) return null;
-        if (!above) return top.slice(0, -1).join("/");
-        top = top.slice(0, -1);
-      }
-    };
-    const sourceRoots = /* @__PURE__ */ new Set();
-    const shown = /* @__PURE__ */ new Set();
-    for (const path of known) {
-      const segs = path.split("/");
-      for (let k2 = 1; k2 < segs.length; k2++) shown.add(segs.slice(0, k2).join("/"));
-      if (!path.endsWith(".py")) continue;
-      shown.add(path.slice(0, -3));
-      const dir = segs.slice(0, -1);
-      const root = isPackage(dir) ? rootOf2(dir) : null;
-      if (root !== null) sourceRoots.add(root);
-    }
-    if ([...known].some((p) => p.startsWith("src/"))) sourceRoots.add("src");
-    sourceRoots.delete("");
-    hit = { exists, missing, rootOf: rootOf2, sourceRoots: [...sourceRoots].sort(), shown };
-    layouts.set(ctx, hit);
-    return hit;
-  };
+
+  // src/lib/langs/python/sys-path.ts
   var READERS = new Set("print len list tuple sorted str repr any all enumerate iter set frozenset reversed id type isinstance".split(" "));
   var firstPathChange = (t) => {
     let hidden;
@@ -9197,47 +8931,428 @@ sun|misc reflect\`;
     }
     return first;
   };
-  var filesUnder = (root, parts2) => {
-    const base = [...root ? [root] : [], ...parts2].join("/");
-    return [\`\${base}/__init__.py\`, \`\${base}.py\`];
+
+  // src/lib/langs/python/rules.ts
+  var COMPREHENSIONS = /* @__PURE__ */ new Set(["list_comprehension", "set_comprehension", "dictionary_comprehension", "generator_expression"]);
+  var seenInClassFrom = (t, n) => {
+    let stmt = n;
+    if (t.parent[stmt] >= 0 && (t.type[t.parent[stmt]] === "decorated_definition" || t.type[t.parent[stmt]] === "expression_statement")) stmt = t.parent[stmt];
+    return inClassBody(t, stmt) ? t.end[stmt] : void 0;
   };
-  var pythonModuleFiles = (from, spec, level, ctx) => {
-    const dir = from.split("/").slice(0, -1);
-    const parts2 = spec ? spec.split(".") : [];
-    if (level > 0) {
-      const base = [...dir.slice(0, Math.max(0, dir.length - (level - 1))), ...parts2].join("/");
-      return parts2.length === 0 ? [base ? \`\${base}/__init__.py\` : "__init__.py"] : [\`\${base}/__init__.py\`, \`\${base}.py\`];
+  var PROPERTIES = /* @__PURE__ */ new Set(["property", "cached_property", "functools.cached_property"]);
+  var paramOf = (t, p) => {
+    const ty = t.type[p];
+    if (ty === "identifier") return { name: p, type: -1 };
+    if (ty === "default_parameter" || ty === "typed_default_parameter") return { name: child(t, p, "name"), type: child(t, p, "type") };
+    if (ty === "typed_parameter") {
+      const id = namedChildren(t, p).find((c) => t.type[c] === "identifier" || t.type[c] === "list_splat_pattern" || t.type[c] === "dictionary_splat_pattern");
+      if (id === void 0) return null;
+      const name2 = t.type[id] === "identifier" ? id : namedChildren(t, id)[0] ?? -1;
+      return name2 >= 0 ? { name: name2, type: t.type[id] === "identifier" ? child(t, p, "type") : -1 } : null;
     }
-    if (parts2.length === 0 || STDLIB.has(parts2[0])) return [];
-    const layout = layoutOf(ctx);
-    const own = layout.rootOf(dir);
-    if (own === null) return [];
-    const held = [];
-    for (const root of /* @__PURE__ */ new Set([own, "", ...layout.sourceRoots])) {
-      const files = filesUnder(root, parts2);
-      if (files.some(layout.exists)) held.push(files.filter(layout.exists));
-      else if (!files.every(layout.missing) && !(parts2.length > 1 && filesUnder(root, parts2.slice(0, 1)).every(layout.missing))) return [];
+    if (ty === "list_splat_pattern" || ty === "dictionary_splat_pattern") {
+      const id = namedChildren(t, p)[0];
+      return id !== void 0 ? { name: id, type: -1 } : null;
     }
-    return held.length === 1 ? held[0] : [];
+    return null;
   };
-  var pythonModuleTries = (from, spec, level, ctx) => {
-    if (level > 0) return [{ files: pythonModuleFiles(from, spec, level, ctx) }];
-    const dir = from.split("/").slice(0, -1);
-    const parts2 = spec ? spec.split(".") : [];
-    if (parts2.length === 0 || STDLIB.has(parts2[0])) return [];
-    const layout = layoutOf(ctx);
-    const roots = [.../* @__PURE__ */ new Set([layout.rootOf(dir) ?? "", "", ...layout.sourceRoots])];
-    const under = (root, names) => [...root ? [root] : [], ...names].join("/");
-    if (!roots.some((root) => layout.shown.has(under(root, parts2.slice(0, 1))))) return [];
-    const likely = (root, names) => {
-      const [pkg, mod] = filesUnder(root, names);
-      return layout.shown.has(under(root, names)) ? [pkg, mod] : [mod, pkg];
-    };
-    return roots.map((root) => parts2.length === 1 ? { files: likely(root, parts2) } : { first: likely(root, parts2.slice(0, 1)), files: likely(root, parts2) });
+  var importsOf2 = (t) => {
+    const out2 = [];
+    const ids = (n) => namedChildren(t, n).filter((c) => t.type[c] === "identifier");
+    const flat = (n) => textOf(t, n).replace(/\\s+/g, "");
+    for (let n = 0; n < t.count; n++) {
+      const ty = t.type[n];
+      if (ty === "import_statement") {
+        for (const c of namedChildren(t, n)) {
+          if (t.type[c] === "dotted_name") {
+            const first2 = ids(c)[0];
+            if (first2 !== void 0) out2.push({ local: textOf(t, first2), spec: textOf(t, first2), level: 0, name: null, node: -1, bind: first2, stmt: n });
+          } else if (t.type[c] === "aliased_import") {
+            const alias = child(t, c, "alias");
+            out2.push({ local: textOf(t, alias), spec: flat(child(t, c, "name")), level: 0, name: null, node: -1, bind: alias, stmt: n });
+          }
+        }
+      } else if (ty === "import_from_statement") {
+        const mod = child(t, n, "module_name");
+        let spec = "";
+        let level = 0;
+        if (mod >= 0 && t.type[mod] === "relative_import") {
+          const prefix = namedChildren(t, mod).find((c) => t.type[c] === "import_prefix");
+          level = prefix !== void 0 ? textOf(t, prefix).length : 0;
+          const d = namedChildren(t, mod).find((c) => t.type[c] === "dotted_name");
+          spec = d !== void 0 ? flat(d) : "";
+        } else if (mod >= 0) spec = flat(mod);
+        for (const c of namedChildren(t, n)) {
+          if (c === mod) continue;
+          if (t.type[c] === "wildcard_import") out2.push({ local: "", spec, level, name: "*", node: c, bind: -1, stmt: n });
+          else if (t.type[c] === "dotted_name") {
+            const last = ids(c).pop();
+            if (last !== void 0) out2.push({ local: textOf(t, last), spec, level, name: flat(c), node: last, bind: last, stmt: n });
+          } else if (t.type[c] === "aliased_import") {
+            const last = ids(child(t, c, "name")).pop();
+            const alias = child(t, c, "alias");
+            if (last !== void 0) out2.push({ local: textOf(t, alias), spec, level, name: flat(child(t, c, "name")), node: last, bind: alias, stmt: n });
+          }
+        }
+      }
+    }
+    const first = firstPathChange(t);
+    if (first >= 0) {
+      for (const i2 of out2) if (i2.level === 0 && (t.start[i2.stmt] > first || inFunction(t, i2.stmt))) i2.unproven = true;
+    }
+    return out2;
+  };
+  var inFunction = (t, n) => {
+    for (let x2 = t.parent[n]; x2 >= 0; x2 = t.parent[x2]) if (t.type[x2] === "function_definition" || t.type[x2] === "lambda") return true;
+    return false;
+  };
+  var imports3 = perTree(importsOf2);
+  var binds3 = (t, n, emit) => {
+    switch (t.type[n]) {
+      case "function_definition": {
+        emit(child(t, n, "name"), "def", { unitNode: n, from: seenInClassFrom(t, n) });
+        const cls = classOfMethod(t, n);
+        const decos = decorators(t, n);
+        let first = true;
+        for (const p of namedChildren(t, child(t, n, "parameters"))) {
+          const x2 = paramOf(t, p);
+          if (!x2 || x2.name < 0) continue;
+          if (first && cls >= 0 && !decos.includes("staticmethod") && t.type[p] === "identifier") emit(x2.name, decos.includes("classmethod") ? "selfclass" : "self");
+          else emit(x2.name, "param", { typeNode: x2.type });
+          first = false;
+        }
+        return;
+      }
+      case "lambda":
+        for (const p of namedChildren(t, child(t, n, "parameters"))) {
+          const x2 = paramOf(t, p);
+          if (x2 && x2.name >= 0) emit(x2.name, "param");
+        }
+        return;
+      case "class_definition":
+        emit(child(t, n, "name"), "type", { unitNode: n, from: seenInClassFrom(t, n) });
+        return;
+      case "type_alias_statement":
+        emit(aliasName(t, n), "type", { unitNode: n });
+        return;
+      case "assignment": {
+        const left = child(t, n, "left");
+        const ids = targets(t, left);
+        const single = ids.length === 1 && ids[0] === left;
+        const atModule = t.parent[n] >= 0 && t.type[t.parent[n]] === "expression_statement" && t.parent[t.parent[n]] === 0;
+        const from = seenInClassFrom(t, n);
+        for (const id of ids) emit(id, "local", single ? { init: child(t, n, "right"), typeNode: child(t, n, "type"), ...atModule ? { unitNode: n } : {}, from } : { from });
+        return;
+      }
+      case "augmented_assignment":
+        for (const id of targets(t, child(t, n, "left"))) emit(id, "local");
+        return;
+      case "for_statement":
+      case "for_in_clause":
+        for (const id of targets(t, child(t, n, "left"))) emit(id, "local");
+        return;
+      case "as_pattern": {
+        const alias = child(t, n, "alias");
+        for (const id of targets(t, alias >= 0 && t.type[alias] === "as_pattern_target" ? alias : -1)) emit(id, "local");
+        if (alias >= 0 && t.type[alias] === "identifier") emit(alias, "local");
+        return;
+      }
+      case "named_expression":
+        emit(child(t, n, "name"), "local", { to: "function" });
+        return;
+      case "global_statement":
+        for (const id of namedChildren(t, n)) if (t.type[id] === "identifier") emit(id, "global");
+        return;
+      case "nonlocal_statement":
+        for (const id of namedChildren(t, n)) if (t.type[id] === "identifier") emit(id, "nonlocal");
+        return;
+      case "case_pattern":
+        for (const c of namedChildren(t, n)) {
+          if (t.type[c] !== "dotted_name") continue;
+          const ids = namedChildren(t, c);
+          if (ids.length === 1 && t.type[ids[0]] === "identifier") emit(ids[0], "local");
+        }
+        return;
+      // \`def f[T, *Ts, **P]\`, \`class Box[T: int]\`: PEP 695's type parameters, not \`list[T]\`'s arguments.
+      case "type_parameter":
+        if (t.field[n] === "type_parameters") for (const c of namedChildren(t, n)) for (const id of typeParameterNames(t, c)) emit(id, "param");
+        return;
+      case "import_statement":
+      case "import_from_statement":
+        for (const i2 of imports3(t)) if (i2.stmt === n && i2.bind >= 0) emit(i2.bind, "import", { import: i2 });
+        return;
+    }
+  };
+  var aliasName = (t, n) => namedChildren(t, child(t, n, "left"))[0] ?? -1;
+  var typeParameterNames = (t, n) => {
+    if (n < 0) return [];
+    if (t.type[n] === "identifier") return [n];
+    if (t.type[n] === "type" || t.type[n] === "splat_type" || t.type[n] === "constrained_type") return typeParameterNames(t, namedChildren(t, n)[0] ?? -1);
+    return [];
+  };
+  var written = (t, n) => {
+    let x2 = n;
+    while (t.parent[x2] >= 0 && PATTERNS3.has(t.type[t.parent[x2]])) x2 = t.parent[x2];
+    const p = t.parent[x2];
+    if (p < 0) return false;
+    if ((t.type[p] === "assignment" || t.type[p] === "augmented_assignment" || t.type[p] === "for_statement") && t.field[x2] === "left") return true;
+    return t.type[p] === "delete_statement";
+  };
+  var role3 = (t, n) => {
+    if (t.type[n] === "string_content") return annotationName(t, n) ? { kind: "bare", expr: n } : { kind: "skip" };
+    const p = t.parent[n];
+    if (p < 0) return { kind: "bare", expr: n };
+    const pt2 = t.type[p];
+    const f2 = t.field[n];
+    if (pt2 === "attribute" && f2 === "attribute") return written(t, p) ? { kind: "skip" } : { kind: "member", receiver: child(t, p, "object"), expr: p };
+    if (pt2 === "keyword_argument" && f2 === "name") return { kind: "skip" };
+    if (pt2 === "dotted_name" || pt2 === "relative_import" || pt2 === "aliased_import" || pt2 === "import_prefix") return { kind: "skip" };
+    if (pt2 === "global_statement" || pt2 === "nonlocal_statement") return { kind: "skip" };
+    if ((pt2 === "function_definition" || pt2 === "class_definition") && f2 === "name") return { kind: "decl" };
+    return { kind: "bare", expr: n };
+  };
+  var isCallee3 = (t, e) => {
+    const p = t.parent[e];
+    return p >= 0 && t.type[p] === "call" && t.field[e] === "function";
+  };
+  var isType3 = (t, n) => {
+    for (let x2 = t.parent[n], k2 = 0; x2 >= 0 && k2 < 8; x2 = t.parent[x2], k2++) {
+      if (t.type[x2] === "type") return true;
+      if (t.type[x2] === "block" || t.type[x2] === "call") return false;
+    }
+    return false;
+  };
+  var unit3 = (t, capture, node) => {
+    const outerOf = (n) => t.parent[n] >= 0 && t.type[t.parent[n]] === "decorated_definition" ? t.parent[n] : n;
+    if (capture === "definition.class" && t.type[node] === "class_definition") return { kind: "class", nameNode: child(t, node, "name"), outer: outerOf(node) };
+    if (capture === "definition.function" && t.type[node] === "function_definition") return { kind: "function", nameNode: child(t, node, "name"), outer: outerOf(node) };
+    if (capture === "definition.constant" && t.type[node] === "assignment") {
+      const left = child(t, node, "left");
+      if (left < 0 || t.type[left] !== "identifier") return null;
+      return { kind: "value", nameNode: left, outer: t.parent[node] };
+    }
+    return null;
+  };
+  var PYTHON = {
+    unit: unit3,
+    // \`type X = ...\` (PEP 695) declares a type, though \`tags.scm\` predates it.
+    extraUnits: (t) => {
+      const out2 = [];
+      for (let n = 0; n < t.count; n++) if (t.type[n] === "type_alias_statement" && aliasName(t, n) >= 0) out2.push({ kind: "type", nameNode: aliasName(t, n), outer: n, node: n });
+      return out2;
+    },
+    // An \`@overload\` signature joins the definitions after it; a property's setter and deleter join its getter.
+    continues: (t, previous2, node) => {
+      if (t.type[previous2] !== "function_definition" || t.type[node] !== "function_definition") return false;
+      const name2 = textOf(t, child(t, node, "name"));
+      return isOverload(t, previous2) || decorators(t, node).some((d) => d === \`\${name2}.setter\` || d === \`\${name2}.deleter\`);
+    },
+    // A property reads as a value, so its card drops the \`()\`: \`Dependant.is_gen_callable\`.
+    label: (t, u, parent) => {
+      const label = labelOf({ name: u.name, kind: u.kind, ...parent ? { parent: parent.name } : {} }, "py");
+      return u.kind === "method" && decorators(t, u.node).some((d) => PROPERTIES.has(d)) ? label.replace(/\\(\\)$/, "") : label;
+    },
+    scope: (t, n) => {
+      const ty = t.type[n];
+      if (ty === "function_definition" || ty === "lambda") return "function";
+      if (ty === "class_definition") return "class";
+      if (COMPREHENSIONS.has(ty) || ty === "type_alias_statement" && child(t, n, "type_parameters") >= 0) return "block";
+      return null;
+    },
+    // A default value is read where the function is defined, and so is an annotation, but where the function declares type parameters (PEP 695), which annotations see.
+    outside: (t, n) => {
+      const f2 = t.field[n];
+      const p = t.type[t.parent[n]];
+      if ((p === "default_parameter" || p === "typed_default_parameter") && f2 === "value") return true;
+      const annotation = (p === "typed_parameter" || p === "typed_default_parameter") && f2 === "type" || p === "function_definition" && f2 === "return_type";
+      if (!annotation) return false;
+      const fn = p === "function_definition" ? t.parent[n] : t.parent[t.parent[t.parent[n]]];
+      return !(fn >= 0 && t.type[fn] === "function_definition" && child(t, fn, "type_parameters") >= 0);
+    },
+    binds: binds3,
+    identifiers: /* @__PURE__ */ new Set(["identifier", "string_content"]),
+    role: role3,
+    isCallee: isCallee3,
+    isType: isType3,
+    imports: imports3,
+    classOf: (t, n) => {
+      if (t.type[n] !== "class_definition") return null;
+      const sup = child(t, n, "superclasses");
+      const bases = sup >= 0 ? namedChildren(t, sup).filter((c) => t.type[c] !== "keyword_argument" && textOf(t, c) !== "object") : [];
+      return { bases: bases.map((b2) => t.type[b2] === "subscript" ? child(t, b2, "value") : b2) };
+    }
+  };
+
+  // src/lib/langs/python/typing.ts
+  var unwrapType = (t, n) => {
+    while (n >= 0 && (t.type[n] === "type" || t.type[n] === "parenthesized_expression")) n = namedChildren(t, n)[0] ?? -1;
+    return n;
+  };
+  var typeName3 = (t, typeNode) => {
+    const n = unwrapType(t, typeNode);
+    if (n < 0) return null;
+    const ty = t.type[n];
+    if (ty === "identifier") return { kind: "name", node: n };
+    if (ty === "string") {
+      const content = namedChildren(t, n)[1];
+      return content !== void 0 && annotationName(t, content) ? { kind: "name", node: content } : null;
+    }
+    if (ty === "attribute") return { kind: "qualified", qualifier: child(t, n, "object"), name: textOf(t, child(t, n, "attribute")) };
+    if (ty === "binary_operator") {
+      const real = [child(t, n, "left"), child(t, n, "right")].map((s) => unwrapType(t, s)).filter((s) => s >= 0 && textOf(t, s) !== "None");
+      return real.length === 1 ? typeName3(t, real[0]) : null;
+    }
+    if (ty === "generic_type" || ty === "subscript") {
+      const head = namedChildren(t, n)[0];
+      if (head === void 0) return null;
+      if (!/^(typing\\.)?Optional$/.test(textOf(t, head))) return t.type[head] === "identifier" || t.type[head] === "attribute" ? typeName3(t, head) : null;
+      const args2 = namedChildren(t, n).slice(1).flatMap((a) => t.type[a] === "type_parameter" ? namedChildren(t, a) : [a]);
+      return args2.length === 1 ? typeName3(t, args2[0]) : null;
+    }
+    return null;
+  };
+  var hint2 = (t, e) => {
+    switch (t.type[e]) {
+      case "identifier":
+        return { kind: "name", node: e };
+      case "attribute":
+        return { kind: "member", object: child(t, e, "object"), name: textOf(t, child(t, e, "attribute")) };
+      case "call": {
+        const fn = child(t, e, "function");
+        if (fn >= 0 && t.type[fn] === "identifier" && textOf(t, fn) === "super" && namedChildren(t, child(t, e, "arguments")).length === 0) return { kind: "super" };
+        return { kind: "call", callee: fn };
+      }
+      case "parenthesized_expression": {
+        const inner = namedChildren(t, e)[0];
+        return inner !== void 0 ? hint2(t, inner) : null;
+      }
+      default:
+        return null;
+    }
+  };
+  var fields2 = (t, cls) => {
+    const out2 = [];
+    const body2 = child(t, cls, "body");
+    if (body2 < 0) return out2;
+    for (const st2 of namedChildren(t, body2)) {
+      if (t.type[st2] !== "expression_statement") continue;
+      const a = namedChildren(t, st2)[0];
+      if (a === void 0 || t.type[a] !== "assignment") continue;
+      const left = child(t, a, "left");
+      if (left >= 0 && t.type[left] === "identifier" && child(t, a, "type") >= 0) out2.push({ name: textOf(t, left), typeNode: child(t, a, "type"), init: -1, onSelf: false });
+    }
+    const end = t.end[cls];
+    for (let n = body2; n < t.count && t.start[n] < end; n++) {
+      if (t.type[n] !== "assignment" && t.type[n] !== "augmented_assignment") continue;
+      let fn = t.parent[n];
+      while (fn >= 0 && fn !== cls && !(t.type[fn] === "function_definition" && classOfMethod(t, fn) === cls)) fn = t.parent[fn];
+      if (fn < 0 || fn === cls) continue;
+      const first = namedChildren(t, child(t, fn, "parameters"))[0];
+      if (first === void 0 || t.type[first] !== "identifier") continue;
+      const left = child(t, n, "left");
+      for (const target of attributeTargets(t, left)) {
+        const obj = child(t, target, "object");
+        if (obj < 0 || t.type[obj] !== "identifier" || textOf(t, obj) !== textOf(t, first)) continue;
+        const single = target === left && t.type[n] === "assignment";
+        const type = single ? child(t, n, "type") : -1;
+        out2.push({ name: textOf(t, child(t, target, "attribute")), typeNode: type, init: single && type < 0 ? child(t, n, "right") : -1, onSelf: true });
+      }
+    }
+    return out2;
+  };
+  var selfClass = (t, n) => {
+    for (let x2 = t.parent[n]; x2 >= 0; x2 = t.parent[x2]) {
+      if (t.type[x2] === "function_definition") return classOfMethod(t, x2);
+      if (t.type[x2] === "lambda" || t.type[x2] === "class_definition") return -1;
+    }
+    return -1;
+  };
+  var literal = (t, n) => {
+    if (t.type[n] !== "string") return null;
+    const parts2 = namedChildren(t, n);
+    if (parts2.length === 2) return "";
+    return parts2.length === 3 && t.type[parts2[1]] === "string_content" ? textOf(t, parts2[1]) : null;
+  };
+  var starNamesOf = perTree((t) => {
+    let names = null;
+    for (let n = 0; n < t.count && names !== "unknown"; n++) {
+      const ty = t.type[n];
+      if (ty !== "identifier" || textOf(t, n) !== "__all__") continue;
+      const p = t.parent[n];
+      if (!(t.type[p] === "assignment" && t.field[n] === "left") && !(t.type[p] === "augmented_assignment" && t.field[n] === "left") && !(t.type[p] === "attribute" && t.field[n] === "object")) continue;
+      if (names !== null || t.type[p] !== "assignment" || t.parent[t.parent[p]] !== 0) {
+        names = "unknown";
+        break;
+      }
+      const right2 = child(t, p, "right");
+      const items = right2 >= 0 && (t.type[right2] === "list" || t.type[right2] === "tuple") ? namedChildren(t, right2).map((c) => literal(t, c)) : [null];
+      names = items.every((x2) => x2 !== null) ? new Set(items) : "unknown";
+    }
+    return names === "unknown" ? "unknown" : names ? (name2) => names.has(name2) : (name2) => !name2.startsWith("_");
+  });
+  var BUILTINS = new Set(
+    "abs all any ascii bin bool breakpoint bytearray bytes callable chr classmethod compile complex delattr dict dir divmod enumerate eval exec filter float format frozenset getattr globals hasattr hash help hex id input int isinstance issubclass iter len list locals map max memoryview min next object oct open ord pow print property range repr reversed round set setattr slice sorted staticmethod str sum super tuple type vars zip __import__ NotImplemented Ellipsis None True False".split(" ")
+  );
+  var defersAnnotations = perTree((t) => {
+    for (let n = 0; n < t.count; n++) if (t.type[n] === "future_import_statement" && /\\bannotations\\b/.test(textOf(t, n))) return true;
+    return false;
+  });
+  var ANNOTATION_BOUNDS = /* @__PURE__ */ new Set(["function_definition", "lambda", "class_definition", "block"]);
+  var annotationAt = (t, n, is) => {
+    for (let x2 = n; x2 >= 0; x2 = t.parent[x2]) {
+      if (is(x2)) return x2;
+      if (ANNOTATION_BOUNDS.has(t.type[x2])) return -1;
+    }
+    return -1;
+  };
+  var inClassAnnotation = (t, n) => {
+    const x2 = annotationAt(t, n, (x3) => t.type[x3] === "type" && t.field[x3] === "type" && t.type[t.parent[x3]] === "assignment");
+    const stmt = x2 >= 0 ? t.parent[t.parent[x2]] : -1;
+    return stmt >= 0 && t.type[stmt] === "expression_statement" && inClassBody(t, stmt);
+  };
+  var inMethodAnnotation = (t, n) => {
+    const x2 = annotationAt(t, n, (x3) => t.type[x3] === "type");
+    if (x2 < 0) return false;
+    const p = t.parent[x2];
+    const fn = t.type[p] === "function_definition" && t.field[x2] === "return_type" ? p : (t.type[p] === "typed_parameter" || t.type[p] === "typed_default_parameter") && t.field[x2] === "type" ? t.parent[t.parent[p]] : -1;
+    if (fn < 0 || t.type[fn] !== "function_definition") return false;
+    const up = t.parent[fn];
+    return inClassBody(t, up >= 0 && t.type[up] === "decorated_definition" ? up : fn);
+  };
+  var PYTHON_TYPING = {
+    hint: hint2,
+    typeName: typeName3,
+    // An \`@overload\` group's result depends on the call: unknown.
+    returnType: (t, n) => t.type[n] === "function_definition" && !isOverload(t, n) ? child(t, n, "return_type") : -1,
+    property: (t, n) => t.type[n] === "function_definition" && decorators(t, n).some((d) => /^(?:functools\\.)?(?:property|cached_property)$/.test(d)),
+    nests: () => true,
+    fields: (t, n) => t.type[n] === "class_definition" ? fields2(t, n) : [],
+    mro: true,
+    builtins: BUILTINS,
+    selfClass,
+    starNames: (f2) => starNamesOf(f2.flat),
+    // Deferred, a class body's annotation is read once the body ran (Python 3.14 defers them all, so without the future import the version decides).
+    // A method's annotations, deferred, are read in the module (\`get_type_hints\`) or the class (type checkers): a class binding below them names nothing sure.
+    deferredAnnotation: (t, n) => inClassAnnotation(t, n) ? defersAnnotations(t) ? "deferred" : "unknown" : inMethodAnnotation(t, n) ? "unknown" : null
   };
   var PYTHON_RESOLVER = { typing: PYTHON_TYPING, moduleFiles: pythonModuleFiles, moduleTries: pythonModuleTries };
 
-  // src/lib/langs/rust.ts
+  // src/lib/langs/rust/nodes.ts
+  var previousSiblings = perTree((t) => {
+    const prev = new Int32Array(t.count).fill(-1);
+    for (let p = 0; p < t.count; p++) for (let c = t.first[p], last = -1; c >= 0; last = c, c = t.next[c]) prev[c] = last;
+    return prev;
+  });
+  var previous = (t, n) => previousSiblings(t)[n];
+  var selfClass2 = (t, n) => {
+    for (let x2 = t.parent[n]; x2 >= 0; x2 = t.parent[x2]) {
+      const ty = t.type[x2];
+      if (ty === "impl_item" || ty === "trait_item" || ty === "struct_item" || ty === "enum_item" || ty === "union_item") return x2;
+    }
+    return -1;
+  };
+
+  // src/lib/langs/rust/macros.ts
   var EXPRESSION_MACROS = /* @__PURE__ */ new Set([
     "println",
     "print",
@@ -9317,8 +9432,8 @@ sun|misc reflect\`;
         if (ty === "=>" && mode === "arms") arm = false, armBody = true;
         if (ty !== "identifier") continue;
         const next = t.next[c];
-        const named = next >= 0 && t.type[next] === "=" && !(t.next[next] >= 0 && t.type[t.next[next]] === "=");
-        if (inPattern || named) bound.add(textOf(t, c));
+        const named2 = next >= 0 && t.type[next] === "=" && !(t.next[next] >= 0 && t.type[t.next[next]] === "=");
+        if (inPattern || named2) bound.add(textOf(t, c));
       }
     };
     const tokens = namedChildren(t, macro).find((c) => t.type[c] === "token_tree");
@@ -9330,17 +9445,9 @@ sun|misc reflect\`;
     const before = previous(t, n);
     return !(before >= 0 && !t.named[before] && (t.type[before] === "." || t.type[before] === "::"));
   };
-  var prevCache = /* @__PURE__ */ new WeakMap();
-  var previous = (t, n) => {
-    let prev = prevCache.get(t);
-    if (!prev) {
-      prev = new Int32Array(t.count).fill(-1);
-      for (let p = 0; p < t.count; p++) for (let c = t.first[p], last = -1; c >= 0; last = c, c = t.next[c]) prev[c] = last;
-      prevCache.set(t, prev);
-    }
-    return prev[n];
-  };
-  var patternNames = (t, n, out2 = []) => {
+
+  // src/lib/langs/rust/rules.ts
+  var patternNames2 = (t, n, out2 = []) => {
     if (n < 0) return out2;
     const ty = t.type[n];
     if (ty === "identifier" || ty === "shorthand_field_identifier") {
@@ -9352,7 +9459,7 @@ sun|misc reflect\`;
       if (!t.named[c]) continue;
       if ((ty === "tuple_struct_pattern" || ty === "struct_pattern") && t.field[c] === "type") continue;
       if (ty === "field_pattern" && t.field[c] === "name") continue;
-      patternNames(t, c, out2);
+      patternNames2(t, c, out2);
     }
     return out2;
   };
@@ -9379,17 +9486,12 @@ sun|misc reflect\`;
       out2.push({ local: full[full.length - 1], spec: full.slice(0, -1).join("::"), level: 0, name: full[full.length - 1], node: last, bind: last, stmt });
     }
   };
-  var importsOf4 = (t) => {
+  var importsOf3 = (t) => {
     const out2 = [];
     for (let n = 0; n < t.count; n++) if (t.type[n] === "use_declaration") useEntries(t, child(t, n, "argument"), [], n, out2);
     return out2;
   };
-  var importCache4 = /* @__PURE__ */ new WeakMap();
-  var imports4 = (t) => {
-    let hit = importCache4.get(t);
-    if (!hit) importCache4.set(t, hit = importsOf4(t));
-    return hit;
-  };
+  var imports4 = perTree(importsOf3);
   var DECLARATIONS = /* @__PURE__ */ new Set([
     "function_item",
     "function_signature_item",
@@ -9418,30 +9520,30 @@ sun|misc reflect\`;
         return;
       case "parameter": {
         const pat = child(t, n, "pattern");
-        const names = patternNames(t, pat);
+        const names = patternNames2(t, pat);
         for (const id of names) emit(id, "param", names.length === 1 && id === pat ? { typeNode: child(t, n, "type") } : {});
         return;
       }
       case "closure_parameters":
-        for (const c of namedChildren(t, n)) if (t.type[c] !== "parameter") for (const id of patternNames(t, c)) emit(id, "param");
+        for (const c of namedChildren(t, n)) if (t.type[c] !== "parameter") for (const id of patternNames2(t, c)) emit(id, "param");
         return;
       // A pattern's names are seen after it: before a \`let\`, and in its own value, the name means the one outside.
       case "let_declaration": {
         const pat = child(t, n, "pattern");
-        const names = patternNames(t, pat);
+        const names = patternNames2(t, pat);
         for (const id of names) emit(id, "local", names.length === 1 && id === pat ? { typeNode: child(t, n, "type"), init: child(t, n, "value"), from: t.end[n] } : { from: t.end[n] });
         return;
       }
       case "let_condition":
-        for (const id of patternNames(t, child(t, n, "pattern"))) emit(id, "local", { from: t.end[n] });
+        for (const id of patternNames2(t, child(t, n, "pattern"))) emit(id, "local", { from: t.end[n] });
         return;
       case "for_expression": {
         const value = child(t, n, "value");
-        for (const id of patternNames(t, child(t, n, "pattern"))) emit(id, "local", value >= 0 ? { from: t.end[value] } : {});
+        for (const id of patternNames2(t, child(t, n, "pattern"))) emit(id, "local", value >= 0 ? { from: t.end[value] } : {});
         return;
       }
       case "match_pattern":
-        for (const id of patternNames(t, n)) emit(id, "local", { from: t.end[n] });
+        for (const id of patternNames2(t, n)) emit(id, "local", { from: t.end[n] });
         return;
       case "struct_item":
       case "enum_item":
@@ -9597,141 +9699,8 @@ sun|misc reflect\`;
       return ty === "impl_item" || ty === "trait_item" || ty === "struct_item" || ty === "enum_item" || ty === "union_item" ? { bases: [] } : null;
     }
   };
-  var typeName3 = (t, n) => {
-    if (n < 0) return null;
-    switch (t.type[n]) {
-      case "type_identifier":
-        return textOf(t, n) === "Self" ? { kind: "self" } : { kind: "name", node: n };
-      case "reference_type":
-      case "pointer_type":
-        return typeName3(t, child(t, n, "type"));
-      case "generic_type": {
-        const inner = child(t, n, "type");
-        return inner >= 0 && t.type[inner] === "type_identifier" && textOf(t, inner) === "Self" ? { kind: "self" } : typeName3(t, inner);
-      }
-      case "scoped_type_identifier":
-        return { kind: "qualified", qualifier: child(t, n, "path"), name: textOf(t, child(t, n, "name")) };
-      default:
-        return null;
-    }
-  };
-  var hint3 = (t, e) => {
-    switch (t.type[e]) {
-      case "self":
-        return { kind: "self" };
-      case "identifier":
-      case "type_identifier":
-        return textOf(t, e) === "Self" ? { kind: "selfclass" } : { kind: "name", node: e };
-      case "field_expression":
-        return { kind: "member", object: child(t, e, "value"), name: textOf(t, child(t, e, "field")) };
-      case "scoped_identifier":
-      case "scoped_type_identifier":
-        return child(t, e, "path") >= 0 ? { kind: "path", qualifier: child(t, e, "path"), name: textOf(t, child(t, e, "name")) } : null;
-      case "generic_function":
-        return hint3(t, child(t, e, "function"));
-      case "call_expression": {
-        let fn = child(t, e, "function");
-        if (fn >= 0 && t.type[fn] === "generic_function") fn = child(t, fn, "function");
-        return { kind: "call", callee: fn };
-      }
-      case "struct_expression":
-        return { kind: "new", type: child(t, e, "name") };
-      case "reference_expression":
-        return hint3(t, child(t, e, "value"));
-      case "parenthesized_expression":
-        return hint3(t, namedChildren(t, e)[0] ?? -1);
-      default:
-        return null;
-    }
-  };
-  var PRELUDE = new Set(
-    "Some None Ok Err Box Vec String Option Result drop Default Clone Copy Send Sync Sized ToString ToOwned Into From Iterator IntoIterator Fn FnMut FnOnce Drop PartialEq Eq PartialOrd Ord AsRef AsMut Debug std core alloc".split(" ")
-  );
-  var modeOf = (t, fn) => {
-    for (const p of namedChildren(t, child(t, fn, "parameters"))) {
-      if (t.type[p] === "self_parameter") {
-        let ref = false;
-        let mut = false;
-        for (let c = t.first[p]; c >= 0; c = t.next[c]) {
-          if (t.type[c] === "&") ref = true;
-          else if (t.type[c] === "mutable_specifier") mut = true;
-        }
-        return ref ? mut ? "mut" : "ref" : "value";
-      }
-      if (t.type[p] !== "parameter" || !namedChildren(t, p).some((c) => t.type[c] === "self")) continue;
-      const type = child(t, p, "type");
-      if (type >= 0 && textOf(t, type) === "Self") return "value";
-      if (type >= 0 && t.type[type] === "reference_type" && textOf(t, child(t, type, "type")) === "Self") return namedChildren(t, type).some((c) => t.type[c] === "mutable_specifier") ? "mut" : "ref";
-      return "other";
-    }
-    return null;
-  };
-  var STD_MODES = {
-    value: "into into_iter try_into into_future map filter filter_map flat_map flatten take skip take_while skip_while map_while step_by chain zip enumerate peekable rev cloned copied cycle fuse inspect scan count last sum product fold rfold reduce try_reduce for_each collect try_collect collect_into partition is_partitioned unzip max min max_by max_by_key min_by min_by_key clamp cmp partial_cmp eq ne lt le gt ge cmp_by partial_cmp_by eq_by is_sorted is_sorted_by is_sorted_by_key array_chunks map_windows intersperse intersperse_with bytes lines split add sub mul div rem neg not bitand bitor bitxor shl shr",
-    mut: "write write_all write_vectored write_all_vectored write_fmt flush by_ref read read_vectored read_to_end read_to_string read_exact read_buf read_buf_exact fill_buf consume read_until read_line skip_until has_data_left seek rewind stream_position stream_len seek_relative next nth all any find find_map position rposition try_fold try_for_each try_find advance_by next_chunk next_back nth_back rfind try_rfold advance_back_by write_u8 write_u16 write_u32 write_u64 write_u128 write_usize write_i8 write_i16 write_i32 write_i64 write_i128 write_isize write_length_prefix write_str write_char extend extend_one extend_reserve add_assign sub_assign mul_assign div_assign rem_assign bitand_assign bitor_assign bitxor_assign shl_assign shr_assign deref_mut as_mut borrow_mut index_mut clone_from call_mut",
-    ref: "clone to_string to_owned fmt eq ne partial_cmp lt le gt ge cmp hash deref as_ref borrow index size_hint len is_empty source description cause type_id finish build_hasher hash_one call provide"
-  };
-  var traitModes = (files) => {
-    const out2 = /* @__PURE__ */ new Map();
-    const add = (name2, mode) => {
-      const modes = out2.get(name2);
-      if (modes) modes.add(mode);
-      else out2.set(name2, /* @__PURE__ */ new Set([mode]));
-    };
-    for (const [mode, names] of Object.entries(STD_MODES)) for (const name2 of names.split(" ")) add(name2, mode);
-    for (const f2 of files) {
-      const t = f2.flat;
-      for (let n = 0; n < t.count; n++) {
-        if (t.type[n] !== "function_item" && t.type[n] !== "function_signature_item") continue;
-        const list = t.parent[n];
-        const owner = list >= 0 && t.type[list] === "declaration_list" ? t.parent[list] : -1;
-        if (owner < 0 || !(t.type[owner] === "trait_item" || t.type[owner] === "impl_item" && child(t, owner, "trait") >= 0)) continue;
-        const mode = modeOf(t, n);
-        if (mode) add(textOf(t, child(t, n, "name")), mode);
-      }
-    }
-    return out2;
-  };
-  var ALL = ["value", "ref", "mut"];
-  var FIRST = {
-    value: { value: [], ref: ["value"], mut: ["value", "ref"] },
-    ref: { value: ["ref"], ref: [], mut: ["ref", "value"] },
-    mut: { value: ["mut"], ref: ["mut", "value"], mut: [] },
-    any: { value: ["ref", "mut"], ref: ["value", "mut"], mut: ["value", "ref"] },
-    other: { value: ALL, ref: ALL, mut: ALL }
-  };
-  var typeMode = (t, type) => {
-    switch (t.type[type]) {
-      case "reference_type": {
-        const inner = child(t, type, "type");
-        if (inner >= 0 && t.type[inner] === "reference_type") return "other";
-        return namedChildren(t, type).some((c) => t.type[c] === "mutable_specifier") ? "mut" : "ref";
-      }
-      case "type_identifier":
-      case "scoped_type_identifier":
-      case "generic_type":
-        return "value";
-      case "pointer_type":
-        return "other";
-      default:
-        return "any";
-    }
-  };
-  var receiverKind = (t, n, declared) => {
-    if (n >= 0 && (t.type[n] === "self" || t.type[n] === "identifier" && textOf(t, n) === "self")) {
-      let fn = t.parent[n];
-      while (fn >= 0 && t.type[fn] !== "function_item") fn = t.parent[fn];
-      return (fn >= 0 ? modeOf(t, fn) : null) ?? "any";
-    }
-    return declared >= 0 ? typeMode(t, declared) : "any";
-  };
-  var selfClass2 = (t, n) => {
-    for (let x2 = t.parent[n]; x2 >= 0; x2 = t.parent[x2]) {
-      const ty = t.type[x2];
-      if (ty === "impl_item" || ty === "trait_item" || ty === "struct_item" || ty === "enum_item" || ty === "union_item") return x2;
-    }
-    return -1;
-  };
+
+  // src/lib/langs/rust/impls.ts
   var inherentImpl = (t, fn) => {
     const list = t.parent[fn];
     const impl = list >= 0 && t.type[list] === "declaration_list" ? t.parent[list] : -1;
@@ -9835,9 +9804,147 @@ sun|misc reflect\`;
     const meaning = meaningAt(method, own, names.map((x2) => textOf(x2.f.flat, x2.n)));
     return meaning !== null && meaningAt(call, type, []) === meaning && names.every((x2) => meaningAt(x2.f, x2.n, [textOf(x2.f.flat, x2.n)]) === meaning);
   };
+
+  // src/lib/langs/rust/probe.ts
+  var modeOf = (t, fn) => {
+    for (const p of namedChildren(t, child(t, fn, "parameters"))) {
+      if (t.type[p] === "self_parameter") {
+        let ref = false;
+        let mut = false;
+        for (let c = t.first[p]; c >= 0; c = t.next[c]) {
+          if (t.type[c] === "&") ref = true;
+          else if (t.type[c] === "mutable_specifier") mut = true;
+        }
+        return ref ? mut ? "mut" : "ref" : "value";
+      }
+      if (t.type[p] !== "parameter" || !namedChildren(t, p).some((c) => t.type[c] === "self")) continue;
+      const type = child(t, p, "type");
+      if (type >= 0 && textOf(t, type) === "Self") return "value";
+      if (type >= 0 && t.type[type] === "reference_type" && textOf(t, child(t, type, "type")) === "Self") return namedChildren(t, type).some((c) => t.type[c] === "mutable_specifier") ? "mut" : "ref";
+      return "other";
+    }
+    return null;
+  };
+  var STD_MODES = {
+    value: "into into_iter try_into into_future map filter filter_map flat_map flatten take skip take_while skip_while map_while step_by chain zip enumerate peekable rev cloned copied cycle fuse inspect scan count last sum product fold rfold reduce try_reduce for_each collect try_collect collect_into partition is_partitioned unzip max min max_by max_by_key min_by min_by_key clamp cmp partial_cmp eq ne lt le gt ge cmp_by partial_cmp_by eq_by is_sorted is_sorted_by is_sorted_by_key array_chunks map_windows intersperse intersperse_with bytes lines split add sub mul div rem neg not bitand bitor bitxor shl shr",
+    mut: "write write_all write_vectored write_all_vectored write_fmt flush by_ref read read_vectored read_to_end read_to_string read_exact read_buf read_buf_exact fill_buf consume read_until read_line skip_until has_data_left seek rewind stream_position stream_len seek_relative next nth all any find find_map position rposition try_fold try_for_each try_find advance_by next_chunk next_back nth_back rfind try_rfold advance_back_by write_u8 write_u16 write_u32 write_u64 write_u128 write_usize write_i8 write_i16 write_i32 write_i64 write_i128 write_isize write_length_prefix write_str write_char extend extend_one extend_reserve add_assign sub_assign mul_assign div_assign rem_assign bitand_assign bitor_assign bitxor_assign shl_assign shr_assign deref_mut as_mut borrow_mut index_mut clone_from call_mut",
+    ref: "clone to_string to_owned fmt eq ne partial_cmp lt le gt ge cmp hash deref as_ref borrow index size_hint len is_empty source description cause type_id finish build_hasher hash_one call provide"
+  };
+  var traitModes = (files) => {
+    const out2 = /* @__PURE__ */ new Map();
+    const add = (name2, mode) => {
+      const modes = out2.get(name2);
+      if (modes) modes.add(mode);
+      else out2.set(name2, /* @__PURE__ */ new Set([mode]));
+    };
+    for (const [mode, names] of Object.entries(STD_MODES)) for (const name2 of names.split(" ")) add(name2, mode);
+    for (const f2 of files) {
+      const t = f2.flat;
+      for (let n = 0; n < t.count; n++) {
+        if (t.type[n] !== "function_item" && t.type[n] !== "function_signature_item") continue;
+        const list = t.parent[n];
+        const owner = list >= 0 && t.type[list] === "declaration_list" ? t.parent[list] : -1;
+        if (owner < 0 || !(t.type[owner] === "trait_item" || t.type[owner] === "impl_item" && child(t, owner, "trait") >= 0)) continue;
+        const mode = modeOf(t, n);
+        if (mode) add(textOf(t, child(t, n, "name")), mode);
+      }
+    }
+    return out2;
+  };
+  var ALL = ["value", "ref", "mut"];
+  var FIRST = {
+    value: { value: [], ref: ["value"], mut: ["value", "ref"] },
+    ref: { value: ["ref"], ref: [], mut: ["ref", "value"] },
+    mut: { value: ["mut"], ref: ["mut", "value"], mut: [] },
+    any: { value: ["ref", "mut"], ref: ["value", "mut"], mut: ["value", "ref"] },
+    other: { value: ALL, ref: ALL, mut: ALL }
+  };
+  var typeMode = (t, type) => {
+    switch (t.type[type]) {
+      case "reference_type": {
+        const inner = child(t, type, "type");
+        if (inner >= 0 && t.type[inner] === "reference_type") return "other";
+        return namedChildren(t, type).some((c) => t.type[c] === "mutable_specifier") ? "mut" : "ref";
+      }
+      case "type_identifier":
+      case "scoped_type_identifier":
+      case "generic_type":
+        return "value";
+      case "pointer_type":
+        return "other";
+      default:
+        return "any";
+    }
+  };
+  var receiverKind = (t, n, declared) => {
+    if (n >= 0 && (t.type[n] === "self" || t.type[n] === "identifier" && textOf(t, n) === "self")) {
+      let fn = t.parent[n];
+      while (fn >= 0 && t.type[fn] !== "function_item") fn = t.parent[fn];
+      return (fn >= 0 ? modeOf(t, fn) : null) ?? "any";
+    }
+    return declared >= 0 ? typeMode(t, declared) : "any";
+  };
+  var shadowed = (call, receiver, declared, method, unitNode, modes) => {
+    const mode = modeOf(method, unitNode);
+    if (mode === null) return false;
+    if (mode === "other" || modes.has("other")) return modes.size > 0;
+    return FIRST[receiverKind(call, receiver, declared)][mode].some((m2) => modes.has(m2));
+  };
+
+  // src/lib/langs/rust/typing.ts
+  var typeName4 = (t, n) => {
+    if (n < 0) return null;
+    switch (t.type[n]) {
+      case "type_identifier":
+        return textOf(t, n) === "Self" ? { kind: "self" } : { kind: "name", node: n };
+      case "reference_type":
+      case "pointer_type":
+        return typeName4(t, child(t, n, "type"));
+      case "generic_type": {
+        const inner = child(t, n, "type");
+        return inner >= 0 && t.type[inner] === "type_identifier" && textOf(t, inner) === "Self" ? { kind: "self" } : typeName4(t, inner);
+      }
+      case "scoped_type_identifier":
+        return { kind: "qualified", qualifier: child(t, n, "path"), name: textOf(t, child(t, n, "name")) };
+      default:
+        return null;
+    }
+  };
+  var hint3 = (t, e) => {
+    switch (t.type[e]) {
+      case "self":
+        return { kind: "self" };
+      case "identifier":
+      case "type_identifier":
+        return textOf(t, e) === "Self" ? { kind: "selfclass" } : { kind: "name", node: e };
+      case "field_expression":
+        return { kind: "member", object: child(t, e, "value"), name: textOf(t, child(t, e, "field")) };
+      case "scoped_identifier":
+      case "scoped_type_identifier":
+        return child(t, e, "path") >= 0 ? { kind: "path", qualifier: child(t, e, "path"), name: textOf(t, child(t, e, "name")) } : null;
+      case "generic_function":
+        return hint3(t, child(t, e, "function"));
+      case "call_expression": {
+        let fn = child(t, e, "function");
+        if (fn >= 0 && t.type[fn] === "generic_function") fn = child(t, fn, "function");
+        return { kind: "call", callee: fn };
+      }
+      case "struct_expression":
+        return { kind: "new", type: child(t, e, "name") };
+      case "reference_expression":
+        return hint3(t, child(t, e, "value"));
+      case "parenthesized_expression":
+        return hint3(t, namedChildren(t, e)[0] ?? -1);
+      default:
+        return null;
+    }
+  };
+  var PRELUDE = new Set(
+    "Some None Ok Err Box Vec String Option Result drop Default Clone Copy Send Sync Sized ToString ToOwned Into From Iterator IntoIterator Fn FnMut FnOnce Drop PartialEq Eq PartialOrd Ord AsRef AsMut Debug std core alloc".split(" ")
+  );
   var RUST_TYPING = {
     hint: hint3,
-    typeName: typeName3,
+    typeName: typeName4,
     returnType: (t, n) => t.type[n] === "function_item" ? child(t, n, "return_type") : -1,
     // An impl's methods belong to the type it implements; only an inherent impl lends them.
     ownerType: (t, n) => t.type[n] === "impl_item" ? child(t, n, "type") : -1,
@@ -9857,20 +9964,14 @@ sun|misc reflect\`;
     builtins: PRELUDE,
     selfClass: selfClass2,
     traitModes,
-    // A trait method of the name whose mode the probe tries first wins; one taking \`self\` as another type might.
-    shadowed: (call, receiver, declared, method, unitNode, modes) => {
-      const mode = modeOf(method, unitNode);
-      if (mode === null) return false;
-      if (mode === "other" || modes.has("other")) return modes.size > 0;
-      return FIRST[receiverKind(call, receiver, declared)][mode].some((m2) => modes.has(m2));
-    },
+    shadowed,
     lendsTo
   };
   var RUST_RESOLVER = { typing: RUST_TYPING, moduleFiles: () => [] };
 
   // src/lib/langs/index.ts
   var LANGS = {
-    python: { rules: PYTHON, resolver: PYTHON_RESOLVER, isPackage: (path) => /(^|\\/)__init__\\.py$/.test(path), packageMarkers },
+    python: { rules: PYTHON, resolver: PYTHON_RESOLVER, isPackage, packageMarkers },
     go: { rules: GO2, resolver: GO_RESOLVER, configFiles: (path) => [goModsAbove(path)] },
     rust: { rules: RUST, resolver: RUST_RESOLVER, local: true },
     java: { rules: JAVA, resolver: JAVA_RESOLVER, wants: javaWants }
@@ -9887,20 +9988,45 @@ sun|misc reflect\`;
   };
 
   // src/lib/anylink.ts
+  var resolveAny = (files, langOf2, text, exists) => {
+    const program2 = createProgram(files.filter((f2) => "typing" in langOf2(f2)), (f2) => langOf2(f2), text, exists);
+    const ownProgram = memoize((r) => r.program(files.filter((g) => langOf2(g) === r), { known: files.map((g) => g.path), text, ...exists ? { exists } : {} }));
+    return files.flatMap((f2) => {
+      const lang = langOf2(f2);
+      return "typing" in lang ? program2.refsOf(f2) : ownRefs(f2, ownProgram(lang));
+    });
+  };
+  var ownRefs = (f2, resolve) => f2.sites.flatMap((s) => resolve(f2, s).flatMap(({ ref, units, alt }) => units.length > 0 ? [{ path: f2.path, start: s.start, line: s.line, ref, units, ...alt ? { alt } : {} }] : []));
   var NONE2 = (why) => ({ kind: "none", why });
   var MAX_DEPTH = 40;
   var CLASSY = /* @__PURE__ */ new Set(["class", "type"]);
-  var push = (map, key, value) => {
-    const values = map.get(key);
-    if (values) values.push(value);
-    else map.set(key, [value]);
+  var classUnit = (v2) => v2.kind === "unit" && CLASSY.has(v2.unit.kind) ? v2.unit : void 0;
+  var agreed = (vs) => {
+    const first = vs[0]?.kind === "unit" ? vs[0].unit : void 0;
+    if (first && vs.every((v2) => v2.kind === "unit" && v2.unit === first)) return vs[0];
+    return vs.length === 1 ? vs[0] : null;
   };
-  var createProgram = (files, langOf2, text, exists) => {
-    const typing = (f2) => langOf2(f2).typing;
-    const byPath = new Map(files.map((f2) => [f2.path, f2]));
-    const pkgOf = new Map(files.map((f2) => [f2, typing(f2).packageKey?.(f2.path, f2.flat) ?? null]));
+  var unitOfAll = (bs) => {
+    const first = bs[0]?.unit;
+    return first && bs.every((b2) => b2.unit === first) ? first : void 0;
+  };
+  var seenAt = (named2, at2) => named2?.some((b2) => b2.from !== void 0) ? named2.filter((b2) => b2.from === void 0 || b2.from <= at2) : named2;
+  var c3 = (key, orders, bases) => {
+    const seqs = [...orders.map((o) => [...o]), [...bases]];
+    const order = [key];
+    for (; ; ) {
+      const live = seqs.filter((q2) => q2.length > 0);
+      if (live.length === 0) return order;
+      const head = live.map((q2) => q2[0]).find((h) => !live.some((q2) => q2.indexOf(h) > 0));
+      if (head === void 0) return [key];
+      order.push(head);
+      for (const q2 of live) if (q2[0] === head) q2.shift();
+    }
+  };
+  var indexOf = (files, typing) => {
+    const pkgOf2 = new Map(files.map((f2) => [f2, typing(f2).packageKey?.(f2.path, f2.flat) ?? null]));
     const byPackage = /* @__PURE__ */ new Map();
-    for (const [f2, k2] of pkgOf) if (k2) push(byPackage, k2, f2);
+    for (const [f2, k2] of pkgOf2) if (k2) pushTo(byPackage, k2, f2);
     const fileOfUnit = /* @__PURE__ */ new Map();
     const unitById = /* @__PURE__ */ new Map();
     for (const f2 of files) {
@@ -9909,79 +10035,262 @@ sun|misc reflect\`;
         unitById.set(u.id, u);
       }
     }
-    const parentOf = (u) => u.parent ? unitById.get(u.parent) : void 0;
     const bindingOfUnit = /* @__PURE__ */ new Map();
     for (const f2 of files) for (const s of f2.scopes) for (const bs of s.names.values()) for (const b2 of bs) if (b2.unit?.kind === "value") bindingOfUnit.set(b2.unit.id, { f: f2, b: b2 });
     const stars = /* @__PURE__ */ new Map();
-    for (const f2 of files) for (const i2 of f2.imports) if (i2.name === "*") push(stars, f2.importScope.get(i2), i2);
+    for (const f2 of files) for (const i2 of f2.imports) if (i2.name === "*") pushTo(stars, f2.importScope.get(i2), i2);
+    return { byPath: new Map(files.map((f2) => [f2.path, f2])), pkgOf: pkgOf2, byPackage, fileOfUnit, unitById, bindingOfUnit, stars };
+  };
+  var createProgram = (files, langOf2, text, exists) => {
+    const typing = (f2) => langOf2(f2).typing;
+    const { byPath, pkgOf: pkgOf2, byPackage, fileOfUnit, unitById, bindingOfUnit, stars } = indexOf(files, typing);
+    const parentOf = (u) => u.parent ? unitById.get(u.parent) : void 0;
     const starsIn = (s) => stars.get(s) ?? [];
-    const unitAt = (f2, offset) => {
-      const us = f2.units;
-      let lo = 0;
-      let hi = us.length - 1;
-      let at3 = -1;
-      while (lo <= hi) {
-        const mid = lo + hi >> 1;
-        if (us[mid].start <= offset) {
-          at3 = mid;
-          lo = mid + 1;
-        } else hi = mid - 1;
+    const names = /* @__PURE__ */ new Set();
+    for (const f2 of files) {
+      for (const u of f2.units) names.add(u.name);
+      for (const i2 of f2.imports) if (i2.local) names.add(i2.local);
+    }
+    const refsOf = (f2) => {
+      const refs = [];
+      for (const s of f2.sites) {
+        if (!names.has(s.name)) continue;
+        const u = resolveSite2(f2, s);
+        if (!u || ownType(f2, s.start, u)) continue;
+        const ref = typing(f2).conversions && s.ref === "call" && CLASSY.has(u.kind) ? "type" : s.ref;
+        refs.push({ path: f2.path, start: s.start, line: s.line, ref, units: [u] });
       }
-      for (let u = at3 >= 0 ? us[at3] : void 0; u; u = parentOf(u)) if (offset < u.end) return u;
-      return void 0;
+      return refs;
     };
-    const classAround = (f2, offset) => {
-      for (let u = unitAt(f2, offset); u; u = parentOf(u)) if (CLASSY.has(u.kind)) return u;
-      return void 0;
+    const resolveSite2 = (f2, s) => {
+      const v2 = s.ref === "import" ? importSiteVal(f2, s) : s.shape === "bare" ? nameVal2(f2, s.scope, s.name, s.node, s.start, 0) : memberVal2(exprVal2(f2, s.receiver, s.scope, 0), s.name, 0);
+      return v2.kind === "unit" && kept(f2, s, v2.unit) ? v2.unit : null;
     };
-    const selfUnit = (f2, n) => {
-      const rule = typing(f2).selfClass;
-      if (!rule) return classAround(f2, f2.flat.start[n]);
-      const node = rule(f2.flat, n);
-      const u = node >= 0 ? f2.unitByNode.get(node) : void 0;
-      return u && CLASSY.has(u.kind) ? u : void 0;
+    const importsByNode = memoize((f2) => new Map(f2.imports.map((i2) => [i2.node, i2])));
+    const importSiteVal = (f2, s) => {
+      const imp = importsByNode(f2).get(s.node);
+      return imp ? importVal(f2, imp, 0) : NONE2("import");
     };
-    const keyOfTypeUnit = (u) => {
+    const kept = (f2, s, u) => {
+      const ty = typing(f2);
+      const g = fileOfUnit.get(u.id);
+      if (ty.reaches && !ty.reaches(f2, g)) return false;
+      if (s.shape === "member" && s.ref !== "call" && ty.memberIsField?.(f2.flat, s.node)) return u.kind !== "function" && u.kind !== "method";
+      if (ty.typeOnly?.(f2.flat, s.node)) return CLASSY.has(u.kind) || u.kind === "namespace";
+      const modes = s.shape === "member" && ty.shadowed ? traitModesOf(ty).get(s.name) : void 0;
+      const lends = s.shape !== "bare" && ty.lendsTo;
+      if (!modes && !lends) return true;
+      const r = s.receiver;
+      const declared = r >= 0 && f2.flat.type[r] === "identifier" ? bindingAt(s.scope, textOf(f2.flat, r), f2.flat.start[r])?.typeNode ?? -1 : -1;
+      return (!lends || lends(f2, r, declared, g, u.node)) && (!modes || !ty.shadowed(f2.flat, r, declared, g.flat, u.node, modes));
+    };
+    const traitModesOf = memoize((ty) => ty.traitModes?.(files.filter((g) => typing(g) === ty)) ?? /* @__PURE__ */ new Map());
+    const ownerKeyOf = memoize((u) => {
       const f2 = fileOfUnit.get(u.id);
-      const pk = pkgOf.get(f2);
-      return typing(f2).keyByPackage && pk ? \`\${pk}#\${u.name}\` : u.id;
+      return typeKey2(f2, typing(f2).ownerType(f2.flat, u.node), scopeAround(f2, u.node), 0);
+    });
+    const ownType = (f2, offset, target) => {
+      const ownerType = typing(f2).ownerType;
+      if (!ownerType || !CLASSY.has(target.kind)) return false;
+      for (let u = unitAt(f2, offset); u; u = parentOf(u)) {
+        if (ownerType(f2.flat, u.node) < 0) continue;
+        return ownerKeyOf(u) === keyOfTypeUnit(target);
+      }
+      return false;
     };
-    const membersByKey = /* @__PURE__ */ new Map();
-    const basesByKey = /* @__PURE__ */ new Map();
-    const fieldsByKey = /* @__PURE__ */ new Map();
-    const bodyOf = /* @__PURE__ */ new Map();
-    const addMember = (key, u) => {
-      let m2 = membersByKey.get(key);
-      if (!m2) membersByKey.set(key, m2 = /* @__PURE__ */ new Map());
-      push(m2, u.name, u);
+    const nameVal2 = (f2, scope, name2, node, at2, depth) => {
+      const deferred = scope.kind === "class" ? typing(f2).deferredAnnotation?.(f2.flat, node) : null;
+      const later = deferred && scope.names.get(name2)?.some((b2) => b2.from !== void 0 && b2.from > at2);
+      if (later && deferred === "unknown") return NONE2("an annotation the Python version reads");
+      return lookup2(f2, scope, name2, depth, later ? Number.MAX_SAFE_INTEGER : at2);
     };
-    let ownersDone = false;
-    const resolveOwners = () => {
-      if (ownersDone) return;
-      ownersDone = true;
-      for (const f2 of files) {
-        const ty = typing(f2);
-        for (const u of f2.units) {
-          const owner = ty.ownerType?.(f2.flat, u.node) ?? -1;
-          if (CLASSY.has(u.kind) && owner < 0) {
-            const key = keyOfTypeUnit(u);
-            if (!membersByKey.has(key)) membersByKey.set(key, /* @__PURE__ */ new Map());
-            if (ty.nests(f2.flat, u.node)) for (const us of f2.members.get(u.id)?.values() ?? []) for (const x2 of us) addMember(key, x2);
-            const scope = scopeAround(f2, u.node);
-            const b2 = f2.bases.get(u.id);
-            if (b2) push(basesByKey, key, { f: f2, scope, nodes: b2 });
-            for (const fd of ty.fields?.(f2.flat, u.node) ?? []) push(fieldsByKey, key, { f: f2, scope: fd.typeNode >= 0 ? scopeAround(f2, fd.typeNode) : scope, ...fd });
-            const body2 = f2.scopeOfNode.get(u.node);
-            if (ty.mro && body2) bodyOf.set(key, body2);
+    const lookup2 = (f2, scope, name2, depth, at2) => {
+      for (let s = scope; s; s = s.parent) {
+        const bs = seenAt(s.names.get(name2), at2);
+        if (s.kind === "class" && s !== scope) {
+          if (bs?.some((b2) => b2.kind === "param")) return NONE2("type parameter");
+          continue;
+        }
+        if ((!bs || bs.length === 0) && s.kind === "module" && s !== f2.module) {
+          const ss = starsIn(s);
+          if (ss.length === 1 && ss[0].spec === "super") continue;
+          return NONE2(ss.length > 0 ? "glob import in inline module" : "inline module");
+        }
+        if (!bs || bs.length === 0) continue;
+        if (s.kind === "module") return bindingsVal(f2, bs, depth);
+        if (bs.some((b2) => b2.kind === "global")) return topLevel(f2, name2, depth);
+        if (bs.every((b2) => b2.kind === "nonlocal")) continue;
+        return localsVal(f2, bs, depth);
+      }
+      return unboundVal(f2, name2, depth);
+    };
+    const localsVal = (f2, bs, depth) => {
+      if (bs.length === 1 && (bs[0].kind === "self" || bs[0].kind === "selfclass" || bs[0].typeNode !== void 0 || bs[0].init !== void 0)) return localVal(f2, bs[0], depth);
+      if (bs.length === 1 && bs[0].unit) return { kind: "unit", unit: bs[0].unit };
+      if (bs.length === 1 && bs[0].import) return importVal(f2, bs[0].import, depth + 1);
+      if (bs.length > 1 && bs.every((b2) => b2.kind === "local" && (b2.typeNode !== void 0 || b2.init !== void 0))) {
+        const vs = bs.map((b2) => localVal(f2, b2, depth + 1));
+        const keys = new Set(vs.map((v2) => v2.kind === "instance" ? v2.key : ""));
+        if (keys.size === 1 && !keys.has("")) return vs[0];
+      }
+      return NONE2("local");
+    };
+    const unboundVal = (f2, name2, depth) => {
+      if (typing(f2).builtins?.has(name2)) return NONE2("builtin");
+      if (typing(f2).ownName) {
+        const specs = new Set(f2.imports.filter((i2) => i2.implicit).map((i2) => i2.spec));
+        const named2 = [...specs].map((spec) => moduleOf(f2, spec, 0)).filter((mods) => ownNamed(mods, name2));
+        if (named2.length === 1) return { kind: "module", files: named2[0], spec: name2 };
+        if (named2.length > 1) return NONE2("two imports named alike");
+      }
+      const pk = pkgOf2.get(f2);
+      if (starsIn(f2.module).length > 0) return pk ? NONE2("star import") : throughStars(f2, name2, depth + 1);
+      return pk ? packageLookup(f2, pk, name2) : NONE2(\`unbound \${name2}\`);
+    };
+    const bindingAt = (scope, name2, at2) => {
+      for (let s = scope; s; s = s.parent) {
+        if (s.kind === "class" && s !== scope) continue;
+        const bs = seenAt(s.names.get(name2), at2);
+        if (bs && bs.length > 0) return bs.length === 1 ? bs[0] : null;
+      }
+      return null;
+    };
+    const localVal = (f2, b2, depth) => {
+      if (depth > MAX_DEPTH) return NONE2("too deep");
+      if (b2.kind === "self" || b2.kind === "selfclass") {
+        const cls = selfUnit(f2, b2.node);
+        if (!cls) return NONE2("self outside a class");
+        return b2.kind === "self" ? { kind: "instance", key: selfKey(f2, cls) } : { kind: "class", key: selfKey(f2, cls) };
+      }
+      if (b2.typeNode !== void 0) {
+        const key = typeKey2(f2, b2.typeNode, scopeAround(f2, b2.typeNode), depth + 1);
+        return key ? { kind: "instance", key } : NONE2("type not resolved");
+      }
+      if (b2.init !== void 0) {
+        const v2 = b2.initResult !== void 0 ? callResult(f2, b2.init, b2.scope, b2.initResult, depth + 1) : exprVal2(f2, b2.init, b2.scope, depth + 1);
+        return v2.kind === "instance" || v2.kind === "class" || v2.kind === "module" ? v2 : NONE2("initializer");
+      }
+      return NONE2("local");
+    };
+    const exprVal2 = (f2, e, scope, depth) => {
+      if (depth > MAX_DEPTH || e < 0) return NONE2("too deep");
+      const h = typing(f2).hint(f2.flat, e);
+      if (!h) return NONE2("no hint");
+      switch (h.kind) {
+        case "self":
+        case "selfclass":
+        case "super": {
+          const cls = selfUnit(f2, e);
+          if (!cls) return NONE2("self outside a class");
+          const key = selfKey(f2, cls);
+          return h.kind === "self" ? { kind: "instance", key } : h.kind === "selfclass" ? { kind: "class", key } : { kind: "super", key };
+        }
+        case "name": {
+          const v2 = lookup2(f2, scopeAround(f2, h.node), textOf(f2.flat, h.node), depth + 1, f2.flat.start[h.node]);
+          const cls = classUnit(v2);
+          if (cls) return { kind: "class", key: keyOfTypeUnit(cls) };
+          if (v2.kind === "none" && typing(f2).moduleNameKeys) {
+            indexMembers();
+            const key = moduleNameKey(f2, scopeAround(f2, h.node), textOf(f2.flat, h.node));
+            if (key && membersByKey.has(key)) return { kind: "class", key };
           }
-          if (owner >= 0 && ty.ownsMembers?.(f2.flat, u.node) !== false) {
-            const key = typeKey(f2, owner, scopeAround(f2, u.node), 0);
-            if (!key) continue;
-            if (u.kind === "function" || u.kind === "method") addMember(key, u);
-            else if (CLASSY.has(u.kind)) for (const us of f2.members.get(u.id)?.values() ?? []) for (const x2 of us) addMember(key, x2);
+          if (v2.kind === "unit" && v2.unit.kind === "value") {
+            const vb = bindingOfUnit.get(v2.unit.id);
+            return vb ? localVal(vb.f, vb.b, depth + 1) : NONE2("value");
           }
+          return v2;
+        }
+        case "member": {
+          const v2 = memberVal2(exprVal2(f2, h.object, scope, depth + 1), h.name, depth + 1);
+          if (v2.kind !== "unit") return v2;
+          const g = fileOfUnit.get(v2.unit.id);
+          return typing(g).property?.(g.flat, v2.unit.node) ? resultOf(v2.unit, void 0, depth) : v2;
+        }
+        case "path":
+          return memberVal2(exprVal2(f2, h.qualifier, scope, depth + 1), h.name, depth + 1);
+        case "new": {
+          const key = typeKey2(f2, h.type, scopeAround(f2, h.type), depth + 1);
+          return key ? { kind: "instance", key } : NONE2("new of unknown type");
+        }
+        case "call": {
+          const callee = exprVal2(f2, h.callee, scope, depth + 1);
+          if (callee.kind === "class") return { kind: "instance", key: callee.key };
+          const cls = classUnit(callee);
+          if (cls) return { kind: "instance", key: keyOfTypeUnit(cls) };
+          return callee.kind === "unit" ? resultOf(callee.unit, void 0, depth) : NONE2("callee unknown");
         }
       }
+    };
+    const memberVal2 = (obj, name2, depth) => {
+      if (obj.kind === "module") {
+        const vs = obj.files.map((g) => topLevel(g, name2, depth + 1)).filter((v2) => v2.kind !== "none");
+        const answer = agreed(vs);
+        if (answer) return answer;
+        const sub = vs.length === 0 ? moduleOf(obj.files[0], \`\${obj.spec}.\${name2}\`, 0) : [];
+        return sub.length > 0 ? { kind: "module", files: sub, spec: \`\${obj.spec}.\${name2}\` } : NONE2("module member");
+      }
+      if (obj.kind === "super") return memberOf(obj.key, name2, depth + 1, 1);
+      if (obj.kind === "instance" || obj.kind === "class") {
+        const m2 = memberOf(obj.key, name2, depth + 1);
+        if (obj.kind === "instance" && bodyOf2.has(obj.key) && m2.kind === "unit" && fieldsOf(obj.key).some((x2) => x2.onSelf && x2.name === name2)) return NONE2("attribute set on self");
+        if (m2.kind === "unit" || obj.kind === "class") return m2;
+        const fv = fieldVal(obj.key, name2, depth + 1);
+        return fv.kind !== "none" ? fv : m2;
+      }
+      const cls = classUnit(obj);
+      if (cls) return memberVal2({ kind: "class", key: keyOfTypeUnit(cls) }, name2, depth);
+      return NONE2("receiver unknown");
+    };
+    const resultOf = (u, index, depth) => {
+      const g = fileOfUnit.get(u.id);
+      const rt2 = typing(g).returnType(g.flat, u.node, index);
+      if (rt2 < 0) return NONE2("no result type");
+      const key = typeKey2(g, rt2, scopeAround(g, rt2), depth + 1);
+      return key ? { kind: "instance", key } : NONE2("result type unknown");
+    };
+    const callResult = (f2, e, scope, index, depth) => {
+      const h = typing(f2).hint(f2.flat, e);
+      if (!h || h.kind !== "call") return NONE2("not a call");
+      const callee = exprVal2(f2, h.callee, scope, depth + 1);
+      return callee.kind === "unit" ? resultOf(callee.unit, index, depth) : NONE2("callee unknown");
+    };
+    const importVal = (f2, imp, depth) => {
+      if (depth > MAX_DEPTH) return NONE2("import chain too deep");
+      if (imp.unproven) return NONE2("sys.path may have moved");
+      const mods = moduleOf(f2, imp.spec, imp.level);
+      if (imp.implicit && !ownNamed(mods, imp.local)) return NONE2("the module's own name differs");
+      if (imp.name === null) return mods.length > 0 ? { kind: "module", files: mods, spec: imp.spec } : NONE2(\`module \${imp.spec} not read\`);
+      if (imp.name === "*") return NONE2("star");
+      const found = [];
+      for (const m2 of mods) {
+        const v2 = topLevel(m2, imp.name, depth);
+        if (v2.kind !== "none") found.push(v2);
+      }
+      const sub = moduleOf(f2, imp.spec ? \`\${imp.spec}.\${imp.name}\` : imp.name, imp.level).filter((g) => !mods.includes(g));
+      const answer = sub.length === 0 ? agreed(found) : null;
+      if (answer) return answer;
+      if (found.length === 0 && sub.length > 0) return { kind: "module", files: sub, spec: \`\${imp.spec}.\${imp.name}\` };
+      return NONE2(found.length + sub.length === 0 ? \`import \${imp.spec}:\${imp.name} not read\` : "import ambiguous");
+    };
+    const topLevel = (f2, name2, depth) => {
+      const bs = (f2.module.names.get(name2) ?? []).filter((b2) => b2.kind !== "global" && b2.kind !== "nonlocal");
+      if (bs.length > 0) return bindingsVal(f2, bs, depth);
+      if (starsIn(f2.module).length > 0) return throughStars(f2, name2, depth + 1);
+      const pk = pkgOf2.get(f2);
+      return pk ? packageLookup(f2, pk, name2) : NONE2(\`no \${name2} in \${f2.path}\`);
+    };
+    const bindingsVal = (f2, bs, depth) => {
+      const lastStar = Math.max(-1, ...starsIn(bs[0].scope).map((i2) => f2.flat.start[i2.stmt]));
+      if (bs.some((b3) => f2.flat.start[b3.node] < lastStar)) return NONE2("star import after it");
+      const unit5 = unitOfAll(bs);
+      if (unit5) return { kind: "unit", unit: unit5 };
+      const first = bs[0].import;
+      if (first?.name === null && bs.every((b3) => b3.import?.name === null && b3.import.spec === first.spec && b3.import.level === first.level)) return importVal(f2, first, depth + 1);
+      if (bs.length !== 1) return NONE2("bound more than once");
+      const b2 = bs[0];
+      if (b2.import) return importVal(f2, b2.import, depth + 1);
+      if (b2.typeNode !== void 0 || b2.init !== void 0) return localVal(f2, b2, depth + 1);
+      return NONE2(\`\${b2.kind} binding\`);
     };
     const throughStars = (f2, name2, depth) => {
       if (depth > MAX_DEPTH) return NONE2("too deep");
@@ -9999,37 +10308,14 @@ sun|misc reflect\`;
           else if (v2.why === "star import" || v2.why === "star import not read" || v2.why === "star ambiguous") return NONE2("star import not read");
         }
       }
-      const units = [...new Set(found.flatMap((v2) => v2.kind === "units" ? v2.units : []))];
-      if (found.length > 0 && found.every((v2) => v2.kind === "units") && units.length === 1) return { kind: "units", units };
-      if (found.length === 1) return found[0];
-      return NONE2(found.length > 1 ? "star ambiguous" : \`no \${name2} in \${f2.path}\`);
-    };
-    const topLevel = (f2, name2, depth) => {
-      const bs = (f2.module.names.get(name2) ?? []).filter((b2) => b2.kind !== "global" && b2.kind !== "nonlocal");
-      if (bs.length > 0) return bindingsVal(f2, bs, depth);
-      if (starsIn(f2.module).length > 0) return throughStars(f2, name2, depth + 1);
-      const pk = pkgOf.get(f2);
-      return pk ? packageLookup(f2, pk, name2) : NONE2(\`no \${name2} in \${f2.path}\`);
-    };
-    const bindingsVal = (f2, bs, depth) => {
-      const lastStar = Math.max(-1, ...starsIn(bs[0].scope).map((i2) => f2.flat.start[i2.stmt]));
-      if (bs.some((b3) => f2.flat.start[b3.node] < lastStar)) return NONE2("star import after it");
-      const units = [...new Set(bs.flatMap((b3) => b3.unit ? [b3.unit] : []))];
-      if (units.length === 1 && bs.every((b3) => b3.unit)) return { kind: "units", units };
-      const first = bs[0].import;
-      if (first?.name === null && bs.every((b3) => b3.import?.name === null && b3.import.spec === first.spec && b3.import.level === first.level)) return importVal(f2, first, depth + 1);
-      if (bs.length !== 1) return NONE2("bound more than once");
-      const b2 = bs[0];
-      if (b2.import) return importVal(f2, b2.import, depth + 1);
-      if (b2.typeNode !== void 0 || b2.init !== void 0) return localVal(f2, b2, depth + 1);
-      return NONE2(\`\${b2.kind} binding\`);
+      return agreed(found) ?? NONE2(found.length > 1 ? "star ambiguous" : \`no \${name2} in \${f2.path}\`);
     };
     const packageLookup = (f2, pk, name2) => {
-      const { sees, reaches: reaches2 } = typing(f2);
+      const { sees, reaches: reaches3 } = typing(f2);
       const units = [];
       let other = 0;
       for (const g of byPackage.get(pk) ?? []) {
-        if (g === f2 || sees && !sees(f2.path, g.path) || reaches2 && !reaches2(f2, g)) continue;
+        if (g === f2 || sees && !sees(f2.path, g.path) || reaches3 && !reaches3(f2, g)) continue;
         for (const b2 of g.module.names.get(name2) ?? []) {
           if (b2.kind === "import") continue;
           if (b2.unit) units.push(b2.unit);
@@ -10037,11 +10323,11 @@ sun|misc reflect\`;
         }
       }
       const uniq = [...new Set(units)];
-      if (uniq.length === 1 && other === 0) return { kind: "units", units: uniq };
+      if (uniq.length === 1 && other === 0) return { kind: "unit", unit: uniq[0] };
       return NONE2(uniq.length > 1 ? "several in package" : "not in package files read");
     };
-    const modules = /* @__PURE__ */ new Map();
     const lookupContext = { known: [...byPath.keys()], text, ...exists ? { exists } : {} };
+    const modules = /* @__PURE__ */ new Map();
     const moduleOf = (from, spec, level) => {
       const key = \`\${from.path}
 \${spec}
@@ -10058,125 +10344,33 @@ sun|misc reflect\`;
       return hit;
     };
     const ownNamed = (mods, name2) => mods.length > 0 && mods.every((g) => typing(g).ownName?.(g.flat) === name2);
-    const importVal = (f2, imp, depth) => {
-      if (depth > MAX_DEPTH) return NONE2("import chain too deep");
-      if (imp.unproven) return NONE2("sys.path may have moved");
-      const mods = moduleOf(f2, imp.spec, imp.level);
-      if (imp.implicit && !ownNamed(mods, imp.local)) return NONE2("the module's own name differs");
-      if (imp.name === null) return mods.length > 0 ? { kind: "module", files: mods, spec: imp.spec } : NONE2(\`module \${imp.spec} not read\`);
-      if (imp.name === "*") return NONE2("star");
-      const found = [];
-      for (const m2 of mods) {
-        const v2 = topLevel(m2, imp.name, depth);
-        if (v2.kind !== "none") found.push(v2);
-      }
-      const sub = moduleOf(f2, imp.spec ? \`\${imp.spec}.\${imp.name}\` : imp.name, imp.level).filter((g) => !mods.includes(g));
-      const same = [...new Set(found.flatMap((v2) => v2.kind === "units" ? v2.units : []))];
-      if (found.length > 1 && found.every((v2) => v2.kind === "units") && same.length === 1 && sub.length === 0) return { kind: "units", units: same };
-      if (found.length === 1 && sub.length === 0) return found[0];
-      if (found.length === 0 && sub.length > 0) return { kind: "module", files: sub, spec: \`\${imp.spec}.\${imp.name}\` };
-      return NONE2(found.length + sub.length === 0 ? \`import \${imp.spec}:\${imp.name} not read\` : "import ambiguous");
-    };
-    const nameVal = (f2, scope, name2, node, at3, depth) => {
-      const deferred = scope.kind === "class" ? typing(f2).deferredAnnotation?.(f2.flat, node) : null;
-      const later = deferred && scope.names.get(name2)?.some((b2) => b2.from !== void 0 && b2.from > at3);
-      if (later && deferred === "unknown") return NONE2("an annotation the Python version reads");
-      return lookup2(f2, scope, name2, depth, later ? Number.MAX_SAFE_INTEGER : at3);
-    };
-    const bindingAt = (scope, name2, at3) => {
-      for (let s = scope; s; s = s.parent) {
-        if (s.kind === "class" && s !== scope) continue;
-        const named = s.names.get(name2);
-        const bs = named?.some((b2) => b2.from !== void 0) ? named.filter((b2) => b2.from === void 0 || b2.from <= at3) : named;
-        if (bs && bs.length > 0) return bs.length === 1 ? bs[0] : null;
-      }
-      return null;
-    };
-    const lookup2 = (f2, scope, name2, depth, at3) => {
-      for (let s = scope; s; s = s.parent) {
-        const named = s.names.get(name2);
-        const bs = named?.some((b2) => b2.from !== void 0) ? named.filter((b2) => b2.from === void 0 || b2.from <= at3) : named;
-        if (s.kind === "class" && s !== scope) {
-          if (bs?.some((b2) => b2.kind === "param")) return NONE2("type parameter");
-          continue;
-        }
-        if ((!bs || bs.length === 0) && s.kind === "module" && s !== f2.module) {
-          const ss = starsIn(s);
-          if (ss.length === 1 && ss[0].spec === "super") continue;
-          return NONE2(ss.length > 0 ? "glob import in inline module" : "inline module");
-        }
-        if (!bs || bs.length === 0) continue;
-        if (s.kind === "module") return bindingsVal(f2, bs, depth);
-        if (bs.some((b2) => b2.kind === "global")) return topLevel(f2, name2, depth);
-        if (bs.every((b2) => b2.kind === "nonlocal")) continue;
-        if (bs.length === 1 && (bs[0].kind === "self" || bs[0].kind === "selfclass" || bs[0].typeNode !== void 0 || bs[0].init !== void 0)) return localVal(f2, bs[0], depth);
-        if (bs.length === 1 && bs[0].unit) return { kind: "units", units: [bs[0].unit] };
-        if (bs.length === 1 && bs[0].import) return importVal(f2, bs[0].import, depth + 1);
-        if (bs.length > 1 && bs.every((b2) => b2.kind === "local" && (b2.typeNode !== void 0 || b2.init !== void 0))) {
-          const vs = bs.map((b2) => localVal(f2, b2, depth + 1));
-          const keys = new Set(vs.map((v2) => v2.kind === "instance" ? v2.key : ""));
-          if (keys.size === 1 && !keys.has("")) return vs[0];
-        }
-        return NONE2("local");
-      }
-      if (typing(f2).builtins?.has(name2)) return NONE2("builtin");
-      if (typing(f2).ownName) {
-        const specs = new Set(f2.imports.filter((i2) => i2.implicit).map((i2) => i2.spec));
-        const named = [...specs].map((spec) => moduleOf(f2, spec, 0)).filter((mods) => ownNamed(mods, name2));
-        if (named.length === 1) return { kind: "module", files: named[0], spec: name2 };
-        if (named.length > 1) return NONE2("two imports named alike");
-      }
-      const pk = pkgOf.get(f2);
-      if (starsIn(f2.module).length > 0) return pk ? NONE2("star import") : throughStars(f2, name2, depth + 1);
-      return pk ? packageLookup(f2, pk, name2) : NONE2(\`unbound \${name2}\`);
-    };
-    const localVal = (f2, b2, depth) => {
-      if (depth > MAX_DEPTH) return NONE2("too deep");
-      if (b2.kind === "self" || b2.kind === "selfclass") {
-        const cls = selfUnit(f2, b2.node);
-        if (!cls) return NONE2("self outside a class");
-        return b2.kind === "self" ? { kind: "instance", key: selfKey(f2, cls) } : { kind: "class", key: selfKey(f2, cls) };
-      }
-      if (b2.typeNode !== void 0) {
-        const key = typeKey(f2, b2.typeNode, scopeAround(f2, b2.typeNode), depth + 1);
-        return key ? { kind: "instance", key } : NONE2("type not resolved");
-      }
-      if (b2.init !== void 0) {
-        const v2 = b2.initResult !== void 0 ? callResult(f2, b2.init, b2.scope, b2.initResult, depth + 1) : exprVal(f2, b2.init, b2.scope, depth + 1);
-        return v2.kind === "instance" || v2.kind === "class" || v2.kind === "module" ? v2 : NONE2("initializer");
-      }
-      return NONE2("local");
-    };
-    const selfKey = (f2, cls) => {
-      const owner = typing(f2).ownerType?.(f2.flat, cls.node) ?? -1;
-      if (owner >= 0) return typeKey(f2, owner, scopeAround(f2, cls.node), 0) ?? \`?\${cls.id}\`;
-      return keyOfTypeUnit(cls);
-    };
-    const typeKey = (f2, typeNode, scope, depth) => {
+    const typeKey2 = (f2, typeNode, scope, depth) => {
       if (depth > MAX_DEPTH) return null;
       const tn = typing(f2).typeName(f2.flat, typeNode);
       if (!tn) return null;
       if (tn.kind === "self") {
-        const cls = selfUnit(f2, typeNode);
-        return cls ? selfKey(f2, cls) : null;
+        const cls2 = selfUnit(f2, typeNode);
+        return cls2 ? selfKey(f2, cls2) : null;
       }
-      if (typing(f2).keyByPackage) {
-        if (tn.kind === "name") {
-          const name2 = textOf(f2.flat, tn.node);
-          for (let s = scope; s && s !== f2.module; s = s.parent) if (s.names.has(name2)) return null;
-          const pk2 = pkgOf.get(f2);
-          return pk2 ? \`\${pk2}#\${name2}\` : null;
-        }
-        const q2 = exprVal(f2, tn.qualifier, scope, depth + 1);
-        if (q2.kind !== "module") return null;
-        const pk = q2.files.map((g) => pkgOf.get(g)).find((k2) => k2);
-        return pk ? \`\${pk}#\${tn.name}\` : null;
-      }
-      const v2 = tn.kind === "name" ? nameVal(f2, scope, textOf(f2.flat, tn.node), tn.node, f2.flat.start[tn.node], depth + 1) : memberVal(exprVal(f2, tn.qualifier, scope, depth + 1), tn.name, depth + 1);
+      if (typing(f2).keyByPackage) return packageTypeKey(f2, tn, scope, depth);
+      const v2 = tn.kind === "name" ? nameVal2(f2, scope, textOf(f2.flat, tn.node), tn.node, f2.flat.start[tn.node], depth + 1) : memberVal2(exprVal2(f2, tn.qualifier, scope, depth + 1), tn.name, depth + 1);
       if (v2.kind === "class") return v2.key;
-      if (v2.kind === "units" && v2.units.length === 1 && CLASSY.has(v2.units[0].kind)) return keyOfTypeUnit(v2.units[0]);
+      const cls = classUnit(v2);
+      if (cls) return keyOfTypeUnit(cls);
       if (tn.kind === "name" && typing(f2).moduleNameKeys && v2.kind === "none") return moduleNameKey(f2, scope, textOf(f2.flat, tn.node));
       return null;
+    };
+    const packageTypeKey = (f2, tn, scope, depth) => {
+      if (tn.kind === "name") {
+        const name2 = textOf(f2.flat, tn.node);
+        for (let s = scope; s && s !== f2.module; s = s.parent) if (s.names.has(name2)) return null;
+        const pk2 = pkgOf2.get(f2);
+        return pk2 ? \`\${pk2}#\${name2}\` : null;
+      }
+      const q2 = exprVal2(f2, tn.qualifier, scope, depth + 1);
+      if (q2.kind !== "module") return null;
+      const pk = q2.files.map((g) => pkgOf2.get(g)).find((k2) => k2);
+      return pk ? \`\${pk}#\${tn.name}\` : null;
     };
     const moduleNameKey = (f2, scope, name2) => {
       let s = scope;
@@ -10186,11 +10380,62 @@ sun|misc reflect\`;
       }
       return s ? \`\${f2.path}#\${s.id}#\${name2}\` : null;
     };
+    const keyOfTypeUnit = (u) => {
+      const f2 = fileOfUnit.get(u.id);
+      const pk = pkgOf2.get(f2);
+      return typing(f2).keyByPackage && pk ? \`\${pk}#\${u.name}\` : u.id;
+    };
+    const selfKey = (f2, cls) => {
+      const owner = typing(f2).ownerType?.(f2.flat, cls.node) ?? -1;
+      if (owner >= 0) return typeKey2(f2, owner, scopeAround(f2, cls.node), 0) ?? \`?\${cls.id}\`;
+      return keyOfTypeUnit(cls);
+    };
+    const selfUnit = (f2, n) => {
+      const rule = typing(f2).selfClass;
+      if (!rule) return classAround2(f2, f2.flat.start[n]);
+      const node = rule(f2.flat, n);
+      const u = node >= 0 ? f2.unitByNode.get(node) : void 0;
+      return u && CLASSY.has(u.kind) ? u : void 0;
+    };
+    const classAround2 = (f2, offset) => {
+      for (let u = unitAt(f2, offset); u; u = parentOf(u)) if (CLASSY.has(u.kind)) return u;
+      return void 0;
+    };
+    const unitAt = (f2, offset) => {
+      const us = f2.units;
+      let lo = 0;
+      let hi = us.length - 1;
+      let at2 = -1;
+      while (lo <= hi) {
+        const mid = lo + hi >> 1;
+        if (us[mid].start <= offset) {
+          at2 = mid;
+          lo = mid + 1;
+        } else hi = mid - 1;
+      }
+      for (let u = at2 >= 0 ? us[at2] : void 0; u; u = parentOf(u)) if (offset < u.end) return u;
+      return void 0;
+    };
+    const memberOf = (key, name2, depth, skip = 0) => {
+      indexMembers();
+      if (depth > MAX_DEPTH) return NONE2("too deep");
+      if (bodyOf2.has(key)) {
+        const { order, complete } = linearize(key, depth + 1);
+        for (const k2 of order.slice(skip)) {
+          const v2 = bodyAttr(k2, name2);
+          if (v2) return v2;
+        }
+        return NONE2(complete ? "no member" : "base not resolved");
+      }
+      const own = membersByKey.get(key)?.get(name2);
+      if (own && own.length > 0) return own.length > 1 ? NONE2("overloaded") : { kind: "unit", unit: own[0] };
+      return NONE2(membersByKey.has(key) ? "no member" : "type not read");
+    };
     const bodyAttr = (key, name2) => {
-      const bs = bodyOf.get(key)?.names.get(name2);
+      const bs = bodyOf2.get(key)?.names.get(name2);
       if (!bs || bs.length === 0) return void 0;
-      const units = [...new Set(bs.flatMap((b2) => b2.unit ? [b2.unit] : []))];
-      return units.length === 1 && bs.every((b2) => b2.unit) ? { kind: "units", units } : NONE2("class attribute");
+      const unit5 = unitOfAll(bs);
+      return unit5 ? { kind: "unit", unit: unit5 } : NONE2("class attribute");
     };
     const mros = /* @__PURE__ */ new Map();
     const linearize = (key, depth) => {
@@ -10200,45 +10445,18 @@ sun|misc reflect\`;
       mros.set(key, unsure);
       if (depth > MAX_DEPTH) return unsure;
       const bases = [];
-      for (const b2 of basesByKey.get(key) ?? []) for (const n of b2.nodes) bases.push(typeKey(b2.f, n, b2.scope, depth + 1));
-      const orders = bases.map((k2) => k2 && bodyOf.has(k2) ? linearize(k2, depth + 1) : null);
+      for (const b2 of basesByKey.get(key) ?? []) for (const n of b2.nodes) bases.push(typeKey2(b2.f, n, b2.scope, depth + 1));
+      const orders = bases.map((k2) => k2 && bodyOf2.has(k2) ? linearize(k2, depth + 1) : null);
       let found;
       if (orders.every((o) => o?.complete)) {
-        const seqs = [...orders.map((o) => [...o.order]), bases.map((k2) => k2)];
-        const order = [key];
-        for (; ; ) {
-          const live = seqs.filter((q2) => q2.length > 0);
-          if (live.length === 0) break;
-          const head = live.map((q2) => q2[0]).find((h) => !live.some((q2) => q2.indexOf(h) > 0));
-          if (head === void 0) {
-            order.length = 1;
-            break;
-          }
-          order.push(head);
-          for (const q2 of live) if (q2[0] === head) q2.shift();
-        }
+        const order = c3(key, orders.map((o) => o.order), bases.map((k2) => k2));
         found = { order, complete: order.length > 1 || bases.length === 0 };
       } else if (orders.length === 1 && orders[0]) found = { order: [key, ...orders[0].order], complete: false };
       else found = { order: orders[0] ? [key, bases[0]] : [key], complete: false };
       mros.set(key, found);
       return found;
     };
-    const memberOf = (key, name2, depth, skip = 0) => {
-      resolveOwners();
-      if (depth > MAX_DEPTH) return NONE2("too deep");
-      if (bodyOf.has(key)) {
-        const { order, complete } = linearize(key, depth + 1);
-        for (const k2 of order.slice(skip)) {
-          const v2 = bodyAttr(k2, name2);
-          if (v2) return v2;
-        }
-        return NONE2(complete ? "no member" : "base not resolved");
-      }
-      const own = membersByKey.get(key)?.get(name2);
-      if (own && own.length > 0) return own.length > 1 ? NONE2("overloaded") : { kind: "units", units: own };
-      return NONE2(membersByKey.has(key) ? "no member" : "type not read");
-    };
-    const fieldsOf = (key) => (bodyOf.has(key) ? linearize(key, 0).order : [key]).flatMap((k2) => fieldsByKey.get(k2) ?? []);
+    const fieldsOf = (key) => (bodyOf2.has(key) ? linearize(key, 0).order : [key]).flatMap((k2) => fieldsByKey.get(k2) ?? []);
     const fieldVal = (key, name2, depth) => {
       const all2 = fieldsOf(key).filter((x2) => x2.name === name2);
       const declared = all2.filter((x2) => !x2.onSelf && x2.typeNode >= 0);
@@ -10246,360 +10464,76 @@ sun|misc reflect\`;
       if (fs.length === 0) return NONE2("no field");
       const keys = /* @__PURE__ */ new Set();
       for (const fd of fs) {
-        const k2 = fd.typeNode >= 0 ? typeKey(fd.f, fd.typeNode, fd.scope, depth + 1) : null;
-        const v2 = k2 ? { kind: "instance", key: k2 } : fd.typeNode < 0 && fd.init >= 0 ? exprVal(fd.f, fd.init, fd.scope, depth + 1) : NONE2("field type");
+        const k2 = fd.typeNode >= 0 ? typeKey2(fd.f, fd.typeNode, fd.scope, depth + 1) : null;
+        const v2 = k2 ? { kind: "instance", key: k2 } : fd.typeNode < 0 && fd.init >= 0 ? exprVal2(fd.f, fd.init, fd.scope, depth + 1) : NONE2("field type");
         if (v2.kind !== "instance") return NONE2("field not typed");
         keys.add(v2.key);
       }
       return keys.size === 1 ? { kind: "instance", key: [...keys][0] } : NONE2("field typed twice");
     };
-    const memberVal = (obj, name2, depth) => {
-      if (obj.kind === "module") {
-        const vs = obj.files.map((g) => topLevel(g, name2, depth + 1)).filter((v2) => v2.kind !== "none");
-        const units = [...new Set(vs.flatMap((v2) => v2.kind === "units" ? v2.units : []))];
-        if (vs.length > 0 && vs.every((v2) => v2.kind === "units") && units.length === 1) return { kind: "units", units };
-        if (vs.length === 1) return vs[0];
-        if (vs.length === 0) {
-          const sub = moduleOf(obj.files[0], \`\${obj.spec}.\${name2}\`, 0);
-          if (sub.length > 0) return { kind: "module", files: sub, spec: \`\${obj.spec}.\${name2}\` };
-        }
-        return NONE2("module member");
-      }
-      if (obj.kind === "super") return memberOf(obj.key, name2, depth + 1, 1);
-      if (obj.kind === "instance" || obj.kind === "class") {
-        const m2 = memberOf(obj.key, name2, depth + 1);
-        if (obj.kind === "instance" && bodyOf.has(obj.key) && m2.kind === "units" && fieldsOf(obj.key).some((x2) => x2.onSelf && x2.name === name2)) return NONE2("attribute set on self");
-        if (m2.kind === "units" || obj.kind === "class") return m2;
-        const fv = fieldVal(obj.key, name2, depth + 1);
-        return fv.kind !== "none" ? fv : m2;
-      }
-      if (obj.kind === "units" && obj.units.length === 1 && CLASSY.has(obj.units[0].kind)) return memberVal({ kind: "class", key: keyOfTypeUnit(obj.units[0]) }, name2, depth);
-      return NONE2("receiver unknown");
+    const membersByKey = /* @__PURE__ */ new Map();
+    const basesByKey = /* @__PURE__ */ new Map();
+    const fieldsByKey = /* @__PURE__ */ new Map();
+    const bodyOf2 = /* @__PURE__ */ new Map();
+    const addMember = (key, u) => {
+      let m2 = membersByKey.get(key);
+      if (!m2) membersByKey.set(key, m2 = /* @__PURE__ */ new Map());
+      pushTo(m2, u.name, u);
     };
-    const resultOf = (u, index, depth) => {
-      const g = fileOfUnit.get(u.id);
-      const rt2 = typing(g).returnType(g.flat, u.node, index);
-      if (rt2 < 0) return NONE2("no result type");
-      const key = typeKey(g, rt2, scopeAround(g, rt2), depth + 1);
-      return key ? { kind: "instance", key } : NONE2("result type unknown");
-    };
-    const callResult = (f2, e, scope, index, depth) => {
-      const h = typing(f2).hint(f2.flat, e);
-      if (!h || h.kind !== "call") return NONE2("not a call");
-      const callee = exprVal(f2, h.callee, scope, depth + 1);
-      return callee.kind === "units" && callee.units.length === 1 ? resultOf(callee.units[0], index, depth) : NONE2("callee unknown");
-    };
-    const exprVal = (f2, e, scope, depth) => {
-      if (depth > MAX_DEPTH || e < 0) return NONE2("too deep");
-      const h = typing(f2).hint(f2.flat, e);
-      if (!h) return NONE2("no hint");
-      switch (h.kind) {
-        case "self":
-        case "selfclass":
-        case "super": {
-          const cls = selfUnit(f2, e);
-          if (!cls) return NONE2("self outside a class");
-          const key = selfKey(f2, cls);
-          return h.kind === "self" ? { kind: "instance", key } : h.kind === "selfclass" ? { kind: "class", key } : { kind: "super", key };
-        }
-        case "name": {
-          const v2 = lookup2(f2, scopeAround(f2, h.node), textOf(f2.flat, h.node), depth + 1, f2.flat.start[h.node]);
-          if (v2.kind === "units" && v2.units.length === 1 && CLASSY.has(v2.units[0].kind)) return { kind: "class", key: keyOfTypeUnit(v2.units[0]) };
-          if (v2.kind === "none" && typing(f2).moduleNameKeys) {
-            resolveOwners();
-            const key = moduleNameKey(f2, scopeAround(f2, h.node), textOf(f2.flat, h.node));
-            if (key && membersByKey.has(key)) return { kind: "class", key };
+    let indexed = false;
+    const indexMembers = () => {
+      if (indexed) return;
+      indexed = true;
+      for (const f2 of files) {
+        const ty = typing(f2);
+        for (const u of f2.units) {
+          const owner = ty.ownerType?.(f2.flat, u.node) ?? -1;
+          if (CLASSY.has(u.kind) && owner < 0) {
+            const key = keyOfTypeUnit(u);
+            if (!membersByKey.has(key)) membersByKey.set(key, /* @__PURE__ */ new Map());
+            if (ty.nests(f2.flat, u.node)) for (const us of f2.members.get(u.id)?.values() ?? []) for (const x2 of us) addMember(key, x2);
+            const scope = scopeAround(f2, u.node);
+            const b2 = f2.bases.get(u.id);
+            if (b2) pushTo(basesByKey, key, { f: f2, scope, nodes: b2 });
+            for (const fd of ty.fields?.(f2.flat, u.node) ?? []) pushTo(fieldsByKey, key, { f: f2, scope: fd.typeNode >= 0 ? scopeAround(f2, fd.typeNode) : scope, ...fd });
+            const body2 = f2.scopeOfNode.get(u.node);
+            if (ty.mro && body2) bodyOf2.set(key, body2);
           }
-          if (v2.kind === "units" && v2.units.length === 1 && v2.units[0].kind === "value") {
-            const vb = bindingOfUnit.get(v2.units[0].id);
-            return vb ? localVal(vb.f, vb.b, depth + 1) : NONE2("value");
+          if (owner >= 0 && ty.ownsMembers?.(f2.flat, u.node) !== false) {
+            const key = typeKey2(f2, owner, scopeAround(f2, u.node), 0);
+            if (!key) continue;
+            if (u.kind === "function" || u.kind === "method") addMember(key, u);
+            else if (CLASSY.has(u.kind)) for (const us of f2.members.get(u.id)?.values() ?? []) for (const x2 of us) addMember(key, x2);
           }
-          return v2;
-        }
-        case "member": {
-          const v2 = memberVal(exprVal(f2, h.object, scope, depth + 1), h.name, depth + 1);
-          if (v2.kind !== "units" || v2.units.length !== 1) return v2;
-          const g = fileOfUnit.get(v2.units[0].id);
-          return typing(g).property?.(g.flat, v2.units[0].node) ? resultOf(v2.units[0], void 0, depth) : v2;
-        }
-        case "path":
-          return memberVal(exprVal(f2, h.qualifier, scope, depth + 1), h.name, depth + 1);
-        case "new": {
-          const key = typeKey(f2, h.type, scopeAround(f2, h.type), depth + 1);
-          return key ? { kind: "instance", key } : NONE2("new of unknown type");
-        }
-        case "call": {
-          const callee = exprVal(f2, h.callee, scope, depth + 1);
-          if (callee.kind === "class") return { kind: "instance", key: callee.key };
-          if (callee.kind === "units" && callee.units.length === 1 && CLASSY.has(callee.units[0].kind)) return { kind: "instance", key: keyOfTypeUnit(callee.units[0]) };
-          return callee.kind === "units" && callee.units.length === 1 ? resultOf(callee.units[0], void 0, depth) : NONE2("callee unknown");
         }
       }
     };
-    const importAt = /* @__PURE__ */ new Map();
-    const resolveSite = (f2, s) => {
-      let v2;
-      if (s.ref === "import") {
-        let at3 = importAt.get(f2);
-        if (!at3) importAt.set(f2, at3 = new Map(f2.imports.map((i2) => [i2.node, i2])));
-        const imp = at3.get(s.node);
-        v2 = imp ? importVal(f2, imp, 0) : NONE2("import");
-      } else v2 = s.shape === "bare" ? nameVal(f2, s.scope, s.name, s.node, s.start, 0) : memberVal(exprVal(f2, s.receiver, s.scope, 0), s.name, 0);
-      if (v2.kind !== "units") return [];
-      const ty = typing(f2);
-      const units = ty.reaches ? v2.units.filter((u) => ty.reaches(f2, fileOfUnit.get(u.id))) : v2.units;
-      if (s.shape === "member" && s.ref !== "call" && ty.memberIsField?.(f2.flat, s.node)) return units.filter((u) => u.kind !== "function" && u.kind !== "method");
-      if (ty.typeOnly?.(f2.flat, s.node)) return units.filter((u) => CLASSY.has(u.kind) || u.kind === "namespace");
-      const modes = s.shape === "member" && ty.shadowed ? traitModesOf(f2).get(s.name) : void 0;
-      const lends = s.shape !== "bare" && ty.lendsTo;
-      if (modes || lends) {
-        const r = s.receiver;
-        const declared = r >= 0 && f2.flat.type[r] === "identifier" ? bindingAt(s.scope, textOf(f2.flat, r), f2.flat.start[r])?.typeNode ?? -1 : -1;
-        return units.filter((u) => {
-          const g = fileOfUnit.get(u.id);
-          return (!lends || lends(f2, r, declared, g, u.node)) && (!modes || !ty.shadowed(f2.flat, r, declared, g.flat, u.node, modes));
-        });
-      }
-      return units;
-    };
-    const modeMaps = /* @__PURE__ */ new Map();
-    const traitModesOf = (f2) => {
-      const ty = typing(f2);
-      let hit = modeMaps.get(ty);
-      if (!hit) modeMaps.set(ty, hit = ty.traitModes?.(files.filter((g) => typing(g) === ty)) ?? /* @__PURE__ */ new Map());
-      return hit;
-    };
-    const ownerKeys = /* @__PURE__ */ new Map();
-    const ownType = (f2, offset, target) => {
-      const ownerType = typing(f2).ownerType;
-      if (!ownerType || !CLASSY.has(target.kind)) return false;
-      for (let u = unitAt(f2, offset); u; u = parentOf(u)) {
-        const owner = ownerType(f2.flat, u.node);
-        if (owner < 0) continue;
-        let key = ownerKeys.get(u);
-        if (key === void 0) ownerKeys.set(u, key = typeKey(f2, owner, scopeAround(f2, u.node), 0));
-        return key === keyOfTypeUnit(target);
-      }
-      return false;
-    };
-    return { resolveSite, ownType };
-  };
-  var resolveAny = (files, langOf2, text, exists) => {
-    const generic = files.filter((f2) => "typing" in langOf2(f2));
-    const program2 = createProgram(generic, (f2) => langOf2(f2), text, exists);
-    const names = /* @__PURE__ */ new Set();
-    for (const f2 of generic) {
-      for (const u of f2.units) names.add(u.name);
-      for (const i2 of f2.imports) if (i2.local) names.add(i2.local);
-    }
-    const own = /* @__PURE__ */ new Map();
-    const ownOf = (r) => {
-      let hit = own.get(r);
-      if (!hit) own.set(r, hit = r.program(files.filter((g) => langOf2(g) === r), { known: files.map((g) => g.path), text, ...exists ? { exists } : {} }));
-      return hit;
-    };
-    const refs = [];
-    for (const f2 of files) {
-      const lang = langOf2(f2);
-      if (!("typing" in lang)) {
-        const resolve = ownOf(lang);
-        for (const s of f2.sites) for (const { ref, units, alt } of resolve(f2, s)) if (units.length > 0) refs.push({ path: f2.path, start: s.start, line: s.line, ref, units, ...alt ? { alt } : {} });
-        continue;
-      }
-      const conversions = lang.typing.conversions;
-      for (const s of f2.sites) {
-        if (!names.has(s.name)) continue;
-        const units = program2.resolveSite(f2, s).filter((u) => !program2.ownType(f2, s.start, u));
-        if (units.length === 0) continue;
-        const ref = conversions && s.ref === "call" && units.every((u) => CLASSY.has(u.kind)) ? "type" : s.ref;
-        refs.push({ path: f2.path, start: s.start, line: s.line, ref, units });
-      }
-    }
-    return refs;
+    return { refsOf };
   };
 
-  // src/lib/diff.ts
-  var HEADER = /^@@ -(\\d+)(?:,\\d+)? \\+(\\d+)(?:,\\d+)? @@/;
-  var parsePatch = (patch) => {
-    const raw = [];
-    let current = null;
-    let o = 0;
-    let n = 0;
-    for (const line of patch.split("\\n")) {
-      const header = HEADER.exec(line);
-      if (header) {
-        o = Number(header[1]);
-        n = Number(header[2]);
-        current = { oldStart: o, newStart: n, lines: [] };
-        raw.push(current);
-        continue;
-      }
-      if (!current || line.startsWith("\\\\")) continue;
-      const text = line.slice(1);
-      if (line.startsWith("-")) current.lines.push({ t: "del", o: o++, text });
-      else if (line.startsWith("+")) current.lines.push({ t: "add", n: n++, text });
-      else current.lines.push({ t: "ctx", o: o++, n: n++, text });
-    }
-    return raw.map((h) => {
-      const heads = h.lines.filter((l3) => l3.n !== void 0);
-      const bases = h.lines.filter((l3) => l3.o !== void 0);
-      const newEnd = heads.length > 0 ? heads[heads.length - 1].n : h.newStart - 1;
-      const oldEnd = bases.length > 0 ? bases[bases.length - 1].o : h.oldStart - 1;
-      let next = newEnd + 1;
-      const lines = [];
-      for (let i2 = h.lines.length - 1; i2 >= 0; i2--) {
-        const l3 = h.lines[i2];
-        if (l3.n !== void 0) next = l3.n;
-        lines.push({ ...l3, at: l3.n ?? next });
-      }
-      return { oldStart: h.oldStart, newStart: h.newStart, newEnd, oldEnd, lines: lines.reverse() };
-    });
+  // src/lib/card/grid.ts
+  var CARD = {
+    header: 56,
+    row: 20,
+    padBottom: 12,
+    minWidth: 480,
+    maxWidth: 880,
+    charWidth: 7.6,
+    gutter: 124,
+    plainGutter: 68,
+    codePad: 12,
+    maxRows: 24,
+    context: 2,
+    contextRows: 10,
+    maxCases: 12
   };
-  var addedHunks = (text) => {
-    const lines = text.split("\\n");
-    if (lines[lines.length - 1] === "") lines.pop();
-    if (lines.length === 0) return [];
-    return [{ oldStart: 0, newStart: 1, newEnd: lines.length, oldEnd: -1, lines: lines.map((line, i2) => ({ t: "add", n: i2 + 1, text: line, at: i2 + 1 })) }];
-  };
-  var allLines = (hunks) => hunks.flatMap((h) => h.lines);
-
-  // src/lib/graph.ts
-  var layers = (ids, edges) => {
-    const out2 = new Map(ids.map((id) => [id, []]));
-    for (const [a, b2] of edges) if (out2.has(a) && out2.has(b2) && a !== b2) out2.get(a).push(b2);
-    const state = /* @__PURE__ */ new Map();
-    const kept = [];
-    const visit = (id) => {
-      state.set(id, "open");
-      for (const next of out2.get(id)) {
-        const s = state.get(next);
-        if (s === "open") continue;
-        kept.push([id, next]);
-        if (!s) visit(next);
-      }
-      state.set(id, "done");
-    };
-    for (const id of ids) if (!state.has(id)) visit(id);
-    const layer = new Map(ids.map((id) => [id, 0]));
-    const waiting = new Map(ids.map((id) => [id, 0]));
-    const after = new Map(ids.map((id) => [id, []]));
-    for (const [a, b2] of kept) {
-      waiting.set(b2, waiting.get(b2) + 1);
-      after.get(a).push(b2);
-    }
-    const ready = [...waiting].filter(([, n]) => n === 0).map(([id]) => id);
-    for (let i2 = 0; i2 < ready.length; i2++) {
-      const a = ready[i2];
-      for (const b2 of after.get(a)) {
-        layer.set(b2, Math.max(layer.get(b2), layer.get(a) + 1));
-        waiting.set(b2, waiting.get(b2) - 1);
-        if (waiting.get(b2) === 0) ready.push(b2);
-      }
-    }
-    return layer;
-  };
-
-  // src/lib/highlight.ts
-  var words = (s) => new Set(s.split(" "));
-  var C_LIKE = "if else for while do switch case break continue default return new delete throw try catch finally class extends this super static public private protected const let var void null true false import export from as typeof instanceof in of async await yield function interface enum type implements package";
-  var KEYWORDS3 = {
-    ts: words(\`\${C_LIKE} readonly declare namespace module keyof infer never unknown any satisfies abstract override get set undefined\`),
-    js: words(\`\${C_LIKE} undefined get set\`),
-    py: words("def class return if elif else for while in not and or is None True False import from as with try except finally raise yield lambda pass break continue global nonlocal async await assert del self"),
-    go: words("func package import return if else for range switch case default break continue go defer select chan map struct interface type var const nil true false fallthrough goto"),
-    rs: words("fn let mut pub crate mod use impl trait struct enum match if else for while loop return break continue self Self super where as in ref move async await dyn const static unsafe true false Some None Ok Err"),
-    java: words(\`\${C_LIKE} final abstract synchronized throws boolean int long double float char byte short\`),
-    kt: words("fun val var class object interface if else when for while do return break continue try catch finally throw import package as is in out null true false this super override open data sealed suspend companion private public internal protected"),
-    swift: words("func let var class struct enum protocol extension if else guard for while repeat return break continue switch case default import self Self nil true false init deinit throws throw try catch async await public private internal fileprivate static"),
-    rb: words("def class module end if elsif else unless while until for in do return yield begin rescue ensure raise nil true false self super require require_relative attr_reader attr_accessor"),
-    php: words(\`\${C_LIKE} function echo namespace use fn match array\`),
-    cs: words(\`\${C_LIKE} using namespace readonly override virtual sealed partial string int bool var get set async await\`),
-    c: words("if else for while do switch case break continue default return struct union enum typedef static const void int char long short unsigned signed float double sizeof include define NULL true false class public private protected template typename namespace using virtual auto"),
-    sh: words("if then else elif fi for while do done case esac function return local export in"),
-    sql: words("select from where and or not insert into values update set delete create table alter drop index join left right inner outer on group by order having limit as null is distinct union")
-  };
-  var LINE_COMMENT = {
-    ts: "//",
-    js: "//",
-    go: "//",
-    rs: "//",
-    java: "//",
-    kt: "//",
-    swift: "//",
-    php: "//",
-    cs: "//",
-    c: "//",
-    py: "#",
-    rb: "#",
-    sh: "#",
-    yaml: "#",
-    toml: "#",
-    sql: "--"
-  };
-  var BLOCK_COMMENTS = /* @__PURE__ */ new Set(["ts", "js", "go", "rs", "java", "kt", "swift", "php", "cs", "c", "css"]);
-  var escapeHtml = (s) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-  var span = (cls, text) => \`<span class="\${cls}">\${escapeHtml(text)}</span>\`;
-  var highlightLine = (text, lang, state) => {
-    const keywords = KEYWORDS3[lang];
-    const lineComment = LINE_COMMENT[lang];
-    const blocks = BLOCK_COMMENTS.has(lang);
-    if (lang === "md" || lang === "text") return escapeHtml(text);
-    let out2 = "";
-    let i2 = 0;
-    while (i2 < text.length) {
-      if (state.inBlock) {
-        const end = text.indexOf("*/", i2);
-        const stop2 = end < 0 ? text.length : end + 2;
-        out2 += span("c", text.slice(i2, stop2));
-        i2 = stop2;
-        if (end >= 0) state.inBlock = false;
-        continue;
-      }
-      const rest = text.slice(i2);
-      if (blocks && rest.startsWith("/*")) {
-        state.inBlock = true;
-        out2 += span("c", "/*");
-        i2 += 2;
-        continue;
-      }
-      if (lineComment && rest.startsWith(lineComment)) {
-        out2 += span("c", rest);
-        break;
-      }
-      if (blocks && i2 === 0 && /^\\s*\\*(\\s|\\/|$)/.test(text)) {
-        out2 += span("c", text);
-        break;
-      }
-      const ch = text[i2];
-      if (ch === '"' || ch === "'" || ch === "\`") {
-        let j2 = i2 + 1;
-        while (j2 < text.length && text[j2] !== ch) j2 += text[j2] === "\\\\" ? 2 : 1;
-        out2 += span("s", text.slice(i2, j2 + 1));
-        i2 = j2 + 1;
-        continue;
-      }
-      const num = /^\\d[\\d_]*(\\.\\d+)?([eE][+-]?\\d+)?[a-zA-Z]*/.exec(rest);
-      if (num && !/[\\w$]/.test(text[i2 - 1] ?? "")) {
-        out2 += span("n", num[0]);
-        i2 += num[0].length;
-        continue;
-      }
-      const ident = /^[#@]?[A-Za-z_$][\\w$]*/.exec(rest);
-      if (ident) {
-        const word = ident[0];
-        const after = text.slice(i2 + word.length).trimStart();
-        if (keywords?.has(word)) out2 += span("k", word);
-        else if (after.startsWith("(") || after.startsWith("<") && /^<[\\w\\s,.]*>\\s*\\(/.test(after)) out2 += span("f", word);
-        else if (/^[A-Z][a-z0-9]/.test(word) && lang !== "sql") out2 += span("t", word);
-        else out2 += escapeHtml(word);
-        i2 += word.length;
-        continue;
-      }
-      out2 += escapeHtml(ch);
-      i2 += 1;
-    }
-    return out2;
-  };
+  var opensReadAll = (r) => r?.kind === "fold" && r.tail || r?.kind === "info" && r.readAll === true;
+  var expandTabs = (text) => text.replace(/\\t/g, "    ");
+  var rowMiddle = (row) => row < 0 ? CARD.header / 2 : CARD.header + row * CARD.row + CARD.row / 2;
+  var NAME = { pad: 14, share: 0.52, char: 9.2 };
+  var isDeclaration = (pin) => pin.kind === "change" || pin.kind === "context";
+  var gutterOf = (pin) => pin.kind === "context" ? CARD.plainGutter : CARD.gutter;
+  var typedMethods = (path) => /\\.(py|go|rs|java)$/i.test(path);
 
   // src/lib/language.ts
   var EXTENSIONS = {
@@ -10686,6 +10620,333 @@ sun|misc reflect\`;
     if (CONFIG.some((re) => re.test(path))) return "config";
     return "code";
   };
+
+  // src/lib/highlight.ts
+  var words = (s) => new Set(s.split(" "));
+  var C_LIKE = "if else for while do switch case break continue default return new delete throw try catch finally class extends this super static public private protected const let var void null true false import export from as typeof instanceof in of async await yield function interface enum type implements package";
+  var KEYWORDS3 = {
+    ts: words(\`\${C_LIKE} readonly declare namespace module keyof infer never unknown any satisfies abstract override get set undefined\`),
+    js: words(\`\${C_LIKE} undefined get set\`),
+    py: words("def class return if elif else for while in not and or is None True False import from as with try except finally raise yield lambda pass break continue global nonlocal async await assert del self"),
+    go: words("func package import return if else for range switch case default break continue go defer select chan map struct interface type var const nil true false fallthrough goto"),
+    rs: words("fn let mut pub crate mod use impl trait struct enum match if else for while loop return break continue self Self super where as in ref move async await dyn const static unsafe true false Some None Ok Err"),
+    java: words(\`\${C_LIKE} final abstract synchronized throws boolean int long double float char byte short\`),
+    kt: words("fun val var class object interface if else when for while do return break continue try catch finally throw import package as is in out null true false this super override open data sealed suspend companion private public internal protected"),
+    swift: words("func let var class struct enum protocol extension if else guard for while repeat return break continue switch case default import self Self nil true false init deinit throws throw try catch async await public private internal fileprivate static"),
+    rb: words("def class module end if elsif else unless while until for in do return yield begin rescue ensure raise nil true false self super require require_relative attr_reader attr_accessor"),
+    php: words(\`\${C_LIKE} function echo namespace use fn match array\`),
+    cs: words(\`\${C_LIKE} using namespace readonly override virtual sealed partial string int bool var get set async await\`),
+    c: words("if else for while do switch case break continue default return struct union enum typedef static const void int char long short unsigned signed float double sizeof include define NULL true false class public private protected template typename namespace using virtual auto"),
+    sh: words("if then else elif fi for while do done case esac function return local export in"),
+    sql: words("select from where and or not insert into values update set delete create table alter drop index join left right inner outer on group by order having limit as null is distinct union")
+  };
+  var LINE_COMMENT = {
+    ts: "//",
+    js: "//",
+    go: "//",
+    rs: "//",
+    java: "//",
+    kt: "//",
+    swift: "//",
+    php: "//",
+    cs: "//",
+    c: "//",
+    py: "#",
+    rb: "#",
+    sh: "#",
+    yaml: "#",
+    toml: "#",
+    sql: "--"
+  };
+  var BLOCK_COMMENTS = /* @__PURE__ */ new Set(["ts", "js", "go", "rs", "java", "kt", "swift", "php", "cs", "c", "css"]);
+  var escapeHtml = (s) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+  var span = (cls, text) => \`<span class="\${cls}">\${escapeHtml(text)}</span>\`;
+  var stringEnd = (text, i2) => {
+    let j2 = i2 + 1;
+    while (j2 < text.length && text[j2] !== text[i2]) j2 += text[j2] === "\\\\" ? 2 : 1;
+    return j2 + 1;
+  };
+  var wordHtml = (word, after, lang) => {
+    if (KEYWORDS3[lang]?.has(word)) return span("k", word);
+    if (after.startsWith("(") || after.startsWith("<") && /^<[\\w\\s,.]*>\\s*\\(/.test(after)) return span("f", word);
+    if (/^[A-Z][a-z0-9]/.test(word) && lang !== "sql") return span("t", word);
+    return escapeHtml(word);
+  };
+  var highlightLine = (text, lang, state) => {
+    const lineComment = LINE_COMMENT[lang];
+    const blocks = BLOCK_COMMENTS.has(lang);
+    if (lang === "md" || lang === "text") return escapeHtml(text);
+    let out2 = "";
+    let i2 = 0;
+    while (i2 < text.length) {
+      if (state.inBlock) {
+        const end = text.indexOf("*/", i2);
+        const stop2 = end < 0 ? text.length : end + 2;
+        out2 += span("c", text.slice(i2, stop2));
+        i2 = stop2;
+        if (end >= 0) state.inBlock = false;
+        continue;
+      }
+      const rest = text.slice(i2);
+      if (blocks && rest.startsWith("/*")) {
+        state.inBlock = true;
+        out2 += span("c", "/*");
+        i2 += 2;
+        continue;
+      }
+      if (lineComment && rest.startsWith(lineComment)) {
+        out2 += span("c", rest);
+        break;
+      }
+      if (blocks && i2 === 0 && /^\\s*\\*(\\s|\\/|$)/.test(text)) {
+        out2 += span("c", text);
+        break;
+      }
+      const ch = text[i2];
+      if (ch === '"' || ch === "'" || ch === "\`") {
+        const end = stringEnd(text, i2);
+        out2 += span("s", text.slice(i2, end));
+        i2 = end;
+        continue;
+      }
+      const num = /^\\d[\\d_]*(\\.\\d+)?([eE][+-]?\\d+)?[a-zA-Z]*/.exec(rest);
+      if (num && !/[\\w$]/.test(text[i2 - 1] ?? "")) {
+        out2 += span("n", num[0]);
+        i2 += num[0].length;
+        continue;
+      }
+      const word = /^[#@]?[A-Za-z_$][\\w$]*/.exec(rest)?.[0];
+      if (word) {
+        out2 += wordHtml(word, text.slice(i2 + word.length).trimStart(), lang);
+        i2 += word.length;
+        continue;
+      }
+      out2 += escapeHtml(ch);
+      i2 += 1;
+    }
+    return out2;
+  };
+
+  // src/lib/card/lines.ts
+  var changedSpan = (a, b2) => {
+    let start2 = 0;
+    while (start2 < a.length && start2 < b2.length && a[start2] === b2[start2]) start2++;
+    let endA = a.length;
+    let endB = b2.length;
+    while (endA > start2 && endB > start2 && a[endA - 1] === b2[endB - 1]) {
+      endA--;
+      endB--;
+    }
+    const indent = Math.min(/^\\s*/.exec(a)[0].length, /^\\s*/.exec(b2)[0].length, start2);
+    const shared = start2 - indent + (a.length - endA);
+    if (shared < 4 || shared < (Math.max(a.length, b2.length) - indent) * 0.3) return null;
+    return { start: start2, endA, endB };
+  };
+  var MAX_PAIRED = 40;
+  var pairLines = (dels, adds) => {
+    let from = 0;
+    return dels.map((a) => {
+      if (adds.length > MAX_PAIRED) return null;
+      let best = null;
+      for (let at2 = from; at2 < adds.length; at2++) {
+        const span2 = changedSpan(a, adds[at2]);
+        const score = span2 ? span2.start + (a.length - span2.endA) : -1;
+        if (span2 && (!best || score > best.score)) best = { add: at2, span: span2, score };
+      }
+      if (!best) return null;
+      from = best.add + 1;
+      return { add: best.add, span: best.span };
+    });
+  };
+  var changeRuns = (lines) => {
+    const runs = [];
+    for (let i2 = 0; i2 < lines.length; ) {
+      if (lines[i2].t !== "del") {
+        i2++;
+        continue;
+      }
+      const dels = [];
+      const adds = [];
+      while (i2 < lines.length && lines[i2].t === "del") dels.push(i2++);
+      while (i2 < lines.length && lines[i2].t === "add") adds.push(i2++);
+      runs.push({ dels, adds });
+    }
+    return runs;
+  };
+  var changedStretches = (lines) => {
+    const marks = /* @__PURE__ */ new Map();
+    for (const run2 of changeRuns(lines)) {
+      const pairs = pairLines(
+        run2.dels.map((i2) => expandTabs(lines[i2].text)),
+        run2.adds.map((i2) => expandTabs(lines[i2].text))
+      );
+      pairs.forEach((pair, d) => {
+        if (!pair) return;
+        marks.set(lines[run2.dels[d]], [pair.span.start, pair.span.endA]);
+        marks.set(lines[run2.adds[pair.add]], [pair.span.start, pair.span.endB]);
+      });
+    }
+    return marks;
+  };
+  var highlightMarked = (text, lang, state, [from, to]) => from === to ? highlightLine(text, lang, state) : highlightLine(text.slice(0, from), lang, state) + \`<mark>\${highlightLine(text.slice(from, to), lang, state)}</mark>\` + highlightLine(text.slice(to), lang, state);
+  var lineRows = (lang, lines) => {
+    const marks = changedStretches(lines);
+    const state = { inBlock: false };
+    return lines.map((line) => {
+      const text = expandTabs(line.text);
+      const mark = marks.get(line);
+      return { kind: "line", line, html: mark ? highlightMarked(text, lang, state, mark) : highlightLine(text, lang, state) };
+    });
+  };
+  var pinLines = ({ head = [], from, to, symbol }, f2) => {
+    const all2 = allLines(f2.hunks);
+    const byHead = new Map(all2.filter((l3) => l3.n !== void 0).map((l3) => [l3.n, l3]));
+    const dels = groupBy(all2.filter((l3) => l3.t === "del"), (l3) => l3.at);
+    const offset = (n) => {
+      const above = f2.hunks.filter((h) => h.newEnd < n);
+      const last = above[above.length - 1];
+      return last ? last.oldEnd - last.newEnd : 0;
+    };
+    const out2 = [];
+    for (let n = from; n <= to; n++) {
+      out2.push(...dels[n] ?? []);
+      out2.push(byHead.get(n) ?? { t: "ctx", o: n + offset(n), n, at: n, text: head[n - from] ?? "" });
+    }
+    if ((symbol?.to ?? 0) > to) out2.push(...dels[to + 1] ?? []);
+    return out2;
+  };
+
+  // src/lib/card/rows.ts
+  var SHOW = { always: 3, ifRoom: 2, context: 1, never: 0 };
+  var outgoing = (review, pin) => review.links.filter((l3) => l3.from === pin);
+  var declFileOf = (pin, review) => review.files.find((x2) => x2.path === pin.path) ?? (pin.kind === "context" && pin.path ? { hunks: [], lang: languageOf(pin.path) } : void 0);
+  var foldRows = (lang, lines, priority, calls, max) => {
+    const highlighted = lineRows(lang, lines);
+    const showing = (kept2, cut) => {
+      const rows = [];
+      for (let i2 = 0; i2 < lines.length; ) {
+        if (kept2[i2]) {
+          const n = lines[i2].n;
+          rows.push({ ...highlighted[i2], ...n !== void 0 && calls.has(n) ? { call: true } : {} });
+          i2++;
+          continue;
+        }
+        let j2 = i2;
+        while (j2 < lines.length && !kept2[j2]) j2++;
+        const tail = j2 === lines.length;
+        if (j2 - i2 === 1) rows.push(highlighted[i2]);
+        else rows.push({ kind: "fold", count: j2 - i2, from: lines[i2].at, to: lines[j2 - 1].at, tail, more: tail && cut });
+        i2 = j2;
+      }
+      return rows;
+    };
+    const atLeast = (min) => priority.map((p) => p >= min);
+    for (const min of [SHOW.context, SHOW.ifRoom]) {
+      const rows = showing(atLeast(min), false);
+      if (rows.length <= max) return rows;
+    }
+    const kept = atLeast(SHOW.always);
+    priority.forEach((p, i2) => {
+      if (p !== SHOW.ifRoom) return;
+      kept[i2] = true;
+      if (showing(kept, true).length > max) kept[i2] = false;
+    });
+    return showing(kept, true);
+  };
+  var nearChanges = (count2, changed) => Array.from({ length: count2 }, (_2, i2) => changed.some((c) => Math.abs(c - i2) <= CARD.context));
+  var nestedIn = (pin, pins) => pins.filter((q2) => q2.id !== pin.id && isDeclaration(q2) && q2.path === pin.path && pin.from <= q2.from && q2.to <= pin.to && (pin.from < q2.from || q2.to < pin.to));
+  var ownLines = (lines, nested) => {
+    const own = lines.map((l3) => !nested.some((q2) => l3.at >= q2.from && l3.at <= q2.to));
+    if (nested.length === 0) return own;
+    const blank = (i2) => lines[i2].text.trim() === "";
+    for (let i2 = 0; i2 < lines.length; i2++) {
+      if (!blank(i2)) continue;
+      let j2 = i2;
+      while (j2 < lines.length && blank(j2)) j2++;
+      for (let k2 = i2; k2 < j2; k2++) own[k2] = j2 < lines.length ? own[j2] : i2 > 0 ? own[i2 - 1] : own[k2];
+      i2 = j2;
+    }
+    return own;
+  };
+  var signatureEnd = (pin, start2) => {
+    for (let n = start2; n <= Math.min(pin.to, start2 + 15); n++) if (/(\\{|=>|:|=)\\s*$/.test((pin.head[n - pin.from] ?? "").trim())) return n;
+    return start2;
+  };
+  var contextPriority = (lines, own, { start: start2, starts, calls }) => {
+    const key = lines.map((l3, i2) => own[i2] && (l3.n === start2 || starts.has(l3.n ?? -1) || calls.has(l3.n ?? -1)));
+    const nearKey = key.map((_2, i2) => key.slice(Math.max(0, i2 - 1), i2 + 2).some(Boolean));
+    const helper = calls.size === 0;
+    return key.map((k2, i2) => k2 ? SHOW.always : own[i2] && (helper || nearKey[i2]) ? SHOW.context : SHOW.never);
+  };
+  var changePriority = (pin, lines, own, { start: start2, starts, calls }) => {
+    const sigEnd = signatureEnd(pin, start2);
+    const near = nearChanges(lines.length, lines.flatMap((l3, i2) => l3.t === "ctx" || !own[i2] ? [] : [i2]));
+    return lines.map((l3, i2) => {
+      const n = l3.n ?? -1;
+      if (!own[i2]) return SHOW.never;
+      if (l3.t !== "del" && n === start2 || starts.has(n)) return SHOW.always;
+      if (l3.t !== "ctx" || calls.has(n) || n === sigEnd && sigEnd - start2 + 1 > 3) return SHOW.ifRoom;
+      return near[i2] ? SHOW.context : SHOW.never;
+    });
+  };
+  var declRows = (pin, review) => {
+    const f2 = declFileOf(pin, review);
+    if (!f2 || !pin.head) return [{ kind: "info", text: "PR Blackboard couldn't read this file." }];
+    const lines = pinLines(pin, f2);
+    const out2 = outgoing(review, pin.id);
+    const marks = {
+      start: pin.symbol?.start ?? pin.from,
+      starts: new Set(out2.map((l3) => l3.at).filter((n) => n !== void 0)),
+      calls: new Set(out2.flatMap((l3) => l3.rows))
+    };
+    const own = ownLines(lines, nestedIn(pin, review.pins ?? []));
+    if (pin.kind === "context") return foldRows(f2.lang, lines, contextPriority(lines, own, marks), marks.calls, CARD.contextRows);
+    return foldRows(f2.lang, lines, changePriority(pin, lines, own, marks), marks.calls, CARD.maxRows);
+  };
+  var NO_DIFF = "GitHub doesn't show this diff: the file is too large or not text.";
+  var EXCERPT_CONTEXT = 3;
+  var fileRows = (pin, review) => {
+    const f2 = review.files.find((x2) => x2.path === pin.path);
+    if (!f2) return [{ kind: "info", text: "Nothing to show." }];
+    if (!f2.hasPatch) return [{ kind: "info", text: NO_DIFF }, ...f2.previousPath ? [{ kind: "info", text: \`Renamed from \${f2.previousPath}.\` }] : []];
+    if (f2.hunks.length === 0) return [{ kind: "info", text: f2.previousPath ? \`Renamed from \${f2.previousPath}, with no changes inside.\` : "No changes inside the file." }];
+    const inRange = (l3) => !pin.ranges || pin.ranges.some((r) => l3.at >= r.from - EXCERPT_CONTEXT && l3.at <= r.to + EXCERPT_CONTEXT);
+    const rows = [];
+    let end = null;
+    for (const h of f2.hunks) {
+      const lines = h.lines.filter(inRange);
+      if (lines.length === 0) continue;
+      if (end !== null && lines[0].at > end + 1) rows.push({ kind: "gap", count: lines[0].at - end - 1 });
+      end = lines[lines.length - 1].at;
+      const near = nearChanges(lines.length, lines.flatMap((l3, i2) => l3.t === "ctx" ? [] : [i2]));
+      const priority = lines.map((l3, i2) => l3.t !== "ctx" ? SHOW.ifRoom : near[i2] ? SHOW.context : SHOW.never);
+      rows.push(...foldRows(f2.lang, lines, priority, /* @__PURE__ */ new Set(), Number.MAX_SAFE_INTEGER).filter((r) => !(r.kind === "fold" && r.tail)));
+    }
+    if (rows.length <= CARD.maxRows) return rows;
+    const kept = rows.slice(0, CARD.maxRows - 1);
+    const hidden = sumBy(rows.slice(kept.length), (r) => r.kind === "line" ? 1 : r.kind === "fold" ? r.count : 0);
+    return [...kept, { kind: "fold", count: hidden, from: 0, to: 0, tail: true, more: true }];
+  };
+  var testRows = (pin, review) => {
+    const f2 = review.files.find((x2) => x2.path === pin.path);
+    if (!f2) return [];
+    const cases = f2.cases.filter((c) => c.t === "add" || !f2.cases.some((d) => d.t === "add" && d.at === c.at));
+    if (cases.length === 0) return fileRows(pin, review);
+    const shown = cases.slice(0, CARD.maxCases);
+    const open = [];
+    const rows = shown.map((test) => {
+      while (open.length > 0 && open[open.length - 1] >= test.indent) open.pop();
+      const depth = open.length;
+      if (test.group) open.push(test.indent);
+      return { kind: "case", test, depth };
+    });
+    const more = cases.length - shown.length;
+    return [...rows, { kind: "info", text: more > 0 ? \`\${plural(more, "more case")} \\xB7 Read all\` : "Test code \\xB7 Read all", readAll: true }];
+  };
+  var rowsOf = (pin, review) => isDeclaration(pin) ? declRows(pin, review) : pin.kind === "test" ? testRows(pin, review) : fileRows(pin, review);
+
+  // src/lib/card/links.ts
+  var wordOf = (l3) => l3.kind === "context" ? l3.reads ?? "calls" : l3.kind;
 
   // src/vendor/marked.ts
   function C2() {
@@ -10776,14 +11037,14 @@ sun|misc reflect\`;
   var st = k(/\\\\(punct)/, "gu").replace(/punct/g, _).getRegex();
   var it = k(/^<(scheme:[^\\s\\x00-\\x1f<>]*|email)>/).replace("scheme", /[a-zA-Z][a-zA-Z0-9+.-]{1,31}/).replace("email", /[a-zA-Z0-9.!#$%&'*+/=?^_\`{|}~-]+(@)[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+(?![-_])/).getRegex();
   var ot = k(X).replace("(?:-->|$)", "-->").getRegex();
-  var at2 = k("^comment|^</[a-zA-Z][\\\\w:-]*\\\\s*>|^<[a-zA-Z][\\\\w-]*(?:attribute)*?\\\\s*/?>|^<\\\\?[\\\\s\\\\S]*?\\\\?>|^<![a-zA-Z]+\\\\s[\\\\s\\\\S]*?>|^<!\\\\[CDATA\\\\[[\\\\s\\\\S]*?\\\\]\\\\]>").replace("comment", ot).replace("attribute", /\\s+[a-zA-Z:_][\\w.:-]*(?:\\s*=\\s*"[^"]*"|\\s*=\\s*'[^']*'|\\s*=\\s*[^\\s"'=<>\`]+)?/).getRegex();
+  var at = k("^comment|^</[a-zA-Z][\\\\w:-]*\\\\s*>|^<[a-zA-Z][\\\\w-]*(?:attribute)*?\\\\s*/?>|^<\\\\?[\\\\s\\\\S]*?\\\\?>|^<![a-zA-Z]+\\\\s[\\\\s\\\\S]*?>|^<!\\\\[CDATA\\\\[[\\\\s\\\\S]*?\\\\]\\\\]>").replace("comment", ot).replace("attribute", /\\s+[a-zA-Z:_][\\w.:-]*(?:\\s*=\\s*"[^"]*"|\\s*=\\s*'[^']*'|\\s*=\\s*[^\\s"'=<>\`]+)?/).getRegex();
   var G = /(?:\\[(?:\\\\[\\s\\S]|[^\\[\\]\\\\])*\\]|\\\\[\\s\\S]|\`+(?!\`)[^\`]*?\`+(?!\`)|\`\`+(?=\\])|[^\\[\\]\\\\\`])*?/;
   var lt = k(/^!?\\[(label)\\]\\(\\s*(href)(?:(?:[ \\t]+(?:\\n[ \\t]*)?|\\n[ \\t]*)(title))?\\s*\\)/).replace("label", G).replace("href", /<(?:\\\\.|[^\\n<>\\\\])+>|[^ \\t\\n\\x00-\\x1f]+|(?=\\))/).replace("title", /"(?:\\\\"?|[^"\\\\])*"|'(?:\\\\'?|[^'\\\\])*'|\\((?:\\\\\\)?|[^)\\\\])*\\)/).getRegex();
   var de = k(/^!?\\[(label)\\]\\[(ref)\\]/).replace("label", G).replace("ref", W).getRegex();
   var ke = k(/^!?\\[(ref)\\](?:\\[\\])?/).replace("ref", W).getRegex();
   var pt = k("reflink|nolink(?!\\\\()", "g").replace("reflink", de).replace("nolink", ke).getRegex();
   var ie = /[hH][tT][tT][pP][sS]?|[fF][tT][pP]/;
-  var V = { _backpedal: z, anyPunctuation: st, autolink: it, blockSkip: Qe, br: pe, code: De, del: z, delLDelim: z, delRDelim: z, emStrongLDelim: Ne, emStrongRDelimAst: Ke, emStrongRDelimUnd: Ve, escape: Be, link: lt, nolink: ke, punctuation: ve, reflink: de, reflinkSearch: pt, tag: at2, text: qe, url: z };
+  var V = { _backpedal: z, anyPunctuation: st, autolink: it, blockSkip: Qe, br: pe, code: De, del: z, delLDelim: z, delRDelim: z, emStrongLDelim: Ne, emStrongRDelimAst: Ke, emStrongRDelimUnd: Ve, escape: Be, link: lt, nolink: ke, punctuation: ve, reflink: de, reflinkSearch: pt, tag: at, text: qe, url: z };
   var ut = { ...V, emStrongLDelim: Ue, emStrongRDelimAst: Je, emStrongRDelimUnd: et, link: k(/^!?\\[(label)\\]\\((.*?)\\)/).replace("label", G).getRegex(), reflink: k(/^!?\\[(label)\\]\\s*\\[([^\\]]*)\\]/).replace("label", G).getRegex() };
   var F = { ...V, emStrongRDelimAst: We, emStrongLDelim: je, delLDelim: tt, delRDelim: rt, url: k(/^((?:protocol):\\/\\/|www\\.)(?:[a-zA-Z0-9\\-]+\\.?)+[^\\s<]*|^email/).replace("protocol", ie).replace("email", /[A-Za-z0-9._+-]+(@)[a-zA-Z0-9-_]+(?:\\.[a-zA-Z0-9-_]*[a-zA-Z0-9])+(?![-_])/).getRegex(), _backpedal: /(?:[^?!.,:;*_'"~()&]+|\\([^)]*\\)|&(?![a-zA-Z0-9]+;$)|[?!.,:;*_'"~)]+(?!$))+/, del: /^(~~?)(?=[^\\s~])((?:\\\\[\\s\\S]|[^\\\\])*?(?:\\\\[\\s\\S]|[^\\s~\\\\]))\\1(?=[^~]|$)/, text: k(/^(\`+|~+|[^\`~])(?:(?=[\`~])|(?= {2,}\\n)|(?=[a-zA-Z0-9.!#$%&'*+\\/=?_\`{\\|}~-]+@)|[\\s\\S]*?(?:(?=[\\\\<!\\[\`*~_]|\\b_|protocol:\\/\\/|www\\.|$)|[^ ](?= {2,}\\n)|[^a-zA-Z0-9.!#$%&'*+\\/=?_\`{\\|}~-](?=[a-zA-Z0-9.!#$%&'*+\\/=?_\`{\\|}~-]+@)))/).replace("protocol", ie).getRegex() };
   var ct = { ...F, br: k(pe).replace("{2,}", "*").getRegex(), text: k(F.text).replace("\\\\b_", "\\\\b_| {2,}\\\\n").replace(/\\{2,\\}/g, "*").getRegex() };
@@ -11948,6 +12209,7 @@ Please report this to https://github.com/markedjs/marked.\`, e) {
     budget.left -= src.length ** 2;
     return true;
   };
+  var ALERT = /^\\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\\][ \\t]*\\n?/i;
   var leads = /* @__PURE__ */ new WeakMap();
   var dropMarker = (tokens, n) => {
     const rest = [...tokens];
@@ -12042,8 +12304,7 @@ Please report this to https://github.com/markedjs/marked.\`, e) {
   };
   var emojify = (text) => text.replace(/:([a-z0-9_+-]+):/g, (whole, name2) => EMOJI[name2] ?? whole);
   var segments = (title) => title.split("\`").map((text, i2) => ({ text: i2 % 2 === 1 ? text : emojify(text), code: i2 % 2 === 1 })).filter((s) => s.text.length > 0);
-  var ALERT = /^\\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\\][ \\t]*\\n?/i;
-  var visible = (tokens) => {
+  var visible2 = (tokens) => {
     let chars = 0;
     let breaks = 0;
     for (const t of tokens ?? []) {
@@ -12052,287 +12313,88 @@ Please report this to https://github.com/markedjs/marked.\`, e) {
       else if (t.type === "html") continue;
       else if (t.type === "codespan") chars += (t.text?.length ?? 0) * 1.1 + 2;
       else if (t.tokens) {
-        const inner = visible(t.tokens);
+        const inner = visible2(t.tokens);
         chars += inner.chars;
         breaks += inner.breaks;
       } else chars += t.text?.length ?? 0;
     }
     return { chars, breaks };
   };
-  var M = { line: 21, gap: 16, charWidth: 7.2, indent: 32, codeLine: 20, codePad: 32, tableRow: 34, quotePad: 16, itemGap: 3.5 };
+  var M = { line: 21, gap: 16, charWidth: 7.2, indent: 32, codeLine: 20, codePad: 32, tableRow: 34, quotePad: 16, quoteIndent: 16, itemGap: 3.5, hr: 52, headingAbove: 24, headingLine: 1.4 };
   var HEADING = [0, 84, 74, 62, 58, 56, 54];
   var textHeight = (tokens, width) => {
-    const { chars, breaks } = visible(tokens);
+    const { chars, breaks } = visible2(tokens);
     return (Math.max(1, Math.ceil(chars * M.charWidth / Math.max(1, width))) + breaks) * M.line;
   };
   var MARGIN = 1.03;
-  var markdownBlocks = (tokens, width) => {
-    const height = (t, w, nested) => {
-      switch (t.type) {
-        case "paragraph":
-          return textHeight(t.tokens, w) + M.gap;
-        case "text":
-          return textHeight(t.tokens ?? [{ type: "text", text: t.text }], w);
-        case "heading":
-          return HEADING[Math.min(6, t.depth ?? 1)] + (textHeight(t.tokens, w) / M.line - 1) * M.line * 1.4;
-        case "code":
-          return (t.text ?? "").split("\\n").length * M.codeLine + M.codePad + M.gap;
-        case "hr":
-          return 52;
-        case "table":
-          return ((t.rows?.length ?? 0) + 1) * M.tableRow + M.gap;
-        case "blockquote":
-          return sum(t.tokens ?? [], w - 16) + M.quotePad;
-        case "list": {
-          const items = (t.items ?? []).map((item) => Math.max(M.line, sum(item.tokens ?? [], w - M.indent)));
-          const loose = (t.items ?? []).some((item) => item.tokens?.[0]?.type === "paragraph");
-          const between = loose ? -M.gap : M.itemGap * (items.length - 1);
-          return items.reduce((n, h) => n + h, 0) + between + (nested ? M.itemGap : M.gap);
-        }
-        default:
-          return 0;
+  var blockHeight = (t, w, nested) => {
+    switch (t.type) {
+      case "paragraph":
+        return textHeight(t.tokens, w) + M.gap;
+      case "text":
+        return textHeight(t.tokens ?? [{ type: "text", text: t.text }], w);
+      case "heading":
+        return HEADING[Math.min(6, t.depth ?? 1)] + (textHeight(t.tokens, w) / M.line - 1) * M.line * M.headingLine;
+      case "code":
+        return (t.text ?? "").split("\\n").length * M.codeLine + M.codePad + M.gap;
+      case "hr":
+        return M.hr;
+      case "table":
+        return ((t.rows?.length ?? 0) + 1) * M.tableRow + M.gap;
+      case "blockquote":
+        return nestedHeight(t.tokens ?? [], w - M.quoteIndent) + M.quotePad;
+      case "list": {
+        const items = (t.items ?? []).map((item) => Math.max(M.line, nestedHeight(item.tokens ?? [], w - M.indent)));
+        const loose = (t.items ?? []).some((item) => item.tokens?.[0]?.type === "paragraph");
+        const between = loose ? -M.gap : M.itemGap * (items.length - 1);
+        return sum(items) + between + (nested ? M.itemGap : M.gap);
       }
-    };
-    const sum = (list, w) => list.reduce((n, t) => n + height(t, w, true), 0);
+      default:
+        return 0;
+    }
+  };
+  var nestedHeight = (tokens, w) => sumBy(tokens, (t) => blockHeight(t, w, true));
+  var htmlHeight = (t, width) => sumBy(
+    (t.text ?? "").split(/<\\/summary\\s*>/i).map((part) => part.replace(/<!--[\\s\\S]*?(-->|$)|<[^>]*>/g, "")),
+    (shown) => /[^\\s]/.test(shown) ? textHeight([{ type: "text", text: shown }], width) + M.gap : 0
+  );
+  var markdownBlocks = (tokens, width) => {
     let first = true;
     return tokens.map((t) => {
       if (t.type === "html") {
-        const h2 = (t.text ?? "").split(/<\\/summary\\s*>/i).map((part) => part.replace(/<!--[\\s\\S]*?(-->|$)|<[^>]*>/g, "")).reduce((n, shown) => n + (/[^\\s]/.test(shown) ? textHeight([{ type: "text", text: shown }], width) + M.gap : 0), 0);
+        const h2 = htmlHeight(t, width);
         if (h2 > 0) first = false;
         return h2;
       }
-      const h = height(t, width, false);
-      const above = t.type === "heading" || t.type === "hr" ? first ? 24 : M.gap : 0;
+      const h = blockHeight(t, width, false);
+      const above = t.type === "heading" || t.type === "hr" ? first ? M.headingAbove : M.gap : 0;
       if (h > 0) first = false;
       return h - above;
     });
   };
-  var blocksHeight = (blocks) => Math.ceil(Math.max(0, blocks.reduce((n, h) => n + h, 0) - M.gap) * MARGIN);
+  var blocksHeight = (blocks) => Math.ceil(Math.max(0, sum(blocks) - M.gap) * MARGIN);
+
+  // src/lib/card/pr.ts
+  var PR = { width: 640, pad: 16, titleLine: 26, titleChar: 10.8, meta: 24, unpinned: 20, rule: 33 };
+  var unpinnedText = ({ functions, files }) => {
+    const parts2 = [functions > 0 ? plural(functions, "function") : "", files > 0 ? plural(files, "file") : ""].filter(Boolean);
+    return parts2.length > 0 ? \`\${parts2.join(" and ")} not pinned\` : null;
+  };
+  var measurePr = (review) => {
+    const tokens = lexMarkdown(review.pr.body);
+    const inner = PR.width - 2 * PR.pad;
+    const titleChars = sumBy(segments(review.pr.title), (s) => s.text.length * (s.code ? 1.15 : 1));
+    const titleLines = clamp(Math.ceil(titleChars * PR.titleChar / inner), 1, 3);
+    const estimate = blocksHeight(markdownBlocks(tokens, inner));
+    const top = CARD.header + PR.pad + titleLines * PR.titleLine + PR.meta + (unpinnedText(review.unpinned) ? PR.unpinned : 0) + (estimate > 0 ? PR.rule : 0);
+    return { tokens, titleLines, estimate, height: top + estimate + PR.pad };
+  };
+  var prCard = (review) => {
+    const { titleLines, estimate, height } = measurePr(review);
+    return { width: PR.width, height, titleLines, estimate };
+  };
 
   // src/lib/card.ts
-  var CARD = {
-    header: 56,
-    row: 20,
-    padBottom: 12,
-    minWidth: 480,
-    maxWidth: 880,
-    /** Width of one character of the code font at 12.5px. */
-    charWidth: 7.6,
-    /** Two line-number columns, the +/− column and the call arrow. */
-    gutter: 124,
-    /** Code rows a card shows at most; rows that start a string are never cut. */
-    maxRows: 24,
-    /** Unchanged lines a card keeps on each side of a change. */
-    context: 2,
-    /** Rows a context card shows at most. */
-    contextRows: 10,
-    /** Test cases a test card lists at most. */
-    maxCases: 12
-  };
-  var opensReadAll = (r) => r?.kind === "fold" && r.tail || r?.kind === "info" && r.readAll === true;
-  var expandTabs = (text) => text.replace(/\\t/g, "    ");
-  var changedSpan = (a, b2) => {
-    let start2 = 0;
-    while (start2 < a.length && start2 < b2.length && a[start2] === b2[start2]) start2++;
-    let endA = a.length;
-    let endB = b2.length;
-    while (endA > start2 && endB > start2 && a[endA - 1] === b2[endB - 1]) {
-      endA--;
-      endB--;
-    }
-    const indent = Math.min(/^\\s*/.exec(a)[0].length, /^\\s*/.exec(b2)[0].length, start2);
-    const shared = start2 - indent + (a.length - endA);
-    if (shared < 4 || shared < (Math.max(a.length, b2.length) - indent) * 0.3) return null;
-    return { start: start2, endA, endB };
-  };
-  var highlightMarked = (text, lang, state, [from, to]) => from === to ? highlightLine(text, lang, state) : highlightLine(text.slice(0, from), lang, state) + \`<mark>\${highlightLine(text.slice(from, to), lang, state)}</mark>\` + highlightLine(text.slice(to), lang, state);
-  var pairLines = (dels, adds) => {
-    let from = 0;
-    return dels.map((a) => {
-      if (adds.length > 40) return null;
-      let best = null;
-      for (let at3 = from; at3 < adds.length; at3++) {
-        const span2 = changedSpan(a, adds[at3]);
-        const score = span2 ? span2.start + (a.length - span2.endA) : -1;
-        if (span2 && (!best || score > best.score)) best = { add: at3, span: span2, score };
-      }
-      if (!best) return null;
-      from = best.add + 1;
-      return { add: best.add, span: best.span };
-    });
-  };
-  var changeRuns = (items, kind) => {
-    const runs = [];
-    for (let i2 = 0; i2 < items.length; ) {
-      if (kind(items[i2]) !== "del") {
-        i2++;
-        continue;
-      }
-      const dels = [];
-      const adds = [];
-      while (i2 < items.length && kind(items[i2]) === "del") dels.push(i2++);
-      while (i2 < items.length && kind(items[i2]) === "add") adds.push(i2++);
-      runs.push({ dels, adds });
-    }
-    return runs;
-  };
-  var lineRows = (lang, lines) => {
-    const marks = /* @__PURE__ */ new Map();
-    for (const run2 of changeRuns(lines, (l3) => l3.t === "ctx" ? "other" : l3.t)) {
-      const pairs = pairLines(
-        run2.dels.map((i2) => expandTabs(lines[i2].text)),
-        run2.adds.map((i2) => expandTabs(lines[i2].text))
-      );
-      pairs.forEach((pair, d) => {
-        if (!pair) return;
-        marks.set(lines[run2.dels[d]], [pair.span.start, pair.span.endA]);
-        marks.set(lines[run2.adds[pair.add]], [pair.span.start, pair.span.endB]);
-      });
-    }
-    const state = { inBlock: false };
-    return lines.map((line) => {
-      const text = expandTabs(line.text);
-      const mark = marks.get(line);
-      return { kind: "line", line, html: mark ? highlightMarked(text, lang, state, mark) : highlightLine(text, lang, state) };
-    });
-  };
-  var declLines = (f2, head, from, to, trailing = false) => {
-    const all2 = allLines(f2.hunks);
-    const byHead = new Map(all2.filter((l3) => l3.n !== void 0).map((l3) => [l3.n, l3]));
-    const dels = /* @__PURE__ */ new Map();
-    for (const l3 of all2) if (l3.t === "del") dels.set(l3.at, [...dels.get(l3.at) ?? [], l3]);
-    const offset = (n) => {
-      const above = f2.hunks.filter((h) => h.newEnd < n);
-      const last = above[above.length - 1];
-      return last ? last.oldEnd - last.newEnd : 0;
-    };
-    const out2 = [];
-    for (let n = from; n <= to; n++) {
-      out2.push(...dels.get(n) ?? []);
-      out2.push(byHead.get(n) ?? { t: "ctx", o: n + offset(n), n, at: n, text: head[n - from] ?? "" });
-    }
-    if (trailing) out2.push(...dels.get(to + 1) ?? []);
-    return out2;
-  };
-  var foldRows = (lang, lines, priority, calls, max) => {
-    const highlighted = lineRows(lang, lines);
-    const render = (kept2, cut) => {
-      const rows = [];
-      for (let i2 = 0; i2 < lines.length; ) {
-        if (kept2[i2]) {
-          const n = lines[i2].n;
-          rows.push({ ...highlighted[i2], ...n !== void 0 && calls.has(n) ? { call: true } : {} });
-          i2++;
-          continue;
-        }
-        let j2 = i2;
-        while (j2 < lines.length && !kept2[j2]) j2++;
-        const tail = j2 === lines.length;
-        if (j2 - i2 === 1) rows.push(highlighted[i2]);
-        else rows.push({ kind: "fold", count: j2 - i2, from: lines[i2].at, to: lines[j2 - 1].at, tail, more: tail && cut });
-        i2 = j2;
-      }
-      return rows;
-    };
-    const at3 = (min) => priority.map((p) => p >= min);
-    for (const min of [1, 2]) {
-      const rows = render(at3(min), false);
-      if (rows.length <= max) return rows;
-    }
-    const kept = at3(3);
-    priority.forEach((p, i2) => {
-      if (p !== 2) return;
-      kept[i2] = true;
-      if (render(kept, true).length > max) kept[i2] = false;
-    });
-    return render(kept, true);
-  };
-  var outgoing = (review, pin) => review.links.filter((l3) => l3.from === pin);
-  var declFileOf = (pin, review) => review.files.find((x2) => x2.path === pin.path) ?? (pin.kind === "context" && pin.path ? { hunks: [], lang: languageOf(pin.path) } : void 0);
-  var nestedIn = (pin, pins) => pins.filter((q2) => q2.id !== pin.id && (q2.kind === "change" || q2.kind === "context") && q2.path === pin.path && pin.from <= q2.from && q2.to <= pin.to && (pin.from < q2.from || q2.to < pin.to));
-  var declRows = (pin, review) => {
-    const f2 = declFileOf(pin, review);
-    if (!f2 || !pin.head) return [{ kind: "info", text: "PR Blackboard couldn't read this file." }];
-    const lines = declLines(f2, pin.head, pin.from, pin.to, (pin.symbol?.to ?? 0) > pin.to);
-    const out2 = outgoing(review, pin.id);
-    const starts = new Set(out2.map((l3) => l3.at).filter((n) => n !== void 0));
-    const calls = new Set(out2.flatMap((l3) => l3.rows));
-    const start2 = pin.symbol?.start ?? pin.from;
-    const nested = nestedIn(pin, review.pins ?? []);
-    const own = lines.map((l3) => !nested.some((q2) => l3.at >= q2.from && l3.at <= q2.to));
-    const blank = (i2) => lines[i2].text.trim() === "";
-    for (let i2 = 0; nested.length > 0 && i2 < lines.length; i2++) {
-      if (!blank(i2)) continue;
-      let j2 = i2;
-      while (j2 < lines.length && blank(j2)) j2++;
-      for (let k2 = i2; k2 < j2; k2++) own[k2] = j2 < lines.length ? own[j2] : i2 > 0 ? own[i2 - 1] : own[k2];
-      i2 = j2;
-    }
-    if (pin.kind === "context") {
-      const priority2 = lines.map((l3, i2) => own[i2] && (l3.n === start2 || starts.has(l3.n ?? -1) || calls.has(l3.n ?? -1)) ? 3 : 0);
-      const near = priority2.map((_2, i2) => priority2.slice(Math.max(0, i2 - 1), i2 + 2).some((p) => p === 3));
-      const helper = calls.size === 0;
-      return foldRows(f2.lang, lines, priority2.map((p, i2) => p === 3 ? 3 : own[i2] && (helper || near[i2]) ? 1 : 0), calls, CARD.contextRows);
-    }
-    const sigEnd = (() => {
-      for (let n = start2; n <= Math.min(pin.to, start2 + 15); n++) if (/(\\{|=>|:|=)\\s*$/.test((pin.head[n - pin.from] ?? "").trim())) return n;
-      return start2;
-    })();
-    const changedAt = lines.map((l3, i2) => l3.t === "ctx" || !own[i2] ? -1 : i2).filter((i2) => i2 >= 0);
-    const priority = lines.map((l3, i2) => {
-      const n = l3.n ?? -1;
-      if (!own[i2]) return 0;
-      if (l3.t !== "del" && n === start2 || starts.has(n)) return 3;
-      if (l3.t !== "ctx" || calls.has(n) || n === sigEnd && sigEnd - start2 + 1 > 3) return 2;
-      if (changedAt.some((c) => Math.abs(c - i2) <= CARD.context)) return 1;
-      return 0;
-    });
-    return foldRows(f2.lang, lines, priority, calls, CARD.maxRows);
-  };
-  var fileRows = (pin, review) => {
-    const f2 = review.files.find((x2) => x2.path === pin.path);
-    if (!f2) return [{ kind: "info", text: "Nothing to show." }];
-    if (!f2.hasPatch) {
-      return [
-        { kind: "info", text: "GitHub doesn't show this diff: the file is too large or not text." },
-        ...f2.previousPath ? [{ kind: "info", text: \`Renamed from \${f2.previousPath}.\` }] : []
-      ];
-    }
-    if (f2.hunks.length === 0) return [{ kind: "info", text: f2.previousPath ? \`Renamed from \${f2.previousPath}, with no changes inside.\` : "No changes inside the file." }];
-    const inRange = (l3) => !pin.ranges || pin.ranges.some((r) => l3.at >= r.from - 3 && l3.at <= r.to + 3);
-    const rows = [];
-    let end = null;
-    for (const h of f2.hunks) {
-      const lines = h.lines.filter(inRange);
-      if (lines.length === 0) continue;
-      if (end !== null && lines[0].at > end + 1) rows.push({ kind: "gap", count: lines[0].at - end - 1 });
-      end = lines[lines.length - 1].at;
-      const changedAt = lines.map((l3, i2) => l3.t === "ctx" ? -1 : i2).filter((i2) => i2 >= 0);
-      const priority = lines.map((l3, i2) => l3.t !== "ctx" ? 2 : changedAt.some((c) => Math.abs(c - i2) <= CARD.context) ? 1 : 0);
-      rows.push(...foldRows(f2.lang, lines, priority, /* @__PURE__ */ new Set(), Number.MAX_SAFE_INTEGER).filter((r) => !(r.kind === "fold" && r.tail)));
-    }
-    if (rows.length <= CARD.maxRows) return rows;
-    const kept = rows.slice(0, CARD.maxRows - 1);
-    const hidden = rows.slice(kept.length).reduce((n, r) => n + (r.kind === "line" ? 1 : r.kind === "fold" ? r.count : 0), 0);
-    return [...kept, { kind: "fold", count: hidden, from: 0, to: 0, tail: true, more: true }];
-  };
-  var testRows = (pin, review) => {
-    const f2 = review.files.find((x2) => x2.path === pin.path);
-    if (!f2) return [];
-    const cases = f2.cases.filter((c) => c.t === "add" || !f2.cases.some((d) => d.t === "add" && d.at === c.at));
-    if (cases.length === 0) return fileRows(pin, review);
-    const shown = cases.slice(0, CARD.maxCases);
-    const open = [];
-    const rows = shown.map((test) => {
-      while (open.length > 0 && open[open.length - 1] >= test.indent) open.pop();
-      const depth = open.length;
-      if (test.group) open.push(test.indent);
-      return { kind: "case", test, depth };
-    });
-    const tail = cases.length > shown.length ? { kind: "info", text: \`\${plural(cases.length - shown.length, "more case")} \\xB7 Read all\`, readAll: true } : { kind: "info", text: "Test code \\xB7 Read all", readAll: true };
-    return [...rows, tail];
-  };
-  var wordOf = (l3) => l3.kind === "context" ? l3.reads ?? "calls" : l3.kind;
   var rowChars = (r) => {
     switch (r.kind) {
       case "line":
@@ -12346,14 +12408,20 @@ Please report this to https://github.com/markedjs/marked.\`, e) {
     }
   };
   var rowWidth = (r) => CARD.gutter + rowChars(r) * CARD.charWidth + 32;
-  var pinCard = (pin, review) => {
-    const built = pin.kind === "change" || pin.kind === "context" ? declRows(pin, review) : pin.kind === "test" ? testRows(pin, review) : fileRows(pin, review);
+  var headerWidth = (pin) => {
     const header = 220 + (pin.name.length + (pin.path ?? "").length) * 7;
-    const named = (pin.kind === "change" || pin.kind === "context") && typedMethods(pin.path ?? "") ? Math.ceil(pin.name.length * 9.2 / 0.52 + 28) + 1 : 0;
-    const width = Math.round(clamp(Math.max(header, named, ...built.map(rowWidth)), CARD.minWidth, CARD.maxWidth));
-    const room = width - (pin.kind === "context" ? 68 : CARD.gutter) - 12;
-    const cut = built.flatMap((r) => r.kind === "line" && rowChars(r) * CARD.charWidth > room ? [r.line.at] : []);
-    const rows = cut.length === 0 || opensReadAll(built[built.length - 1]) ? built : [...built, { kind: "fold", count: cut.length, from: cut[0], to: cut[0], tail: true, more: false, cut: true }];
+    const named2 = isDeclaration(pin) && typedMethods(pin.path ?? "") ? Math.ceil(pin.name.length * NAME.char / NAME.share + 2 * NAME.pad) + 1 : 0;
+    return Math.max(header, named2);
+  };
+  var withCutRow = (rows, room) => {
+    const cut = rows.flatMap((r) => r.kind === "line" && rowChars(r) * CARD.charWidth > room ? [r.line.at] : []);
+    if (cut.length === 0 || opensReadAll(rows[rows.length - 1])) return rows;
+    return [...rows, { kind: "fold", count: cut.length, from: cut[0], to: cut[0], tail: true, more: false, cut: true }];
+  };
+  var pinCard = (pin, review) => {
+    const built = rowsOf(pin, review);
+    const width = Math.round(clamp(Math.max(headerWidth(pin), ...built.map(rowWidth)), CARD.minWidth, CARD.maxWidth));
+    const rows = withCutRow(built, width - gutterOf(pin) - CARD.codePad);
     const anchors = {};
     for (const l3 of outgoing(review, pin.id)) {
       const i2 = rows.findIndex((r) => r.kind === "line" && r.line.t !== "del" && r.line.n === l3.at);
@@ -12361,90 +12429,6 @@ Please report this to https://github.com/markedjs/marked.\`, e) {
     }
     return { pin: pin.id, rows, width, height: CARD.header + rows.length * CARD.row + CARD.padBottom, anchors };
   };
-  var rowMiddle = (row) => row < 0 ? CARD.header / 2 : CARD.header + row * CARD.row + CARD.row / 2;
-  var CARD_CSS = \`
-header { height: \${CARD.header}px; display: flex; align-items: center; gap: 10px; padding: 0 14px; background: var(--bg2); border-bottom: 1px solid var(--line); white-space: nowrap; }
-.name { flex: none; max-width: 52%; font: 600 15px/1 ui-monospace, SFMono-Regular, Menlo, monospace; overflow: hidden; text-overflow: ellipsis; }
-.chip { flex: none; border-radius: 6px; padding: 3px 7px; font: 700 10.5px/1 ui-sans-serif, system-ui, sans-serif; letter-spacing: .06em; }
-.chip.new { background: var(--add-gut); color: var(--add); } .chip.unchanged { background: var(--line); color: var(--ink2); } .chip.test { background: var(--blue); color: var(--bg); }
-.where { min-width: 0; flex: 1; text-align: right; color: var(--ink3); font: 12px ui-monospace, Menlo, monospace; overflow: hidden; text-overflow: ellipsis; }
-.counts { flex: none; font: 500 12.5px ui-monospace, Menlo, monospace; }
-.r { height: \${CARD.row}px; line-height: \${CARD.row}px; display: grid; grid-template-columns: 44px 44px 20px 16px 1fr; white-space: pre; overflow: hidden; font: 12.5px/\${CARD.row}px ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
-.r > i { font-style: normal; text-align: right; padding-right: 8px; color: var(--ink3); font-size: 11.5px; }
-.r > b { font-weight: 400; text-align: center; color: var(--ink3); }
-.r > u { text-decoration: none; color: var(--ink); font-weight: 700; text-align: center; }
-.r > code { overflow: hidden; text-overflow: ellipsis; padding-right: 12px; }
-.add { background: var(--add-bg); } .add > i { background: var(--add-gut); } .add > b { color: var(--add); }
-.del { background: var(--del-bg); } .del > i { background: var(--del-gut); } .del > b { color: var(--del); }
-.plain .r { grid-template-columns: 52px 16px 1fr; color: var(--ink2); }
-.gap, .fold, .info { height: \${CARD.row}px; line-height: \${CARD.row}px; padding: 0 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink3); font-size: 11.5px; }
-.fold, .gap { font-family: ui-monospace, Menlo, monospace; padding-left: 112px; }
-.fold.cases { padding-left: 52px; }
-.ra { color: var(--ink2); text-decoration: underline; text-underline-offset: 2px; }
-.dots { font: 15px/1 ui-sans-serif, system-ui, sans-serif; }
-.info { color: var(--ink2); font-size: 12.5px; }
-.case { height: \${CARD.row}px; line-height: \${CARD.row}px; padding-right: 14px; display: grid; grid-template-columns: 44px 20px 1fr; white-space: nowrap; overflow: hidden; font-size: 12.5px; }
-.case > i { font-style: normal; text-align: right; padding-right: 8px; color: var(--ink3); font: 11.5px/\${CARD.row}px ui-monospace, Menlo, monospace; }
-.case > b { font-weight: 400; text-align: center; }
-.case > span { overflow: hidden; text-overflow: ellipsis; }
-.case.group > span { font-weight: 600; }
-.case.removed { color: var(--ink3); text-decoration: line-through; }
-.k { color: var(--k); } .s { color: var(--s); } .n { color: var(--n); } .c { color: var(--c); font-style: italic; } .f { color: var(--f); } .t { color: var(--t); }
-mark { color: inherit; border-radius: 3px; background: var(--add-mark); }
-.del mark { background: var(--del-mark); }
-body.context { border: 1.5px dashed var(--ink3); border-radius: 12px; }
-body.context header { background: transparent; color: var(--ink2); }
-\`;
-  var typedMethods = (path) => /\\.(py|go|rs|java)$/i.test(path);
-  var PR = {
-    width: 640,
-    pad: 16,
-    titleLine: 26,
-    /** About how wide a character of the 20 px title runs. */
-    titleChar: 10.8,
-    /** Title to meta, and the meta line. */
-    meta: 24,
-    unpinned: 20,
-    /** 16 above the rule, the rule, 16 below. */
-    rule: 33
-  };
-  var unpinnedText = ({ functions, files }) => {
-    const parts2 = [functions > 0 ? plural(functions, "function") : "", files > 0 ? plural(files, "file") : ""].filter(Boolean);
-    return parts2.length > 0 ? \`\${parts2.join(" and ")} not pinned\` : null;
-  };
-  var measurePr = (review) => {
-    const tokens = lexMarkdown(review.pr.body);
-    const inner = PR.width - 2 * PR.pad;
-    const titleChars = segments(review.pr.title).reduce((n, s) => n + s.text.length * (s.code ? 1.15 : 1), 0);
-    const titleLines = clamp(Math.ceil(titleChars * PR.titleChar / inner), 1, 3);
-    const estimate = blocksHeight(markdownBlocks(tokens, inner));
-    const top = CARD.header + PR.pad + titleLines * PR.titleLine + PR.meta + (unpinnedText(review.unpinned) ? PR.unpinned : 0) + (estimate > 0 ? PR.rule : 0);
-    return { tokens, titleLines, estimate, height: top + estimate + PR.pad };
-  };
-  var prCard = (review) => {
-    const { titleLines, estimate, height } = measurePr(review);
-    return { width: PR.width, height, titleLines, estimate };
-  };
-  var PR_CSS = \`
-.prchip { flex: none; border: 1px solid var(--line); border-radius: 999px; padding: 2px 9px; font: 12px/16px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--ink2); }
-.state { flex: none; border-radius: 999px; padding: 2px 10px; font: 600 12px/16px ui-sans-serif, system-ui, sans-serif; }
-main { padding: \${PR.pad}px \${PR.pad}px 0; }
-.title { font: 600 20px/\${PR.titleLine}px ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; overflow-wrap: anywhere; }
-.title code { padding: .1em .35em; font: 85% ui-monospace, SFMono-Regular, Menlo, monospace; background: rgb(129 139 152 / .12); border-radius: 6px; }
-.meta { margin-top: 4px; height: 20px; color: var(--ink2); font-size: 12.5px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.unpinned { height: \${PR.unpinned}px; line-height: \${PR.unpinned}px; font-size: 12.5px; color: var(--ink3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.rule { margin: 16px 0; border: 0; height: 1px; background: var(--line); }
-\`;
-  var CLOSE_ROOM = 56;
-  var READ_ALL_CSS = \`
-html { overflow: auto; overscroll-behavior: contain; }
-body { height: auto; overflow: visible; }
-header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; }
-.r { height: auto; min-height: \${CARD.row}px; white-space: pre-wrap; }
-.r > code { overflow: visible; text-overflow: clip; overflow-wrap: anywhere; user-select: text; }
-.r:hover { box-shadow: inset 0 0 0 999px var(--hover); }
-.fold, .gap { padding-left: 14px; }
-\`;
 
   // src/lib/curve.ts
   var catmullRom = (p0, p1, p2, p3, t) => {
@@ -12554,87 +12538,148 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
             const d4 = cross(p1, p2, q2);
             if (!(d3 > 0 && d4 < 0 || d3 < 0 && d4 > 0)) continue;
             const t = d1 / (d1 - d2);
-            const at3 = { x: p1.x + (p2.x - p1.x) * t, y: p1.y + (p2.y - p1.y) * t };
-            if (!near.some((e) => Math.hypot(e.x - at3.x, e.y - at3.y) <= radius)) n++;
+            const at2 = { x: p1.x + (p2.x - p1.x) * t, y: p1.y + (p2.y - p1.y) * t };
+            if (!near.some((e) => Math.hypot(e.x - at2.x, e.y - at2.y) <= radius)) n++;
           }
         }
       }
     return n;
   };
 
-  // src/lib/layout.ts
+  // src/lib/layout/constants.ts
   var LAYOUT = {
-    /** Room kept between any two cards or labels, and between a string and any card or label but its own two cards. */
     clearance: 8,
-    /** Next card in a column: its top at least this far below the previous card's bottom. */
     stack: 48,
     columnGap: 160,
-    /**
-     * Roomier boards, tried in turn while strings can't find their way: a wider gap between columns gives a string
-     * room to climb, a taller one between stacked cards a second lane through it.
-     */
     roomier: [
       { gap: 240, stack: 48 },
       { gap: 240, stack: 58 }
     ],
-    /** From the lowest card of one band, the row under it included, to the top of the next band or the bottom row. */
     bandGap: 96,
-    /** From a band's lowest card to the top of the row under it. */
     underGap: 72,
-    /** How far below its band's top a card may go to sit level with the row that calls it: about one card. */
     maxDrop: 400,
     restSpacing: 48,
-    /** Room for a string and its label between a bottom-row card and the test right after it. */
     restTestSpacing: 160,
     minRowWidth: 2800,
-    /** \`flat\`: from a flat string to its label's near edge; \`steep\`: from a steep one. */
     label: { size: 16, height: 22, flat: 6, steep: 10 },
-    /** A string meets a card's side at its header's middle. */
     header: CARD.header / 2,
-    /** How far a string across hangs at its middle: \`share\` of its length, no less than \`min\` and no more than \`max\`. */
     sag: { share: 0.08, min: 20, max: 48 },
-    /** A string may run closer than \`near\` to a card's edge, its own cards' too, for less than \`run\`: any longer and it reads as the card's border. */
     hug: { near: 24, run: 120 },
-    /**
-     * R1' through columns: a lane at least \`hug.near\` clear of the cards on either side of its gap, or \`off\` above or below
-     * a column, at most \`reach\` off the straight line; strings in one gap \`lane\` apart; the course level \`margin\` beyond each
-     * column's edges, a bend every \`step\`.
-     */
     detour: { off: 24, reach: 320, lane: 10, margin: 16, step: 64 },
-    /** Strings of one kind into one card, at most: the nearest ones. */
     fanIn: 3,
-    /** Strings that run within \`near\` of each other for \`run\` or more count as close when colours are handed out. */
     colour: { near: 12, run: 60 },
-    /** Passes that reorder each column by where its cards' links pull them from both sides. */
     sweeps: 4,
-    /** A back link runs over both cards: its outer bends \`lead\` above the higher card's top, its middle \`top\` above. */
     back: { lead: 48, top: 60 }
   };
-  var STRING_COLOURS = ["#9163d5", "#da7f00", "#009E73", "#0072B2", "#CC79A7", "#a79300", "#D55E00", "#29a1c1"];
-  var textWidth = (text, fontSize) => Math.ceil([...text].length * fontSize * 0.56) + 4;
+
+  // src/lib/layout/geometry.ts
+  var right = (r) => r.x + r.width;
+  var bottom = (r) => r.y + r.height;
+  var topMiddle = (r) => ({ x: r.x + r.width / 2, y: r.y });
+  var bottomMiddle = (r) => ({ x: r.x + r.width / 2, y: bottom(r) });
+  var overlaps = (a, b2) => a.x < right(b2) && b2.x < right(a) && a.y < bottom(b2) && b2.y < bottom(a);
   var union = (rects) => {
     const x2 = Math.min(...rects.map((r) => r.x));
     const y2 = Math.min(...rects.map((r) => r.y));
     return {
       x: x2,
       y: y2,
-      width: Math.max(...rects.map((r) => r.x + r.width)) - x2,
-      height: Math.max(...rects.map((r) => r.y + r.height)) - y2
+      width: Math.max(...rects.map(right)) - x2,
+      height: Math.max(...rects.map(bottom)) - y2
     };
   };
   var textRect = (t) => ({ x: t.x, y: t.y, width: t.width, height: t.height });
-  var right = (r) => r.x + r.width;
-  var bottom = (r) => r.y + r.height;
-  var overlaps = (a, b2) => a.x < right(b2) && b2.x < right(a) && a.y < bottom(b2) && b2.y < bottom(a);
+  var othersThan = (placed, ...ids) => [...placed].filter(([id]) => !ids.includes(id)).map(([, r]) => r);
   var pathRect = (path) => union(path.map((p) => ({ x: p.x, y: p.y, width: 0, height: 0 })));
-  var colourStrings = (strings, order) => {
-    const { near, run: run2 } = LAYOUT.colour;
-    const cards = sortBy([...new Set(strings.map((s) => s.from.pin))], (pin) => order.indexOf(pin));
-    const same = (p, q2) => Math.abs(p.x - q2.x) < 0.5 && Math.abs(p.y - q2.y) < 0.5;
-    const clash = (a, b2) => {
-      const shared = [a.start, a.end].filter((p) => same(p, b2.start) || same(p, b2.end));
-      return shared.length > 0 || stringCrossings(a, b2) > 0 || nearRun(a.path, b2.path, near) >= run2;
+
+  // src/lib/layout/bends.ts
+  var SPLINE_STEPS = 20;
+  var STAGES = [0.25, 0.5, 0.75];
+  var linear = (s) => s;
+  var hanging = (a, b2, ease) => {
+    const d = { x: b2.x - a.x, y: b2.y - a.y };
+    const { share, min, max } = LAYOUT.sag;
+    const sag = clamp(Math.hypot(d.x, d.y) * share, min, max);
+    return STAGES.map((s) => ({ x: a.x + d.x * s, y: a.y + d.y * ease(s) + sag * 4 * s * (1 - s) }));
+  };
+  var acrossBends = (a, b2) => hanging(a, b2, linear);
+  var levelBends = (a, b2) => hanging(a, b2, smoothstep);
+  var upBends = (a, b2) => STAGES.map((s) => ({ x: a.x + (b2.x - a.x) * smoothstep(s), y: a.y + (b2.y - a.y) * s }));
+  var backBends = (a, b2, edge, side) => {
+    const inward = (b2.x - a.x) / 8;
+    return [
+      { x: a.x + inward, y: edge + side * LAYOUT.back.lead },
+      { x: (a.x + b2.x) / 2, y: edge + side * LAYOUT.back.top },
+      { x: b2.x - inward, y: edge + side * LAYOUT.back.lead }
+    ];
+  };
+  var COURSE_STEP = 4;
+  var courseThrough = (a, b2, columns) => {
+    const course = [a];
+    const leg = (p, q2, ease) => {
+      for (let x2 = p.x + COURSE_STEP; x2 < q2.x; x2 += COURSE_STEP) {
+        const s = (x2 - p.x) / (q2.x - p.x);
+        course.push({ x: x2, y: p.y + (q2.y - p.y) * ease(s) });
+      }
+      course.push(q2);
     };
+    let at2 = a;
+    columns.forEach((c, i2) => {
+      leg(at2, { x: c.lo - LAYOUT.detour.margin, y: c.y }, i2 > 0 ? smoothstep : linear);
+      at2 = { x: c.hi + LAYOUT.detour.margin, y: c.y };
+      course.push(at2);
+    });
+    leg(at2, b2, linear);
+    return course;
+  };
+  var evenlyAlong = (path, length, count2) => {
+    const along = (k2) => k2 * length / (count2 + 1);
+    const points = [];
+    let walked = 0;
+    for (let i2 = 1, k2 = 1; i2 < path.length && k2 <= count2; i2++) {
+      const [p, q2] = [path[i2 - 1], path[i2]];
+      const d = Math.hypot(q2.x - p.x, q2.y - p.y);
+      while (k2 <= count2 && walked + d >= along(k2)) {
+        const t = (along(k2) - walked) / (d || 1);
+        points.push({ x: p.x + (q2.x - p.x) * t, y: p.y + (q2.y - p.y) * t });
+        k2++;
+      }
+      walked += d;
+    }
+    return points;
+  };
+  var throughBends = (a, b2, columns) => {
+    const course = courseThrough(a, b2, columns);
+    const length = course.slice(1).reduce((n, p, i2) => n + Math.hypot(p.x - course[i2].x, p.y - course[i2].y), 0);
+    return evenlyAlong(course, length, Math.max(3, Math.round(length / LAYOUT.detour.step) - 1));
+  };
+  var stringPath = (start2, bend, end) => catmullRomSpline([start2, ...bend, end], SPLINE_STEPS);
+  var hooks = (route, path, start2, end) => {
+    const axis = route === "R2" ? "y" : "x";
+    const lo = Math.min(start2[axis], end[axis]) - 2;
+    const hi = Math.max(start2[axis], end[axis]) + 2;
+    return path.some((p) => p[axis] < lo || p[axis] > hi);
+  };
+  var hugs = (path, r) => {
+    const [tl, tr, br, bl] = [
+      { x: r.x, y: r.y },
+      { x: right(r), y: r.y },
+      { x: right(r), y: bottom(r) },
+      { x: r.x, y: bottom(r) }
+    ];
+    return [[tl, bl], [tr, br], [tl, tr], [bl, br]].some((edge) => nearRun(path, edge, LAYOUT.hug.near) >= LAYOUT.hug.run);
+  };
+  var samePoint = (p, q2) => Math.abs(p.x - q2.x) < 0.5 && Math.abs(p.y - q2.y) < 0.5;
+  var sharedEnds = (a, b2) => [a.start, a.end].filter((p) => samePoint(p, b2.start) || samePoint(p, b2.end));
+  var MEET = 24;
+  var stringCrossings = (a, b2) => crossings(a.path, b2.path, sharedEnds(a, b2), MEET);
+  var crossingsAmong = (items, cross) => items.reduce((n, a, i2) => n + items.slice(i2 + 1).reduce((m2, b2) => m2 + cross(a, b2), 0), 0);
+
+  // src/lib/layout/colours.ts
+  var STRING_COLOURS = ["#9163d5", "#da7f00", "#009E73", "#0072B2", "#CC79A7", "#a79300", "#D55E00", "#29a1c1"];
+  var neighboursOf = (strings, cards) => {
+    const { near, run: run2 } = LAYOUT.colour;
+    const clash = (a, b2) => sharedEnds(a, b2).length > 0 || stringCrossings(a, b2) > 0 || nearRun(a.path, b2.path, near) >= run2;
     const neighbours = new Map(cards.map((pin) => [pin, /* @__PURE__ */ new Set()]));
     strings.forEach(
       (a, i2) => strings.slice(i2 + 1).forEach((b2) => {
@@ -12643,19 +12688,146 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
         neighbours.get(b2.from.pin).add(a.from.pin);
       })
     );
+    return neighbours;
+  };
+  var freeColour = (taken) => {
+    const colours = STRING_COLOURS.map((_2, i2) => i2);
+    return colours.find((i2) => !taken.includes(i2)) ?? minBy(colours, (i2) => taken.filter((t) => t === i2).length);
+  };
+  var colourStrings = (strings, order) => {
+    const cards = sortBy([...new Set(strings.map((s) => s.from.pin))], (pin) => order.indexOf(pin));
+    const neighbours = neighboursOf(strings, cards);
     const colour = /* @__PURE__ */ new Map();
     for (const pin of sortBy(cards, (p) => -neighbours.get(p).size, (p) => order.indexOf(p))) {
       const taken = [...neighbours.get(pin)].flatMap((n) => colour.has(n) ? [colour.get(n)] : []);
-      const free = STRING_COLOURS.findIndex((_2, i2) => !taken.includes(i2));
-      colour.set(pin, free >= 0 ? free : sortBy(STRING_COLOURS.map((_2, i2) => i2), (i2) => taken.filter((t) => t === i2).length)[0]);
+      colour.set(pin, freeColour(taken));
     }
     return new Map(strings.map((s) => [s.link, STRING_COLOURS[colour.get(s.from.pin)]]));
   };
-  var styleOf = (l3, review) => ({
-    color: STRING_COLOURS[0],
-    width: 2,
-    dash: review.pins.some((p) => p.kind === "context" && (p.id === l3.from || p.id === l3.to)) ? "dashed" : "solid"
-  });
+
+  // src/lib/layout/columns.ts
+  var place = (board, id, x2, y2, width = board.sizeOf(id).width) => board.placed.set(id, { x: Math.round(x2), y: Math.round(y2), width, height: board.sizeOf(id).height });
+  var lowest = (board) => Math.max(0, ...[...board.placed.values()].map(bottom));
+  var widest = (board) => Math.max(0, ...[...board.placed.values()].map(right));
+  var middleX = (r) => r.x + r.width / 2;
+  var FLOW_KINDS = ["calls", "uses", "imports"];
+  var bandOf = (board, members) => {
+    const columnOf = (id) => board.pinOf(id).column;
+    const cardsIn = groupBy(members, columnOf);
+    const columns = Object.keys(cardsIn).map(Number).sort((x2, y2) => x2 - y2);
+    const width = new Map(columns.map((c) => [c, Math.max(...cardsIn[c].map((id) => board.sizeOf(id).width))]));
+    const left = /* @__PURE__ */ new Map();
+    let cursor = board.codeLeft;
+    for (const c of columns) {
+      left.set(c, cursor);
+      cursor += width.get(c) + board.spacing.gap;
+    }
+    const ties = board.review.links.filter((l3) => FLOW_KINDS.includes(l3.kind) && members.includes(l3.from) && members.includes(l3.to) && columnOf(l3.from) !== columnOf(l3.to));
+    return { columns, cardsIn, width, left, ties, columnOf, board };
+  };
+  var levelWithCaller = (band, l3, top) => top.get(l3.from) + band.board.startOf(l3) - LAYOUT.header;
+  var levelWithCallee = (band, l3, top) => top.get(l3.to) + LAYOUT.header - band.board.startOf(l3);
+  var fromLeft = (band, l3, id) => l3.to === id && band.columnOf(l3.from) < band.columnOf(id);
+  var mean = (xs) => xs.length === 0 ? null : sum(xs) / xs.length;
+  var pullFromLeft = (band, id, top) => mean(band.ties.filter((l3) => fromLeft(band, l3, id)).map((l3) => levelWithCaller(band, l3, top)));
+  var pullFromBoth = (band, id, top) => mean(band.ties.flatMap((l3) => l3.to === id ? [levelWithCaller(band, l3, top)] : l3.from === id ? [levelWithCallee(band, l3, top)] : []));
+  var topsFor = (band, orders) => {
+    const top = /* @__PURE__ */ new Map();
+    const level = (id) => {
+      const levels = band.ties.filter((l3) => fromLeft(band, l3, id) && top.has(l3.from)).map((l3) => levelWithCaller(band, l3, top));
+      const middle = sum(levels) / Math.max(1, levels.length);
+      return minBy(
+        levels.filter((y2) => y2 <= LAYOUT.maxDrop),
+        (y2) => Math.abs(y2 - middle)
+      ) ?? 0;
+    };
+    for (const c of band.columns) {
+      let previous2 = -Infinity;
+      for (const id of orders.get(c)) {
+        const t = Math.max(level(id), previous2 + band.board.spacing.stack);
+        top.set(id, t);
+        previous2 = t + band.board.sizeOf(id).height;
+      }
+    }
+    return top;
+  };
+  var tanglesOf = (band, top) => crossingsAmong(
+    band.ties.map((l3) => [
+      { x: band.left.get(band.columnOf(l3.from)) + band.width.get(band.columnOf(l3.from)), y: top.get(l3.from) + band.board.startOf(l3) },
+      { x: band.left.get(band.columnOf(l3.to)), y: top.get(l3.to) + LAYOUT.header }
+    ]),
+    crossings
+  );
+  var sortedByPull = (ids, pull, top) => sortBy(
+    ids,
+    (id) => pull(id) ?? top.get(id) ?? 0,
+    (id) => top.get(id) ?? 0
+  );
+  var orderByCallers = (band) => {
+    const { pinOf } = band.board;
+    const orders = new Map(band.columns.map((c) => [c, sortBy(band.cardsIn[c], (id) => pinOf(id).path ?? "", (id) => pinOf(id).from)]));
+    let top = topsFor(band, orders);
+    for (const c of band.columns) {
+      orders.set(c, sortedByPull(orders.get(c), (id) => pullFromLeft(band, id, top), top));
+      top = topsFor(band, orders);
+    }
+    return { orders, top };
+  };
+  var untangle = (band, first) => {
+    let current = { ...first, tangles: tanglesOf(band, first.top) };
+    let best = current;
+    for (let sweep = 0; sweep < LAYOUT.sweeps && best.tangles > 0; sweep++) {
+      const { orders, top } = current;
+      const next = new Map(band.columns.map((c) => [c, sortedByPull(orders.get(c), (id) => pullFromBoth(band, id, top), top)]));
+      const nextTop = topsFor(band, next);
+      current = { orders: next, top: nextTop, tangles: tanglesOf(band, nextTop) };
+      if (current.tangles < best.tangles) best = current;
+    }
+    return best;
+  };
+  var reaches2 = (board, id, target) => {
+    const a = topMiddle(board.placed.get(id));
+    const z2 = bottomMiddle(target);
+    return a.y > z2.y && pathClears(stringPath(a, upBends(a, z2), z2), othersThan(board.placed, id).filter((r) => r !== target), LAYOUT.clearance);
+  };
+  var placeRowUnder = (board, b2, members) => {
+    const under = board.review.pins.filter((p) => p.lane === "under" && p.band === b2);
+    if (under.length === 0) return;
+    const top = lowest(board) + LAYOUT.underGap;
+    const coveredBy = (p) => sortBy(
+      board.review.links.filter((l3) => l3.from === p.id && members.includes(l3.to)).map((l3) => board.placed.get(l3.to)),
+      (r) => r.x
+    );
+    const centredUnder = (p, xs) => sum(xs) / Math.max(1, xs.length) - board.sizeOf(p.id).width / 2;
+    const wantedX = (p) => centredUnder(p, coveredBy(p).map(middleX));
+    let edge = -Infinity;
+    for (const p of sortBy(under, wantedX, (p2) => p2.path ?? "")) {
+      const covered = coveredBy(p);
+      const spots = [wantedX(p), ...covered.map((r) => centredUnder(p, [middleX(r)]))].map((x3) => Math.max(board.codeLeft, x3, edge + LAYOUT.restSpacing));
+      const rises = (x3) => {
+        place(board, p.id, x3, top);
+        return covered.some((r) => reaches2(board, p.id, r));
+      };
+      const x2 = spots.find(rises) ?? spots[0];
+      place(board, p.id, x2, top);
+      board.order.push(p.id);
+      edge = x2 + board.sizeOf(p.id).width;
+    }
+  };
+  var placeBand = (board, b2) => {
+    const members = board.review.pins.filter((p) => p.lane === "flow" && p.band === b2 && p.kind !== "pr").map((p) => p.id);
+    const floor = b2 === 0 ? 0 : lowest(board) + LAYOUT.bandGap;
+    const band = bandOf(board, members);
+    const { orders, top } = untangle(band, orderByCallers(band));
+    const cards = band.columns.flatMap((c) => orders.get(c));
+    const dy = floor - Math.min(...cards.map((id) => top.get(id)));
+    for (const id of cards) {
+      const c = band.columnOf(id);
+      place(board, id, band.left.get(c), top.get(id) + dy, c === 0 ? board.sizeOf(id).width : band.width.get(c));
+    }
+    board.order.push(...cards);
+    placeRowUnder(board, b2, members);
+  };
   var rolesOf = /* @__PURE__ */ new WeakMap();
   var laneRank = (pin, files) => {
     let roles = rolesOf.get(files);
@@ -12667,39 +12839,126 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
     const role5 = (pin.path === void 0 ? void 0 : roles.get(pin.path)) ?? "code";
     return [role5 === "generated" ? 2 : role5 === "docs" || role5 === "config" ? 1 : 0, pin.path ?? "", pin.from];
   };
-  var FLOW_KINDS = ["calls", "uses", "imports"];
-  var S2 = smoothstep;
-  var SPLINE_STEPS = 20;
-  var STAGES = [0.25, 0.5, 0.75];
-  var acrossBends = (a, b2, level = false) => {
-    const d = { x: b2.x - a.x, y: b2.y - a.y };
-    const { share, min, max } = LAYOUT.sag;
-    const sag = Math.min(max, Math.max(min, Math.hypot(d.x, d.y) * share));
-    return STAGES.map((s) => ({ x: a.x + d.x * s, y: a.y + d.y * (level ? S2(s) : s) + sag * 4 * s * (1 - s) }));
+  var placeBottomRow = (board) => {
+    const rest = board.review.pins.filter((p) => p.lane === "rest");
+    const rank = (k2) => (p) => laneRank(p, board.review.files)[k2];
+    const ranked = sortBy(rest, rank(0), rank(1), rank(2));
+    const covers2 = (t) => board.review.links.find((l3) => l3.from === t.id && l3.kind === "tests" && rest.some((p) => p.id === l3.to))?.to;
+    const sequence = ranked.flatMap((p) => p.kind === "test" && covers2(p) ? [] : [p, ...ranked.filter((t) => t.kind === "test" && covers2(t) === p.id)]);
+    const rowRight = board.codeLeft + Math.max(LAYOUT.minRowWidth, widest(board) - board.codeLeft);
+    let x2 = board.codeLeft;
+    let rowTop = board.placed.size === 0 ? 0 : lowest(board) + LAYOUT.bandGap;
+    let rowBottom = rowTop;
+    sequence.forEach((p, i2) => {
+      const size = board.sizeOf(p.id);
+      const gap = i2 > 0 && p.kind === "test" && covers2(p) === sequence[i2 - 1].id ? LAYOUT.restTestSpacing : LAYOUT.restSpacing;
+      if (i2 > 0 && x2 + gap + size.width > rowRight) {
+        rowTop = rowBottom + LAYOUT.restSpacing;
+        x2 = board.codeLeft;
+      } else if (i2 > 0) x2 += gap;
+      place(board, p.id, x2, rowTop);
+      rowBottom = Math.max(rowBottom, rowTop + size.height);
+      x2 += size.width;
+      board.order.push(p.id);
+    });
   };
-  var upBends = (a, b2) => STAGES.map((s) => ({ x: a.x + (b2.x - a.x) * S2(s), y: a.y + (b2.y - a.y) * s }));
-  var mainAxis = (route) => route === "R2" ? "y" : "x";
-  var hooks = (route, path, start2, end) => {
-    const axis = mainAxis(route);
-    const lo = Math.min(start2[axis], end[axis]) - 2;
-    const hi = Math.max(start2[axis], end[axis]) + 2;
-    return path.some((p) => p[axis] < lo || p[axis] > hi);
+  var placeCards = (review, cards, prSize, spacing) => {
+    const pins = new Map(review.pins.map((p) => [p.id, p]));
+    const pr = review.pins.find((p) => p.kind === "pr");
+    const board = {
+      review,
+      pinOf: (id) => pins.get(id),
+      sizeOf: (id) => id === "pr" ? prSize : cards.get(id),
+      startOf: (l3) => rowMiddle(cards.get(l3.from)?.anchors[l3.id] ?? -1),
+      spacing,
+      codeLeft: pr ? prSize.width + LAYOUT.columnGap : 0,
+      placed: /* @__PURE__ */ new Map(),
+      order: pr ? [pr.id] : []
+    };
+    review.bands.forEach((_2, b2) => placeBand(board, b2));
+    placeBottomRow(board);
+    if (pr) place(board, pr.id, 0, 0);
+    return { placed: board.placed, order: board.order };
   };
-  var stringPath = (start2, bend, end) => catmullRomSpline([start2, ...bend, end], SPLINE_STEPS);
-  var hugs = (path, r) => {
-    const [tl, tr, br, bl] = [
-      { x: r.x, y: r.y },
-      { x: right(r), y: r.y },
-      { x: right(r), y: bottom(r) },
-      { x: r.x, y: bottom(r) }
-    ];
-    return [[tl, bl], [tr, br], [tl, tr], [bl, br]].some((edge) => nearRun(path, edge, LAYOUT.hug.near) >= LAYOUT.hug.run);
+
+  // src/lib/layout/labels.ts
+  var textWidth = (text, fontSize) => Math.ceil([...text].length * fontSize * 0.56) + 4;
+  var innerBends = (s) => {
+    const middle = (s.bend.length - 1) / 2;
+    return sortBy(
+      s.bend.map((_2, i2) => i2).filter((i2) => i2 > 0 && i2 < s.bend.length - 1),
+      (i2) => Math.abs(i2 - middle)
+    );
   };
-  var MEET = 24;
-  var stringCrossings = (a, b2) => {
-    const same = (p, q2) => Math.abs(p.x - q2.x) < 0.5 && Math.abs(p.y - q2.y) < 0.5;
-    const shared = [a.start, a.end].filter((p) => same(p, b2.start) || same(p, b2.end));
-    return crossings(a.path, b2.path, shared, MEET);
+  var curveNear = (path, i2, lo, hi, axis) => {
+    const inside = (k2) => k2 >= 0 && k2 < path.length && path[k2][axis] >= lo - 2 && path[k2][axis] <= hi + 2;
+    let first = (i2 + 1) * SPLINE_STEPS;
+    let last = first;
+    while (inside(first - 1)) first--;
+    while (inside(last + 1)) last++;
+    return path.slice(first, last + 1);
+  };
+  var spotsBeside = (s, i2, text) => {
+    const { size, height, flat, steep } = LAYOUT.label;
+    const width = textWidth(text, size);
+    const [before, bend, after] = [s.bend[i2 - 1], s.bend[i2], s.bend[i2 + 1]];
+    const spots = [];
+    if (Math.abs(after.y - before.y) > Math.abs(after.x - before.x)) {
+      const y2 = bend.y - height / 2;
+      const xs = curveNear(s.path, i2, y2, y2 + height, "y").map((p) => p.x);
+      spots.push({ x: Math.max(bend.x, ...xs) + steep, y: y2 }, { x: Math.min(bend.x, ...xs) - steep - width, y: y2 });
+    } else {
+      const x2 = bend.x - width / 2;
+      const ys = curveNear(s.path, i2, x2, x2 + width, "x").map((p) => p.y);
+      spots.push({ x: x2, y: Math.min(bend.y, ...ys) - flat - height }, { x: x2, y: Math.max(bend.y, ...ys) + flat });
+    }
+    return spots.map((p) => ({ x: Math.round(p.x), y: Math.round(p.y), text, fontSize: size, width, height }));
+  };
+  var clearSpot = (t, own, others, boxes) => {
+    const r = textRect(t);
+    const padded = inflate(r, LAYOUT.clearance);
+    return boxes.every((b2) => !overlaps(padded, b2)) && others.every((o) => !pathHits(o.path, padded)) && !pathHits(own.path, inflate(r, 2));
+  };
+  var labelStrings = (strings, links, cards) => {
+    const labels = [];
+    return strings.map((s) => {
+      const text = wordOf(links.find((l3) => l3.id === s.link));
+      const boxes = [...cards, ...labels.map(textRect)];
+      const others = strings.filter((o) => o !== s);
+      const found = innerBends(s).flatMap((i2) => spotsBeside(s, i2, text)).find((t) => clearSpot(t, s, others, boxes));
+      if (!found) return null;
+      labels.push(found);
+      return found;
+    });
+  };
+
+  // src/lib/layout/routes.ts
+  var endOn = (pin, r, p) => ({ pin, anchorX: (p.x - r.x) / r.width, anchorY: (p.y - r.y) / r.height });
+  var endsOf = (l3, A2, B2, start2, end) => ({ from: endOn(l3.from, A2, start2), to: endOn(l3.to, B2, end), start: start2, end });
+  var candidate = (route, ends, bend) => ({ route, ...ends, bend, path: stringPath(ends.start, bend, ends.end) });
+  var routesOf = (board, l3, fromLane) => {
+    const A2 = board.placed.get(l3.from);
+    const B2 = board.placed.get(l3.to);
+    const fromRow = fromLane !== "flow";
+    const rightward = B2.x >= right(A2) + LAYOUT.clearance;
+    if (fromRow && bottom(B2) <= A2.y - LAYOUT.clearance) return [verticalRoute(l3, A2, B2), ...rightward ? acrossRoutes(board, l3, A2, B2) : []];
+    if (rightward) return acrossRoutes(board, l3, A2, B2);
+    if (fromRow && B2.y >= bottom(A2) + LAYOUT.clearance) return [verticalRoute(l3, A2, B2)];
+    if (l3.kind === "tests" && A2.y === B2.y && right(B2) < A2.x) return [flatRoute(l3, A2, B2)];
+    return backRoutes(l3, A2, B2);
+  };
+  var clears = (placed, c) => !hooks(c.route, c.path, c.start, c.end) && pathClears(c.path, othersThan(placed, c.from.pin, c.to.pin), LAYOUT.clearance) && ![...placed.values()].some((r) => hugs(c.path, r));
+  var verticalRoute = (l3, A2, B2) => {
+    const up = bottom(B2) <= A2.y;
+    const ends = endsOf(l3, A2, B2, up ? topMiddle(A2) : bottomMiddle(A2), up ? bottomMiddle(B2) : topMiddle(B2));
+    return candidate("R2", ends, upBends(ends.start, ends.end));
+  };
+  var acrossRoutes = (board, l3, A2, B2) => {
+    const start2 = { x: right(A2), y: A2.y + rowMiddle(board.cards.get(l3.from)?.anchors[l3.id] ?? -1) };
+    const end = { x: B2.x, y: B2.y + LAYOUT.header };
+    const ends = endsOf(l3, A2, B2, start2, end);
+    const direct = candidate("R1", ends, acrossBends(start2, end));
+    return [direct, candidate("R1", ends, levelBends(start2, end)), ...detours(board, l3, ends, direct)];
   };
   var columnsOf = (rects) => {
     const columns = [];
@@ -12723,385 +12982,120 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
     for (let k2 = 0; k2 < 4; k2++) ys.push(column[0].y - off - k2 * lane, bottom(column[column.length - 1]) + off + k2 * lane);
     return ys.map((y2) => Math.round(y2));
   };
-  var throughBends = (a, b2, columns) => {
-    const { margin, step } = LAYOUT.detour;
-    const course = [a];
-    const leg = (p, q2, level) => {
-      for (let x2 = p.x + 4; x2 < q2.x; x2 += 4) {
-        const s = (x2 - p.x) / (q2.x - p.x);
-        course.push({ x: x2, y: p.y + (q2.y - p.y) * (level ? smoothstep(s) : s) });
-      }
-      course.push(q2);
-    };
-    let at3 = a;
-    columns.forEach((c, i2) => {
-      leg(at3, { x: c.lo - margin, y: c.y }, i2 > 0);
-      at3 = { x: c.hi + margin, y: c.y };
-      course.push(at3);
+  var LANE_PICKS = [
+    (c) => c.slots[0],
+    (c) => c.slots.find((y2) => y2 <= c.ideal) ?? c.slots[0],
+    (c) => c.slots.find((y2) => y2 >= c.ideal) ?? c.slots[0]
+  ];
+  var detours = (board, l3, ends, direct) => {
+    const { start: a, end: b2 } = ends;
+    const others = othersThan(board.placed, l3.from, l3.to).filter((r) => r.x > a.x && right(r) < b2.x);
+    if (!others.some((r) => pathHits(direct.path, inflate(r, LAYOUT.clearance)))) return [];
+    const lineY = (x2) => a.y + (b2.y - a.y) * (x2 - a.x) / (b2.x - a.x || 1);
+    const columns = columnsOf(others).map((column) => {
+      const ideal = lineY((column.lo + column.hi) / 2);
+      const slots = laneSlots(column.cards).filter((y2) => !board.lanes.has(\`\${column.lo}:\${y2}\`) && Math.abs(y2 - ideal) <= LAYOUT.detour.reach);
+      return { lo: column.lo, hi: column.hi, ideal, slots: sortBy(slots, (y2) => Math.abs(y2 - ideal)) };
     });
-    leg(at3, b2, false);
-    const length = course.slice(1).reduce((n, p, i2) => n + Math.hypot(p.x - course[i2].x, p.y - course[i2].y), 0);
-    const count2 = Math.max(3, Math.round(length / step) - 1);
-    const bends = [];
-    let walked = 0;
-    for (let i2 = 1, k2 = 1; i2 < course.length && k2 <= count2; i2++) {
-      const [p, q2] = [course[i2 - 1], course[i2]];
-      const d = Math.hypot(q2.x - p.x, q2.y - p.y);
-      while (k2 <= count2 && walked + d >= k2 * length / (count2 + 1)) {
-        const t = (k2 * length / (count2 + 1) - walked) / (d || 1);
-        bends.push({ x: p.x + (q2.x - p.x) * t, y: p.y + (q2.y - p.y) * t });
-        k2++;
-      }
-      walked += d;
-    }
-    return bends;
+    if (columns.some((c) => c.slots.length === 0)) return [];
+    const routes = LANE_PICKS.map((pick2) => {
+      const through = columns.map((c) => ({ lo: c.lo, hi: c.hi, y: pick2(c) }));
+      return { ...candidate("R1'", ends, throughBends(a, b2, through)), lanes: through.map((t) => \`\${t.lo}:\${t.y}\`) };
+    });
+    return uniqBy(routes, (r) => r.lanes.join(" "));
   };
-  var planBoard = (review) => {
-    const tangle = (plan) => plan.strings.reduce((n, s, i2) => n + plan.strings.slice(i2 + 1).reduce((m2, o) => m2 + stringCrossings(s, o), 0), 0);
-    let best = planWith(review, LAYOUT.columnGap, LAYOUT.stack);
-    for (const { gap, stack } of LAYOUT.roomier) {
-      if (best.undrawn.length === 0) break;
-      const roomier = planWith(review, gap, stack);
-      if (roomier.undrawn.length < best.undrawn.length || roomier.undrawn.length === best.undrawn.length && tangle(roomier) < tangle(best)) best = roomier;
-    }
-    return best;
+  var backRoutes = (l3, A2, B2) => {
+    const over = endsOf(l3, A2, B2, topMiddle(A2), topMiddle(B2));
+    const under = endsOf(l3, A2, B2, bottomMiddle(A2), bottomMiddle(B2));
+    return [
+      candidate("R4", over, backBends(over.start, over.end, Math.min(A2.y, B2.y), -1)),
+      candidate("R4", under, backBends(under.start, under.end, Math.max(bottom(A2), bottom(B2)), 1))
+    ];
   };
-  var planWith = (review, gap, stack) => {
-    const L2 = LAYOUT;
-    const pinOf = (id) => review.pins.find((p) => p.id === id);
-    const cards = new Map(review.pins.filter((p) => p.kind !== "pr").map((p) => [p.id, pinCard(p, review)]));
-    const prSize = prCard(review);
-    const sizeOf = (id) => {
-      const { width, height } = id === "pr" ? prSize : cards.get(id);
-      return { width, height };
-    };
-    const pr = review.pins.find((p) => p.kind === "pr");
-    const codeLeft = pr ? prSize.width + L2.columnGap : 0;
-    const placed = /* @__PURE__ */ new Map();
-    const order = pr ? [pr.id] : [];
-    const lowest = () => Math.max(0, ...[...placed.values()].map(bottom));
-    const widest = () => Math.max(0, ...[...placed.values()].map(right));
-    const place2 = (id, x2, y2, width = sizeOf(id).width) => placed.set(id, { x: Math.round(x2), y: Math.round(y2), width, height: sizeOf(id).height });
-    const othersThan = (...ids) => [...placed].filter(([id]) => !ids.includes(id)).map(([, r]) => r);
-    const clear = (c) => {
-      const path = stringPath(c.start, c.bend, c.end);
-      return !hooks(c.route, path, c.start, c.end) && pathClears(path, othersThan(c.from.pin, c.to.pin), L2.clearance) && ![...placed.values()].some((r) => hugs(path, r));
-    };
-    const end = (pin, r, p) => ({ pin, anchorX: (p.x - r.x) / r.width, anchorY: (p.y - r.y) / r.height });
-    const topMiddle = (r) => ({ x: r.x + r.width / 2, y: r.y });
-    const bottomMiddle = (r) => ({ x: r.x + r.width / 2, y: bottom(r) });
-    const vertical = (l3, A2, B2) => {
-      const up = bottom(B2) <= A2.y;
-      const a = up ? topMiddle(A2) : bottomMiddle(A2);
-      const b2 = up ? bottomMiddle(B2) : topMiddle(B2);
-      return { route: "R2", from: end(l3.from, A2, a), to: end(l3.to, B2, b2), start: a, end: b2, bend: upBends(a, b2) };
-    };
+  var flatRoute = (l3, A2, B2) => {
+    const ends = endsOf(l3, A2, B2, { x: A2.x, y: A2.y + LAYOUT.header }, { x: right(B2), y: B2.y + LAYOUT.header });
+    return candidate("R3", ends, acrossBends(ends.start, ends.end));
+  };
+
+  // src/lib/layout/strings.ts
+  var centreDistance = (A2, B2) => Math.hypot(A2.x + A2.width / 2 - B2.x - B2.width / 2, A2.y + A2.height / 2 - B2.y - B2.height / 2);
+  var nearestFirst = (links, placed, order) => sortBy(
+    links.filter((l3) => placed.has(l3.from) && placed.has(l3.to)),
+    (l3) => centreDistance(placed.get(l3.from), placed.get(l3.to)),
+    (l3) => order.indexOf(l3.from),
+    (l3) => order.indexOf(l3.to)
+  );
+  var pastFanIn = (links) => new Set(Object.values(groupBy(links, (l3) => \`\${l3.to} \${l3.kind}\`)).flatMap((group) => group.slice(LAYOUT.fanIn).map((l3) => l3.id)));
+  var apart = (A2, B2) => !(A2.x < B2.x + B2.width && B2.x < A2.x + A2.width);
+  var drawStrings = (review, cards, placed, order) => {
+    const laneOf = new Map(review.pins.map((p) => [p.id, p.lane]));
     const lanes = /* @__PURE__ */ new Set();
-    const across = (l3, A2, B2) => {
-      const a = { x: right(A2), y: A2.y + rowMiddle(cards.get(l3.from)?.anchors[l3.id] ?? -1) };
-      const b2 = { x: B2.x, y: B2.y + L2.header };
-      const ends = { from: end(l3.from, A2, a), to: end(l3.to, B2, b2), start: a, end: b2 };
-      const direct = { route: "R1", ...ends, bend: acrossBends(a, b2) };
-      const level = { route: "R1", ...ends, bend: acrossBends(a, b2, true) };
-      const others = othersThan(l3.from, l3.to).filter((r) => r.x > a.x && right(r) < b2.x);
-      if (!others.some((r) => pathHits(stringPath(a, direct.bend, b2), inflate(r, L2.clearance)))) return [direct, level];
-      const lineY = (x2) => a.y + (b2.y - a.y) * (x2 - a.x) / (b2.x - a.x || 1);
-      const columns = columnsOf(others).map((column) => {
-        const ideal = lineY((column.lo + column.hi) / 2);
-        const slots = laneSlots(column.cards).filter((y2) => !lanes.has(\`\${column.lo}:\${y2}\`) && Math.abs(y2 - ideal) <= L2.detour.reach);
-        return { ...column, ideal, slots: sortBy(slots, (y2) => Math.abs(y2 - ideal)) };
-      });
-      if (columns.some((c) => c.slots.length === 0)) return [direct, level];
-      const picks = [
-        (c) => c.slots[0],
-        (c) => c.slots.find((y2) => y2 <= c.ideal) ?? c.slots[0],
-        (c) => c.slots.find((y2) => y2 >= c.ideal) ?? c.slots[0]
-      ];
-      const routes = picks.map((pick) => {
-        const through = columns.map((c) => ({ lo: c.lo, hi: c.hi, y: pick(c) }));
-        return { route: "R1'", ...ends, bend: throughBends(a, b2, through), lanes: through.map((t) => \`\${t.lo}:\${t.y}\`) };
-      });
-      return [direct, level, ...uniqBy(routes, (r) => r.lanes.join(" "))];
-    };
-    const back = (l3, A2, B2) => ["over", "under"].map((side) => {
-      const a = side === "over" ? topMiddle(A2) : bottomMiddle(A2);
-      const b2 = side === "over" ? topMiddle(B2) : bottomMiddle(B2);
-      const sign = side === "over" ? -1 : 1;
-      const edge = side === "over" ? Math.min(A2.y, B2.y) : Math.max(bottom(A2), bottom(B2));
-      const inward = Math.sign(b2.x - a.x) * Math.abs(b2.x - a.x) / 8;
-      const bend = [
-        { x: a.x + inward, y: edge + sign * L2.back.lead },
-        { x: (a.x + b2.x) / 2, y: edge + sign * L2.back.top },
-        { x: b2.x - inward, y: edge + sign * L2.back.lead }
-      ];
-      return { route: "R4", from: end(l3.from, A2, a), to: end(l3.to, B2, b2), start: a, end: b2, bend };
-    });
-    const flat = (l3, A2, B2) => {
-      const a = { x: A2.x, y: A2.y + L2.header };
-      const b2 = { x: right(B2), y: B2.y + L2.header };
-      return { route: "R3", from: end(l3.from, A2, a), to: end(l3.to, B2, b2), start: a, end: b2, bend: acrossBends(a, b2) };
-    };
-    const routesOf = (l3) => {
-      const A2 = placed.get(l3.from);
-      const B2 = placed.get(l3.to);
-      const low = pinOf(l3.from).lane !== "flow";
-      if (low && bottom(B2) <= A2.y - L2.clearance) return [vertical(l3, A2, B2), ...B2.x >= right(A2) + L2.clearance ? across(l3, A2, B2) : []];
-      if (B2.x >= right(A2) + L2.clearance) return across(l3, A2, B2);
-      if (low && B2.y >= bottom(A2) + L2.clearance) return [vertical(l3, A2, B2)];
-      if (l3.kind === "tests" && A2.y === B2.y && right(B2) < A2.x) return [flat(l3, A2, B2)];
-      return back(l3, A2, B2);
-    };
-    review.bands.forEach((_2, b2) => {
-      const members = review.pins.filter((p) => p.lane === "flow" && p.band === b2 && p.kind !== "pr").map((p) => p.id);
-      const floor = b2 === 0 ? 0 : lowest() + L2.bandGap;
-      const columns = /* @__PURE__ */ new Map();
-      for (const id of members) {
-        const c = pinOf(id).column;
-        columns.set(c, [...columns.get(c) ?? [], id]);
-      }
-      const keys = [...columns.keys()].sort((x2, y2) => x2 - y2);
-      const width = new Map(keys.map((c) => [c, Math.max(...columns.get(c).map((id) => sizeOf(id).width))]));
-      const left = /* @__PURE__ */ new Map();
-      let cursor = codeLeft;
-      for (const c of keys) {
-        left.set(c, cursor);
-        cursor += width.get(c) + gap;
-      }
-      const columnOf = (id) => pinOf(id).column;
-      const ties = review.links.filter((l3) => FLOW_KINDS.includes(l3.kind) && members.includes(l3.from) && members.includes(l3.to) && columnOf(l3.from) !== columnOf(l3.to));
-      const startOf = (l3) => rowMiddle(cards.get(l3.from)?.anchors[l3.id] ?? -1);
-      const topsFor = (orders2) => {
-        const top2 = /* @__PURE__ */ new Map();
-        const level = (id) => {
-          const levels = ties.filter((l3) => l3.to === id && columnOf(l3.from) < columnOf(id) && top2.has(l3.from)).map((l3) => top2.get(l3.from) + startOf(l3) - L2.header);
-          const middle = levels.reduce((a, y2) => a + y2, 0) / Math.max(1, levels.length);
-          return sortBy(
-            levels.filter((y2) => y2 <= L2.maxDrop),
-            (y2) => Math.abs(y2 - middle)
-          )[0] ?? 0;
-        };
-        for (const c of keys) {
-          let previous2 = -Infinity;
-          for (const id of orders2.get(c)) {
-            const wanted = level(id);
-            const t = Math.max(wanted, previous2 + stack);
-            top2.set(id, t);
-            previous2 = t + sizeOf(id).height;
-          }
-        }
-        return top2;
-      };
-      const pull = (id, top2, sides) => {
-        const wants = ties.flatMap((l3) => {
-          if (l3.to === id && (sides === "both" || columnOf(l3.from) < columnOf(id))) return [top2.get(l3.from) + startOf(l3) - L2.header];
-          if (l3.from === id && sides === "both") return [top2.get(l3.to) + L2.header - startOf(l3)];
-          return [];
-        });
-        return wants.length === 0 ? null : wants.reduce((a, y2) => a + y2, 0) / wants.length;
-      };
-      const tangles = (top2) => {
-        const lines = ties.map((l3) => [
-          { x: left.get(columnOf(l3.from)) + width.get(columnOf(l3.from)), y: top2.get(l3.from) + startOf(l3) },
-          { x: left.get(columnOf(l3.to)), y: top2.get(l3.to) + L2.header }
-        ]);
-        return lines.reduce((n, a, i2) => n + lines.slice(i2 + 1).reduce((m2, b3) => m2 + crossings(a, b3), 0), 0);
-      };
-      const byPath = (ids) => sortBy(ids, (id) => pinOf(id).path ?? "", (id) => pinOf(id).from);
-      const sorted = (ids, key, fallback) => sortBy(ids, (id) => key(id) ?? fallback.get(id) ?? 0, (id) => fallback.get(id) ?? 0);
-      let orders = new Map(keys.map((c) => [c, byPath(columns.get(c))]));
-      const first = /* @__PURE__ */ new Map();
-      for (const c of keys) {
-        const sofar = topsFor(orders);
-        orders.set(c, sorted(orders.get(c), (id) => pull(id, sofar, "left"), first));
-        for (const [id, t] of topsFor(orders)) first.set(id, t);
-      }
-      let top = topsFor(orders);
-      let best = { orders, top, tangles: tangles(top) };
-      for (let sweep = 0; sweep < L2.sweeps && best.tangles > 0; sweep++) {
-        orders = new Map(keys.map((c) => [c, sorted(orders.get(c), (id) => pull(id, top, "both"), top)]));
-        top = topsFor(orders);
-        const n = tangles(top);
-        if (n < best.tangles) best = { orders, top, tangles: n };
-      }
-      top = best.top;
-      const bandOrder = keys.flatMap((c) => best.orders.get(c));
-      const dy = floor - Math.min(...bandOrder.map((id) => top.get(id)));
-      for (const id of bandOrder) place2(id, left.get(columnOf(id)), top.get(id) + dy, columnOf(id) === 0 ? sizeOf(id).width : width.get(columnOf(id)));
-      order.push(...bandOrder);
-      const under = review.pins.filter((p) => p.lane === "under" && p.band === b2);
-      if (under.length === 0) return;
-      const cardTop = lowest() + L2.underGap;
-      const coveredBy = (p) => sortBy(review.links.filter((l3) => l3.from === p.id && members.includes(l3.to)).map((l3) => placed.get(l3.to)), (r) => r.x);
-      const centredUnder = (p, xs) => xs.reduce((a, x2) => a + x2, 0) / Math.max(1, xs.length) - sizeOf(p.id).width / 2;
-      const wantedX = (p) => centredUnder(p, coveredBy(p).map((r) => r.x + r.width / 2));
-      const reaches2 = (p, target) => {
-        const card = placed.get(p.id);
-        const a = topMiddle(card);
-        const z2 = bottomMiddle(target);
-        return a.y > z2.y && pathClears(stringPath(a, upBends(a, z2), z2), othersThan(p.id).filter((r) => r !== target), L2.clearance);
-      };
-      let edge = -Infinity;
-      for (const p of sortBy(under, wantedX, (p2) => p2.path ?? "")) {
-        const covered = coveredBy(p);
-        const spots = [wantedX(p), ...covered.map((r) => centredUnder(p, [r.x + r.width / 2]))].map((x3) => Math.max(codeLeft, x3, edge + L2.restSpacing));
-        const x2 = spots.find((x3) => {
-          place2(p.id, x3, cardTop);
-          return covered.some((r) => reaches2(p, r));
-        }) ?? spots[0];
-        place2(p.id, x2, cardTop);
-        order.push(p.id);
-        edge = x2 + sizeOf(p.id).width;
-      }
-    });
-    const rest = review.pins.filter((p) => p.lane === "rest");
-    if (rest.length > 0) {
-      const ranked = sortBy(
-        rest,
-        (p) => laneRank(p, review.files)[0],
-        (p) => laneRank(p, review.files)[1],
-        (p) => laneRank(p, review.files)[2]
-      );
-      const covers2 = (t) => review.links.find((l3) => l3.from === t.id && l3.kind === "tests" && rest.some((p) => p.id === l3.to))?.to;
-      const sequence = [];
-      for (const p of ranked) {
-        if (p.kind === "test" && covers2(p)) continue;
-        sequence.push(p, ...ranked.filter((t) => t.kind === "test" && covers2(t) === p.id));
-      }
-      const rowRight = codeLeft + Math.max(L2.minRowWidth, widest() - codeLeft);
-      let x2 = codeLeft;
-      let rowTop = placed.size === 0 ? 0 : lowest() + L2.bandGap;
-      let rowBottom = rowTop;
-      sequence.forEach((p, i2) => {
-        const size = sizeOf(p.id);
-        const gap2 = i2 > 0 && p.kind === "test" && covers2(p) === sequence[i2 - 1].id ? L2.restTestSpacing : L2.restSpacing;
-        if (i2 > 0 && x2 + gap2 + size.width > rowRight) {
-          rowTop = rowBottom + L2.restSpacing;
-          x2 = codeLeft;
-        } else if (i2 > 0) x2 += gap2;
-        place2(p.id, x2, rowTop);
-        rowBottom = Math.max(rowBottom, rowTop + size.height);
-        x2 += size.width;
-        order.push(p.id);
-      });
-    }
-    if (pr) place2(pr.id, 0, 0);
-    const rank = (id) => order.indexOf(id);
-    const distance = (l3) => {
-      const [A2, B2] = [placed.get(l3.from), placed.get(l3.to)];
-      return Math.hypot(A2.x + A2.width / 2 - B2.x - B2.width / 2, A2.y + A2.height / 2 - B2.y - B2.height / 2);
-    };
-    const links = sortBy(
-      review.links.filter((l3) => placed.has(l3.from) && placed.has(l3.to)),
-      distance,
-      (l3) => rank(l3.from),
-      (l3) => rank(l3.to)
-    );
-    const groups = /* @__PURE__ */ new Map();
-    for (const l3 of links) groups.set(\`\${l3.to} \${l3.kind}\`, [...groups.get(\`\${l3.to} \${l3.kind}\`) ?? [], l3]);
-    const crowd = new Set([...groups.values()].flatMap((group) => sortBy(group, distance).slice(L2.fanIn).map((l3) => l3.id)));
-    const sideways = (l3) => {
-      if (pinOf(l3.from).lane !== "under") return false;
-      const [A2, B2] = [placed.get(l3.from), placed.get(l3.to)];
-      return !(A2.x < B2.x + B2.width && B2.x < A2.x + A2.width);
-    };
+    const board = { placed, cards, lanes };
     const strings = [];
     const undrawn = [];
-    const tangle = { curved: 0, straight: 0 };
+    const curvedCrossings = (c) => sumBy(strings, (o) => stringCrossings(c, o));
+    const straightCrossings = (c) => sumBy(strings, (o) => crossings([c.start, c.end], [o.start, o.end]));
+    const tally = { curved: 0, straight: 0 };
     const draw = (l3) => {
-      const crossed = (c) => {
-        const path = stringPath(c.start, c.bend, c.end);
-        return strings.reduce((n, o) => n + stringCrossings({ ...c, path }, o), 0);
-      };
-      const straight = (c) => strings.reduce((n, o) => n + crossings([c.start, c.end], [o.start, o.end]), 0);
-      const clearRoutes = routesOf(l3).filter(clear);
-      const found = clearRoutes.length <= 1 ? clearRoutes[0] : sortBy(clearRoutes, crossed)[0];
-      if (!found || tangle.curved + crossed(found) > tangle.straight + straight(found)) return false;
+      const found = minBy(routesOf(board, l3, laneOf.get(l3.from)).filter((c) => clears(placed, c)), curvedCrossings);
+      if (!found) return false;
+      const curved = curvedCrossings(found);
+      const straight = straightCrossings(found);
+      if (tally.curved + curved > tally.straight + straight) return false;
+      tally.curved += curved;
+      tally.straight += straight;
       const { lanes: taken = [], ...route } = found;
-      taken.forEach((lane) => lanes.add(lane));
-      tangle.curved += crossed(found);
-      tangle.straight += straight(found);
-      strings.push({ link: l3.id, kind: l3.kind, ...route, path: stringPath(found.start, found.bend, found.end), label: null, style: styleOf(l3, review) });
+      for (const lane of taken) lanes.add(lane);
+      strings.push({ link: l3.id, kind: l3.kind, ...route });
       return true;
     };
     const held = [];
+    const links = nearestFirst(review.links, placed, order);
+    const crowded = pastFanIn(links);
     for (const l3 of links) {
-      if (crowd.has(l3.id)) undrawn.push(l3.id);
-      else if (sideways(l3)) held.push(l3);
+      if (crowded.has(l3.id)) undrawn.push(l3.id);
+      else if (laneOf.get(l3.from) === "under" && apart(placed.get(l3.from), placed.get(l3.to))) held.push(l3);
       else if (!draw(l3)) undrawn.push(l3.id);
     }
     const tied = (id) => strings.some((s) => s.from.pin === id || s.to.pin === id);
     for (const l3 of held) if (tied(l3.from) || !draw(l3)) undrawn.push(l3.id);
-    const labels = [];
-    for (const s of strings) {
-      const text = wordOf(review.links.find((l3) => l3.id === s.link));
-      const w = textWidth(text, L2.label.size);
-      const h = L2.label.height;
-      const boxes = [...placed.values(), ...labels.map(textRect)];
-      const others = strings.filter((o) => o !== s);
-      const besideBend = (i2) => {
-        const [before, middle2, after] = [s.bend[i2 - 1], s.bend[i2], s.bend[i2 + 1]];
-        const at3 = (i2 + 1) * SPLINE_STEPS;
-        const near = (lo, hi, axis) => {
-          const inside = (k2) => k2 >= 0 && k2 < s.path.length && s.path[k2][axis] >= lo - 2 && s.path[k2][axis] <= hi + 2;
-          let first = at3;
-          let last = at3;
-          while (inside(first - 1)) first--;
-          while (inside(last + 1)) last++;
-          return s.path.slice(first, last + 1);
-        };
-        const spots = [];
-        if (Math.abs(after.y - before.y) > Math.abs(after.x - before.x)) {
-          const y2 = middle2.y - h / 2;
-          const xs = near(y2, y2 + h, "y").map((p) => p.x);
-          spots.push({ x: Math.max(middle2.x, ...xs) + L2.label.steep, y: y2 }, { x: Math.min(middle2.x, ...xs) - L2.label.steep - w, y: y2 });
-        } else {
-          const x2 = middle2.x - w / 2;
-          const ys = near(x2, x2 + w, "x").map((p) => p.y);
-          spots.push({ x: x2, y: Math.min(middle2.y, ...ys) - L2.label.flat - h }, { x: x2, y: Math.max(middle2.y, ...ys) + L2.label.flat });
-        }
-        return spots.map((p) => ({ x: Math.round(p.x), y: Math.round(p.y), text, fontSize: L2.label.size, width: w, height: h }));
-      };
-      const middle = (s.bend.length - 1) / 2;
-      const bends = sortBy(
-        s.bend.map((_2, i2) => i2).filter((i2) => i2 > 0 && i2 < s.bend.length - 1),
-        (i2) => Math.abs(i2 - middle)
-      );
-      const found = bends.flatMap(besideBend).find((t) => {
-        const r = textRect(t);
-        const padded = inflate(r, L2.clearance);
-        return boxes.every((b2) => !overlaps(padded, b2)) && others.every((o) => !pathHits(o.path, padded)) && !pathHits(s.path, inflate(r, 2));
-      });
-      if (!found) continue;
-      s.label = found;
-      labels.push(found);
-    }
+    return { strings, undrawn };
+  };
+
+  // src/lib/layout.ts
+  var styleOf = (s, color, review) => ({
+    color,
+    width: 2,
+    dash: review.pins.some((p) => p.kind === "context" && (p.id === s.from.pin || p.id === s.to.pin)) ? "dashed" : "solid"
+  });
+  var planWith = (review, cards, prSize, spacing) => {
+    const { placed, order } = placeCards(review, cards, prSize, spacing);
+    const { strings, undrawn } = drawStrings(review, cards, placed, order);
+    const labels = labelStrings(strings, review.links, [...placed.values()]);
     const colours = colourStrings(strings, order);
-    for (const s of strings) s.style = { ...s.style, color: colours.get(s.link) };
     return {
       pins: placed,
       cards,
-      strings,
+      strings: strings.map((s, i2) => ({ ...s, label: labels[i2], style: styleOf(s, colours.get(s.link), review) })),
       undrawn,
       order,
-      bounds: union([...placed.values(), ...labels.map(textRect), ...strings.map((s) => pathRect(s.path))])
+      bounds: union([...placed.values(), ...labels.flatMap((t) => t ? [textRect(t)] : []), ...strings.map((s) => pathRect(s.path))])
     };
+  };
+  var planBoard = (review) => {
+    const cards = new Map(review.pins.filter((p) => p.kind !== "pr").map((p) => [p.id, pinCard(p, review)]));
+    const prSize = prCard(review);
+    const tangle = (plan) => crossingsAmong(plan.strings, stringCrossings);
+    let best = planWith(review, cards, prSize, { gap: LAYOUT.columnGap, stack: LAYOUT.stack });
+    for (const spacing of LAYOUT.roomier) {
+      if (best.undrawn.length === 0) break;
+      const roomier = planWith(review, cards, prSize, spacing);
+      if (roomier.undrawn.length < best.undrawn.length || roomier.undrawn.length === best.undrawn.length && tangle(roomier) < tangle(best)) best = roomier;
+    }
+    return best;
   };
 
-  // src/lib/linker.ts
-  var SAME_MEMBERS = /* @__PURE__ */ new Set(["Partial", "Required", "Readonly", "NonNullable", "Pick", "Omit"]);
-  var COMPUTED = /* @__PURE__ */ new Set(["ReturnType", "Parameters", "ConstructorParameters", "Awaited", "ThisType", "ThisParameterType", "OmitThisParameter", "Extract", "Exclude", "Record", "InstanceType"]);
-  var NONE3 = { units: [], shapes: [] };
-  var unknown = (why) => ({ units: [], shapes: [], unknown: why });
-  var merge = (...vs) => {
-    const known = vs.filter((v2) => !v2.unknown);
-    if (known.length === 0) return vs[0] ?? unknown("nothing");
-    return {
-      units: [...new Set(known.flatMap((v2) => v2.units))],
-      shapes: known.flatMap((v2) => v2.shapes),
-      ...known.find((v2) => v2.module) ? { module: known.find((v2) => v2.module).module } : {},
-      ...vs.some((v2) => v2.unknown) ? { unknown: vs.find((v2) => v2.unknown).unknown } : {}
-    };
-  };
+  // src/lib/linker/paths.ts
   var CODE_EXT = [".ts", ".tsx", ".d.ts", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"];
   var JS_EXT = /\\.(js|jsx|mjs|cjs)$/;
   var dirOf = (path) => path.split("/").slice(0, -1).join("/");
@@ -13113,33 +13107,84 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
     }
     return parts2.join("/");
   };
+  var expand = (base) => {
+    const out2 = [];
+    if (CODE_EXT.some((e) => base.endsWith(e))) out2.push(base);
+    if (JS_EXT.test(base)) {
+      const stem = base.replace(JS_EXT, "");
+      out2.push(\`\${stem}.ts\`, \`\${stem}.tsx\`, \`\${stem}.mts\`, \`\${stem}.cts\`, \`\${stem}.d.ts\`);
+    }
+    for (const e of CODE_EXT) out2.push(\`\${base}\${e}\`);
+    for (const e of CODE_EXT) out2.push(\`\${base}/index\${e}\`);
+    return [...new Set(out2)];
+  };
+  var starMatch = (spec, pattern) => {
+    const star = pattern.indexOf("*");
+    if (star < 0) return spec === pattern ? "" : null;
+    const [prefix, suffix] = [pattern.slice(0, star), pattern.slice(star + 1)];
+    return spec.startsWith(prefix) && spec.endsWith(suffix) && spec.length >= pattern.length - 1 ? spec.slice(star, spec.length - suffix.length) : null;
+  };
   var moduleCandidates = (from, spec, paths) => {
-    const expand = (base) => {
-      const out3 = [];
-      if (CODE_EXT.some((e) => base.endsWith(e))) out3.push(base);
-      if (JS_EXT.test(base)) {
-        const stem = base.replace(JS_EXT, "");
-        out3.push(\`\${stem}.ts\`, \`\${stem}.tsx\`, \`\${stem}.mts\`, \`\${stem}.cts\`, \`\${stem}.d.ts\`);
-      }
-      for (const e of CODE_EXT) out3.push(\`\${base}\${e}\`);
-      for (const e of CODE_EXT) out3.push(\`\${base}/index\${e}\`);
-      return [...new Set(out3)];
-    };
     if (spec.startsWith("./") || spec.startsWith("../") || spec === "." || spec === "..") return { candidates: expand(joinPath(dirOf(from), spec)), bare: false };
     if (spec.startsWith("/")) return { candidates: expand(spec.slice(1)), bare: false };
     const out2 = [];
-    const sorted = [...paths].sort((a, b2) => b2.pattern.replace("*", "").length - a.pattern.replace("*", "").length);
-    for (const m2 of sorted) {
-      const star = m2.pattern.indexOf("*");
-      let rest = null;
-      if (star < 0) rest = spec === m2.pattern ? "" : null;
-      else if (spec.startsWith(m2.pattern.slice(0, star)) && spec.endsWith(m2.pattern.slice(star + 1)) && spec.length >= m2.pattern.length - 1) rest = spec.slice(star, spec.length - (m2.pattern.length - star - 1));
+    for (const m2 of [...paths].sort((a, b2) => b2.pattern.replace("*", "").length - a.pattern.replace("*", "").length)) {
+      const rest = starMatch(spec, m2.pattern);
       if (rest === null) continue;
-      for (const target of m2.targets) out2.push(...expand(star < 0 ? target : target.replace("*", rest)));
+      for (const target of m2.targets) out2.push(...expand(m2.pattern.includes("*") ? target.replace("*", rest) : target));
     }
     return { candidates: [...new Set(out2)], bare: true };
   };
-  var createProgram2 = (files, config) => {
+
+  // src/lib/linker/values.ts
+  var NONE3 = { units: [], shapes: [] };
+  var unknown = (why) => ({ units: [], shapes: [], unknown: why });
+  var external = (what) => ({ ...NONE3, external: what });
+  var namespace = (path) => ({ units: [], shapes: [], module: path });
+  var shaped = (shape, side, file) => ({ units: [], shapes: [{ shape, side, file }] });
+  var hasSides = (s) => s.kind === "class" || s.kind === "function";
+  var merge = (...vs) => {
+    const known = vs.filter((v2) => !v2.unknown);
+    if (known.length === 0) return vs[0] ?? unknown("nothing");
+    const module2 = known.find((v2) => v2.module)?.module;
+    const why = vs.find((v2) => v2.unknown)?.unknown;
+    return {
+      units: [...new Set(known.flatMap((v2) => v2.units))],
+      shapes: known.flatMap((v2) => v2.shapes),
+      ...module2 ? { module: module2 } : {},
+      ...why ? { unknown: why } : {}
+    };
+  };
+  var asSide = (v2, side) => ({
+    units: [],
+    shapes: v2.shapes.map((s) => ({ ...s, side: hasSides(s.shape) ? side : s.side })),
+    ...v2.unknown ? { unknown: v2.unknown } : {}
+  });
+  var perNode2 = (missing, compute) => {
+    const memo = /* @__PURE__ */ new Map();
+    return (f2, n) => {
+      if (n < 0) return unknown(missing);
+      let m2 = memo.get(f2);
+      if (!m2) memo.set(f2, m2 = /* @__PURE__ */ new Map());
+      if (m2.has(n)) return m2.get(n) ?? unknown("cycle");
+      m2.set(n, null);
+      const v2 = compute(f2, n);
+      m2.set(n, v2);
+      return v2;
+    };
+  };
+
+  // src/lib/linker/evaluator.ts
+  var SAME_MEMBERS = /* @__PURE__ */ new Set(["Partial", "Required", "Readonly", "NonNullable", "Pick", "Omit"]);
+  var COMPUTED = /* @__PURE__ */ new Set(["ReturnType", "Parameters", "ConstructorParameters", "Awaited", "ThisType", "ThisParameterType", "OmitThisParameter", "Extract", "Exclude", "Record", "InstanceType"]);
+  var FUNCTION_EXPRESSIONS = /* @__PURE__ */ new Set(["function_expression", "function", "generator_function"]);
+  var RETURNS_FIRST = /^(Object\\.)?(freeze|seal|assign)$|^Object(Freeze|Seal|Assign)$/;
+  var positional = (key) => key === "..." || /^\\d+$/.test(key);
+  var classOfBody = (t, body2) => t.type[body2] === "class_body" ? t.parent[body2] : -1;
+  var flattenUnion = (t, n) => t.type[n] === "union_type" ? namedChildren(t, n).flatMap((c) => flattenUnion(t, c)) : [n];
+  var importOf = (f2, b2) => f2.imports.find((i2) => i2.node === b2.node || i2.local === b2.name);
+  var NOT_FOUND = { units: [], next: NONE3, found: "no" };
+  var createEvaluator = (files, config) => {
     const byPath = new Map(files.map((f2) => [f2.path, f2]));
     const resolved = /* @__PURE__ */ new Map();
     const resolveModule = (from, spec) => {
@@ -13153,115 +13198,20 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
       resolved.set(key, out2);
       return out2;
     };
-    const memo = /* @__PURE__ */ new Map();
-    const memoOf = (f2) => {
-      let m2 = memo.get(f2);
-      if (!m2) memo.set(f2, m2 = /* @__PURE__ */ new Map());
-      return m2;
-    };
-    const shapeOf = (f2, node) => f2.shapes.get(node);
-    const unitByValue = /* @__PURE__ */ new Map();
-    const unitOfValue = (f2, node) => {
-      let m2 = unitByValue.get(f2);
-      if (!m2) {
-        m2 = /* @__PURE__ */ new Map();
-        for (const u of f2.units) if (u.valueNode >= 0) m2.set(u.valueNode, u);
-        unitByValue.set(f2, m2);
-      }
-      return m2.get(node);
-    };
-    const unitVal = (f2, u) => {
-      const t = f2.flat;
-      const own = { units: [u], shapes: [] };
-      if (u.kind === "class") {
-        const s = shapeOf(f2, u.valueNode);
-        return s ? { units: [u], shapes: [{ shape: s, side: "static", file: f2 }] } : own;
-      }
-      if (u.kind === "function") {
-        const s = shapeOf(f2, u.valueNode);
-        return s ? { units: [u], shapes: [{ shape: s, side: "static", file: f2 }] } : own;
-      }
-      if (u.kind === "namespace") {
-        const s = shapeOf(f2, u.valueNode);
-        return s ? { units: [u], shapes: [{ shape: s, side: "static", file: f2 }] } : own;
-      }
-      if (u.kind === "type") {
-        const s = shapeOf(f2, u.valueNode);
-        if (s) return { units: [u], shapes: [{ shape: s, side: "instance", file: f2 }] };
-        if (t.type[u.valueNode] === "type_alias_declaration") return { ...typeVal(f2, child(t, u.valueNode, "value")), units: [u] };
-        return own;
-      }
-      if (u.kind === "value") {
-        if (u.valueNode >= 0 && t.type[u.valueNode] === "object") {
-          const s = shapeOf(f2, u.valueNode);
-          return s ? { units: [u], shapes: [{ shape: s, side: "instance", file: f2 }] } : own;
-        }
-        const decl = t.type[u.node] === "variable_declarator" ? u.node : -1;
-        if (decl >= 0) {
-          const ty = child(t, decl, "type");
-          const v2 = ty >= 0 ? typeVal(f2, namedChildren(t, ty)[0] ?? -1) : evalExpr(f2, child(t, decl, "value"));
-          return { ...v2, units: [u] };
-        }
-        if (u.valueNode >= 0) return { ...evalExpr(f2, u.valueNode), units: [u] };
-        return own;
-      }
-      return own;
-    };
-    const bindingMemo = /* @__PURE__ */ new Map();
-    const bindingVal = (f2, b2) => {
-      if (bindingMemo.has(b2)) return bindingMemo.get(b2) ?? unknown("cycle");
-      bindingMemo.set(b2, null);
-      const v2 = bindingUncached(f2, b2);
-      bindingMemo.set(b2, v2);
-      return v2;
-    };
-    const bindingUncached = (f2, b2) => {
-      if (b2.kind === "import") {
-        const entry = f2.imports.find((i2) => i2.node === b2.node || i2.local === b2.name);
-        return entry ? importVal(f2, entry) : unknown("import");
-      }
-      if (b2.unit) return unitVal(f2, b2.unit);
-      const t = f2.flat;
-      if (b2.kind === "class") {
-        const s = shapeOf(f2, b2.decl);
-        return s ? { units: [], shapes: [{ shape: s, side: "static", file: f2 }] } : NONE3;
-      }
-      if (b2.kind === "function") return NONE3;
-      if (b2.kind === "type") {
-        const s = shapeOf(f2, b2.decl);
-        if (s) return { units: [], shapes: [{ shape: s, side: "instance", file: f2 }] };
-        if (t.type[b2.decl] === "type_alias_declaration") return typeVal(f2, child(t, b2.decl, "value"));
-        return NONE3;
-      }
-      if (b2.kind === "enum" || b2.kind === "namespace") return NONE3;
-      if (b2.kind === "typeparam") return unknown("type parameter");
-      if (b2.typeNode >= 0 || b2.init >= 0) {
-        let v2 = b2.typeNode >= 0 ? typeVal(f2, b2.typeNode) : evalExpr(f2, b2.init);
-        for (const key of b2.path ?? []) {
-          if (key === "..." || /^\\d+$/.test(key)) return unknown("destructured rest or array element");
-          v2 = memberOf(v2, key).next;
-        }
-        return v2;
-      }
-      if (b2.kind === "param") return unknown("untyped parameter");
-      if (b2.kind === "catch") return unknown("caught value");
-      return unknown("variable without initializer");
-    };
     const importVal = (f2, entry) => {
       const target = resolveModule(f2.path, entry.spec);
-      if (!target.path) return target.external ? { ...NONE3, external: \`package '\${entry.spec}'\` } : unknown(\`missing module '\${entry.spec}'\`);
-      if (entry.imported === "*") return { units: [], shapes: [], module: target.path };
+      if (!target.path) return target.external ? external(\`package '\${entry.spec}'\`) : unknown(\`missing module '\${entry.spec}'\`);
+      if (entry.imported === "*") return namespace(target.path);
       if (entry.imported === "=") return moduleVal(target.path);
       const v2 = exportVal(target.path, entry.imported, /* @__PURE__ */ new Set());
       if (v2) return v2;
-      if (entry.imported === "default") return moduleVal(target.path);
-      return NONE3;
+      return entry.imported === "default" ? moduleVal(target.path) : NONE3;
     };
     const moduleVal = (path) => {
       const f2 = byPath.get(path);
       if (!f2) return unknown(\`unread module \${path}\`);
       if (f2.moduleExports >= 0) return evalExpr(f2, f2.moduleExports);
-      const ns = { units: [], shapes: [], module: path };
+      const ns = namespace(path);
       if (!f2.exports.some((e) => e.kind !== "star" && e.name === "default")) return ns;
       const d = exportVal(path, "default", /* @__PURE__ */ new Set());
       return d && !d.unknown ? { ...ns, shapes: d.shapes, units: [] } : ns;
@@ -13272,167 +13222,310 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
       seen.add(key);
       const f2 = byPath.get(path);
       if (!f2) return unknown(\`unread module \${path}\`);
-      for (const e of f2.exports) {
-        if (e.kind === "star" || e.name !== name2) continue;
-        if (e.kind === "local") {
+      const own = f2.exports.find((e) => e.kind !== "star" && e.name === name2);
+      if (own) return namedExport(f2, own, seen);
+      const starred = name2 === "default" ? null : starExport(f2, name2, seen);
+      if (starred) return starred;
+      if (f2.moduleExports < 0) return null;
+      const m2 = memberOf(evalExpr(f2, f2.moduleExports), name2);
+      if (m2.found === "no") return null;
+      return m2.next.unknown ? { ...m2.next, units: m2.units } : { ...m2.next, units: [.../* @__PURE__ */ new Set([...m2.units, ...m2.next.units])] };
+    };
+    const namedExport = (f2, e, seen) => {
+      switch (e.kind) {
+        case "local": {
           const b2 = lookup(f2.module, e.local, VALUE | TYPE | NS);
           return b2 ? bindingVal(f2, b2) : NONE3;
         }
-        if (e.kind === "expr") return evalExpr(f2, e.value);
-        if (e.kind === "reexport") {
-          const target = resolveModule(path, e.spec);
-          if (!target.path) return unknown(\`re-export from external '\${e.spec}'\`);
-          return exportVal(target.path, e.imported, seen) ?? NONE3;
+        case "expr":
+          return evalExpr(f2, e.value);
+        case "reexport": {
+          const target = resolveModule(f2.path, e.spec);
+          return target.path ? exportVal(target.path, e.imported, seen) ?? NONE3 : unknown(\`re-export from external '\${e.spec}'\`);
         }
-        if (e.kind === "namespace") {
-          const target = resolveModule(path, e.spec);
-          return target.path ? { units: [], shapes: [], module: target.path } : unknown(\`external '\${e.spec}'\`);
-        }
-      }
-      if (name2 !== "default") {
-        for (const e of f2.exports) {
-          if (e.kind !== "star") continue;
-          const target = resolveModule(path, e.spec);
-          if (!target.path) continue;
-          const v2 = exportVal(target.path, name2, seen);
-          if (v2 && (v2.units.length > 0 || v2.shapes.length > 0 || v2.module || !v2.unknown)) return v2;
+        case "namespace": {
+          const target = resolveModule(f2.path, e.spec);
+          return target.path ? namespace(target.path) : unknown(\`external '\${e.spec}'\`);
         }
       }
-      if (f2.moduleExports >= 0) {
-        const m2 = memberOf(evalExpr(f2, f2.moduleExports), name2);
-        if (m2.found !== "no") return m2.next.unknown ? { ...m2.next, units: m2.units } : { ...m2.next, units: [.../* @__PURE__ */ new Set([...m2.units, ...m2.next.units])] };
+    };
+    const starExport = (f2, name2, seen) => {
+      for (const e of f2.exports) {
+        if (e.kind !== "star") continue;
+        const target = resolveModule(f2.path, e.spec);
+        if (!target.path) continue;
+        const v2 = exportVal(target.path, name2, seen);
+        if (v2 && (v2.units.length > 0 || v2.shapes.length > 0 || v2.module || !v2.unknown)) return v2;
       }
       return null;
     };
+    const bindings = /* @__PURE__ */ new Map();
+    const bindingVal = (f2, b2) => {
+      if (bindings.has(b2)) return bindings.get(b2) ?? unknown("cycle");
+      bindings.set(b2, null);
+      const v2 = bindingUncached(f2, b2);
+      bindings.set(b2, v2);
+      return v2;
+    };
+    const bindingUncached = (f2, b2) => {
+      if (b2.kind === "import") {
+        const entry = importOf(f2, b2);
+        return entry ? importVal(f2, entry) : unknown("import");
+      }
+      if (b2.unit) return unitVal(f2, b2.unit);
+      switch (b2.kind) {
+        case "class":
+          return staticSide(f2, b2.decl);
+        case "type":
+          return declaredType(f2, b2.decl);
+        case "function":
+        case "enum":
+        case "namespace":
+          return NONE3;
+        case "typeparam":
+          return unknown("type parameter");
+      }
+      if (b2.typeNode < 0 && b2.init < 0) return unknown(b2.kind === "param" ? "untyped parameter" : b2.kind === "catch" ? "caught value" : "variable without initializer");
+      let v2 = b2.typeNode >= 0 ? typeVal(f2, b2.typeNode) : evalExpr(f2, b2.init);
+      for (const key of b2.path ?? []) {
+        if (positional(key)) return unknown("destructured rest or array element");
+        v2 = memberOf(v2, key).next;
+      }
+      return v2;
+    };
+    const unitVal = (f2, u) => {
+      switch (u.kind) {
+        case "class":
+        case "function":
+        case "namespace":
+          return { ...staticSide(f2, u.valueNode), units: [u] };
+        case "type":
+          return { ...declaredType(f2, u.valueNode), units: [u] };
+        case "value":
+          return { ...valueUnitVal(f2, u), units: [u] };
+        default:
+          return { units: [u], shapes: [] };
+      }
+    };
+    const staticSide = (f2, node) => {
+      const s = f2.shapes.get(node);
+      return s ? shaped(s, "static", f2) : NONE3;
+    };
+    const declaredType = (f2, decl) => {
+      const s = f2.shapes.get(decl);
+      if (s) return shaped(s, "instance", f2);
+      return f2.flat.type[decl] === "type_alias_declaration" ? typeVal(f2, child(f2.flat, decl, "value")) : NONE3;
+    };
+    const valueUnitVal = (f2, u) => {
+      const t = f2.flat;
+      if (t.type[u.valueNode] === "object") {
+        const s = f2.shapes.get(u.valueNode);
+        return s ? shaped(s, "instance", f2) : NONE3;
+      }
+      if (t.type[u.node] === "variable_declarator") return child(t, u.node, "type") >= 0 ? typeVal(f2, annotatedType(t, u.node)) : evalExpr(f2, child(t, u.node, "value"));
+      return u.valueNode >= 0 ? evalExpr(f2, u.valueNode) : NONE3;
+    };
+    const evalExpr = perNode2("no expression", (f2, n) => evaluate(f2, n));
+    const evaluate = (f2, n) => {
+      const t = f2.flat;
+      switch (t.type[n]) {
+        case "identifier":
+        case "shorthand_property_identifier": {
+          const name2 = textOf(t, n);
+          const b2 = lookup(scopeAt(f2, n), name2, VALUE | NS);
+          if (b2) return bindingVal(f2, b2);
+          return name2 === "exports" ? moduleVal(f2.path) : unknown(\`global \${name2}\`);
+        }
+        case "this":
+          return thisVal(f2, n);
+        case "parenthesized_expression":
+        case "as_expression":
+        case "satisfies_expression":
+        case "non_null_expression":
+        case "type_assertion":
+          return evalExpr(f2, unwrap(t, n));
+        case "member_expression":
+          return memberExpression(f2, n);
+        case "subscript_expression": {
+          const idx = child(t, n, "index");
+          if (t.type[idx] !== "string") return unknown("computed member");
+          return memberOf(receiverVal(f2, child(t, n, "object")), propName(t, idx)).next;
+        }
+        case "new_expression":
+          return newExpression(f2, n);
+        case "call_expression":
+          return callExpression(f2, n);
+        case "await_expression":
+          return awaitExpression(f2, n);
+        case "assignment_expression": {
+          const lhs = child(t, n, "left");
+          if (t.type[lhs] === "member_expression" && propName(t, child(t, lhs, "property")) === "prototype") return evalExpr(f2, lhs);
+          return evalExpr(f2, child(t, n, "right"));
+        }
+        case "ternary_expression":
+          return merge(evalExpr(f2, child(t, n, "consequence")), evalExpr(f2, child(t, n, "alternative")));
+        case "binary_expression":
+          if (!tokensOf(t, n).some((x2) => x2 === "||" || x2 === "??" || x2 === "&&")) return NONE3;
+          return merge(evalExpr(f2, child(t, n, "left")), evalExpr(f2, child(t, n, "right")));
+        case "object":
+          return literalVal(f2, n, "instance");
+        case "class":
+        case "function_expression":
+        case "function":
+        case "arrow_function":
+        case "generator_function":
+          return literalVal(f2, n, "static");
+        case "string":
+        case "template_string":
+        case "number":
+        case "true":
+        case "false":
+        case "null":
+        case "undefined":
+        case "regex":
+        case "array":
+        case "unary_expression":
+        case "update_expression":
+          return NONE3;
+        default:
+          return unknown(\`expression \${t.type[n]}\`);
+      }
+    };
+    const memberExpression = (f2, n) => {
+      const t = f2.flat;
+      const obj = child(t, n, "object");
+      const name2 = propName(t, child(t, n, "property"));
+      if (t.type[obj] === "identifier" && textOf(t, obj) === "module" && !lookup(scopeAt(f2, n), "module", VALUE) && name2 === "exports") return moduleVal(f2.path);
+      if (name2 === "prototype") return asSide(evalExpr(f2, obj), "instance");
+      return memberOf(receiverVal(f2, obj), name2).next;
+    };
+    const newExpression = (f2, n) => {
+      const t = f2.flat;
+      const ctor = child(t, n, "constructor");
+      if (t.type[ctor] === "identifier" && !lookup(scopeAt(f2, n), textOf(t, ctor), VALUE)) return external(\`new \${textOf(t, ctor)}\`);
+      const c = evalExpr(f2, ctor);
+      if (c.external) return external(c.external);
+      if (c.unknown) return unknown(\`new on \${c.unknown}\`);
+      return asSide(c, "instance");
+    };
+    const callExpression = (f2, n) => {
+      const t = f2.flat;
+      const spec = requireSpec(t, n, scopeAt(f2, n));
+      if (spec !== null) {
+        const target = resolveModule(f2.path, spec);
+        return target.path ? moduleVal(target.path) : unknown(\`external module '\${spec}'\`);
+      }
+      const fn = child(t, n, "function");
+      const first = namedChildren(t, child(t, n, "arguments"))[0];
+      if (RETURNS_FIRST.test(fn >= 0 ? textOf(t, fn) : "") && first !== void 0) return evalExpr(f2, first);
+      return unknown("call result");
+    };
+    const awaitExpression = (f2, n) => {
+      const t = f2.flat;
+      const inner = namedChildren(t, n)[0];
+      if (inner !== void 0 && t.type[inner] === "call_expression" && t.type[child(t, inner, "function")] === "import") {
+        const first = namedChildren(t, child(t, inner, "arguments"))[0];
+        const spec = first !== void 0 && t.type[first] === "string" ? propName(t, first) : null;
+        const target = spec ? resolveModule(f2.path, spec).path : void 0;
+        if (target) return namespace(target);
+      }
+      return unknown("awaited value");
+    };
+    const literalVal = (f2, n, side) => {
+      const u = unitOfValue(f2, n);
+      const s = f2.shapes.get(n);
+      return { units: u ? [u] : [], shapes: s ? [{ shape: s, side, file: f2 }] : [] };
+    };
+    const unitsByValue = /* @__PURE__ */ new Map();
+    const unitOfValue = (f2, node) => {
+      let m2 = unitsByValue.get(f2);
+      if (!m2) unitsByValue.set(f2, m2 = new Map(f2.units.filter((u) => u.valueNode >= 0).map((u) => [u.valueNode, u])));
+      return m2.get(node);
+    };
+    const receiverVal = (f2, obj) => {
+      if (f2.flat.type[obj] !== "super") return evalExpr(f2, obj);
+      const self2 = thisVal(f2, obj);
+      if (self2.unknown) return self2;
+      const bases = self2.shapes.flatMap((s) => s.shape.heritage.map((h) => ({ h, side: s.side, file: s.file })));
+      if (bases.length === 0) return unknown("super without a base class");
+      return { ...merge(...bases.map((b2) => asSide(evalExpr(b2.file, b2.h), b2.side))), protoOnly: true };
+    };
     const thisVal = (f2, node) => {
       const t = f2.flat;
+      const shapeOr = (n, side, why) => {
+        const s = f2.shapes.get(n);
+        return s ? shaped(s, side, f2) : unknown(why);
+      };
       let prev = node;
       for (let a = t.parent[node]; a >= 0; prev = a, a = t.parent[a]) {
         const ty = t.type[a];
-        if (ty === "arrow_function") continue;
         if (ty === "public_field_definition" || ty === "field_definition") {
-          if (t.field[prev] !== "value") continue;
-          const cls = classOfBody(t, t.parent[a]);
-          const s = cls >= 0 ? shapeOf(f2, cls) : void 0;
-          return s ? { units: [], shapes: [{ shape: s, side: tokensOf(t, a).includes("static") ? "static" : "instance", file: f2 }] } : unknown("this in a field");
-        }
-        if (ty === "class_static_block") {
-          const cls = classOfBody(t, t.parent[a]);
-          const s = cls >= 0 ? shapeOf(f2, cls) : void 0;
-          return s ? { units: [], shapes: [{ shape: s, side: "static", file: f2 }] } : unknown("this in a static block");
-        }
-        if (ty === "method_definition") {
+          if (t.field[prev] === "value") return shapeOr(classOfBody(t, t.parent[a]), hasToken(t, a, "static") ? "static" : "instance", "this in a field");
+        } else if (ty === "class_static_block") return shapeOr(classOfBody(t, t.parent[a]), "static", "this in a static block");
+        else if (ty === "method_definition") {
           const holder = t.parent[a];
-          if (t.type[holder] === "object") {
-            const s2 = shapeOf(f2, holder);
-            return s2 ? { units: [], shapes: [{ shape: s2, side: "instance", file: f2 }] } : unknown("this in an object method");
-          }
-          const cls = classOfBody(t, holder);
-          const s = cls >= 0 ? shapeOf(f2, cls) : void 0;
-          const isStatic = tokensOf(t, a).includes("static");
-          return s ? { units: [], shapes: [{ shape: s, side: isStatic ? "static" : "instance", file: f2 }] } : unknown("this in a method");
-        }
-        if (ty === "function_declaration" || ty === "generator_function_declaration") {
-          const s = shapeOf(f2, a);
-          return s ? { units: [], shapes: [{ shape: s, side: "instance", file: f2 }] } : unknown("this in a nested function");
-        }
-        if (ty === "function_expression" || ty === "function" || ty === "generator_function") {
-          let ctx = a;
-          while (t.parent[ctx] >= 0 && t.type[t.parent[ctx]] === "parenthesized_expression") ctx = t.parent[ctx];
-          const p = t.parent[ctx];
-          if (p >= 0 && t.type[p] === "pair") {
-            const s = shapeOf(f2, t.parent[p]);
-            return s ? { units: [], shapes: [{ shape: s, side: "instance", file: f2 }] } : unknown("this in an object function");
-          }
-          if (p >= 0 && t.type[p] === "assignment_expression" && t.field[ctx] === "right") {
-            const lhs = child(t, p, "left");
-            if (t.type[lhs] === "member_expression") {
-              const obj = unwrap(t, child(t, lhs, "object"));
-              const owner = protoOwner(f2, obj);
-              if (owner) return asSide(owner, "instance");
-              return evalExpr(f2, obj);
-            }
-          }
-          if (p >= 0 && t.type[p] === "variable_declarator") {
-            const s = shapeOf(f2, a);
-            if (s) return { units: [], shapes: [{ shape: s, side: "instance", file: f2 }] };
-          }
-          return unknown("this in a function expression");
-        }
-        if (ty === "class_body" || ty === "program") break;
+          if (t.type[holder] === "object") return shapeOr(holder, "instance", "this in an object method");
+          return shapeOr(classOfBody(t, holder), hasToken(t, a, "static") ? "static" : "instance", "this in a method");
+        } else if (ty === "function_declaration" || ty === "generator_function_declaration") return shapeOr(a, "instance", "this in a nested function");
+        else if (FUNCTION_EXPRESSIONS.has(ty)) return functionThis(f2, a);
+        else if (ty === "class_body" || ty === "program") break;
       }
       return unknown("top-level this");
+    };
+    const functionThis = (f2, fn) => {
+      const t = f2.flat;
+      let ctx = fn;
+      while (t.type[t.parent[ctx]] === "parenthesized_expression") ctx = t.parent[ctx];
+      const p = t.parent[ctx];
+      if (t.type[p] === "pair") {
+        const s2 = f2.shapes.get(t.parent[p]);
+        return s2 ? shaped(s2, "instance", f2) : unknown("this in an object function");
+      }
+      const lhs = child(t, p, "left");
+      if (t.type[p] === "assignment_expression" && t.field[ctx] === "right" && t.type[lhs] === "member_expression") {
+        const obj = unwrap(t, child(t, lhs, "object"));
+        const owner = protoOwner(f2, obj);
+        return owner ? asSide(owner, "instance") : evalExpr(f2, obj);
+      }
+      const s = t.type[p] === "variable_declarator" ? f2.shapes.get(fn) : void 0;
+      return s ? shaped(s, "instance", f2) : unknown("this in a function expression");
     };
     const protoOwner = (f2, obj) => {
       const t = f2.flat;
       if (t.type[obj] === "identifier") {
         const owner = f2.protoAliases.get(textOf(t, obj));
-        if (owner) {
-          const b2 = lookup(f2.module, owner, VALUE);
-          return b2 ? bindingVal(f2, b2) : null;
-        }
-        return null;
+        const b2 = owner ? lookup(f2.module, owner, VALUE) : null;
+        return b2 ? bindingVal(f2, b2) : null;
       }
       if (t.type[obj] === "member_expression" && propName(t, child(t, obj, "property")) === "prototype") return evalExpr(f2, unwrap(t, child(t, obj, "object")));
       return null;
     };
-    const asSide = (v2, side) => ({
-      units: [],
-      shapes: v2.shapes.map((s) => ({ ...s, side: s.shape.kind === "class" || s.shape.kind === "function" ? side : s.side })),
-      ...v2.unknown ? { unknown: v2.unknown } : {}
-    });
-    const typeMemo = /* @__PURE__ */ new Map();
-    const typeVal = (f2, n) => {
-      if (n < 0) return unknown("no type");
-      let m2 = typeMemo.get(f2);
-      if (!m2) typeMemo.set(f2, m2 = /* @__PURE__ */ new Map());
-      if (m2.has(n)) return m2.get(n) ?? unknown("cycle");
-      m2.set(n, null);
-      const v2 = typeUncached(f2, n);
-      m2.set(n, v2);
-      return v2;
-    };
-    const typeUncached = (f2, n) => {
+    const typeVal = perNode2("no type", (f2, n) => typeOf2(f2, n));
+    const typeOf2 = (f2, n) => {
       const t = f2.flat;
-      const ty = t.type[n];
-      switch (ty) {
+      switch (t.type[n]) {
         case "type_annotation":
-          return typeVal(f2, namedChildren(t, n)[0] ?? -1);
         case "parenthesized_type":
           return typeVal(f2, namedChildren(t, n)[0] ?? -1);
         case "type_identifier": {
-          const scope = scopeAt(f2, n);
           const name2 = textOf(t, n);
-          const b2 = lookup(scope, name2, TYPE);
-          if (!b2) return COMPUTED.has(name2) || SAME_MEMBERS.has(name2) ? unknown(\`global type \${name2}\`) : { ...NONE3, external: \`global type \${name2}\` };
-          return asSide(bindingVal(f2, b2), "instance");
+          const b2 = lookup(scopeAt(f2, n), name2, TYPE);
+          if (b2) return asSide(bindingVal(f2, b2), "instance");
+          return COMPUTED.has(name2) || SAME_MEMBERS.has(name2) ? unknown(\`global type \${name2}\`) : external(\`global type \${name2}\`);
         }
-        case "generic_type": {
-          const name2 = child(t, n, "name");
-          const nameText = name2 >= 0 ? textOf(t, name2) : "";
-          const args2 = child(t, n, "type_arguments");
-          const first = args2 >= 0 ? namedChildren(t, args2)[0] : void 0;
-          if (!lookup(scopeAt(f2, n), nameText, TYPE)) {
-            if (SAME_MEMBERS.has(nameText) && first !== void 0) return typeVal(f2, first);
-            if (nameText === "InstanceType" && first !== void 0 && t.type[first] === "type_query") return asSide(typeVal(f2, first), "instance");
-          }
-          return typeVal(f2, name2);
-        }
-        case "nested_type_identifier": {
-          const mod = child(t, n, "module");
-          const v2 = evalExpr(f2, mod);
-          return asSide(memberOf(v2, textOf(t, child(t, n, "name"))).next, "instance");
-        }
+        case "generic_type":
+          return genericType(f2, n);
+        case "nested_type_identifier":
+          return asSide(memberOf(evalExpr(f2, child(t, n, "module")), textOf(t, child(t, n, "name"))).next, "instance");
         case "union_type": {
           const parts2 = flattenUnion(t, n).filter((c) => !/^(null|undefined|void)$/.test(textOf(t, c)));
-          if (parts2.length === 0) return NONE3;
-          return merge(...parts2.map((c) => typeVal(f2, c)));
+          return parts2.length === 0 ? NONE3 : merge(...parts2.map((c) => typeVal(f2, c)));
         }
         case "intersection_type":
           return merge(...namedChildren(t, n).map((c) => typeVal(f2, c)));
         case "object_type": {
-          const s = shapeOf(f2, n);
-          return s ? { units: [], shapes: [{ shape: s, side: "instance", file: f2 }] } : NONE3;
+          const s = f2.shapes.get(n);
+          return s ? shaped(s, "instance", f2) : NONE3;
         }
         case "type_query":
           return evalExpr(f2, namedChildren(t, n)[0] ?? -1);
@@ -13451,195 +13544,59 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
         case "template_literal_type":
           return NONE3;
         default:
-          return unknown(\`type \${ty}\`);
+          return unknown(\`type \${t.type[n]}\`);
       }
     };
-    const scopeAt = (f2, n) => {
+    const genericType = (f2, n) => {
       const t = f2.flat;
-      for (let a = t.parent[n]; a >= 0; a = t.parent[a]) {
-        const s = f2.scopeOfNode.get(a);
-        if (s) return s;
+      const name2 = child(t, n, "name");
+      const nameText = name2 >= 0 ? textOf(t, name2) : "";
+      const first = namedChildren(t, child(t, n, "type_arguments"))[0];
+      if (first !== void 0 && !lookup(scopeAt(f2, n), nameText, TYPE)) {
+        if (SAME_MEMBERS.has(nameText)) return typeVal(f2, first);
+        if (nameText === "InstanceType" && t.type[first] === "type_query") return asSide(typeVal(f2, first), "instance");
       }
-      return f2.module;
-    };
-    const evalExpr = (f2, n) => {
-      if (n < 0) return unknown("no expression");
-      const m2 = memoOf(f2);
-      if (m2.has(n)) return m2.get(n) ?? unknown("cycle");
-      m2.set(n, null);
-      const v2 = evalUncached(f2, n);
-      m2.set(n, v2);
-      return v2;
-    };
-    const evalUncached = (f2, n) => {
-      const t = f2.flat;
-      const ty = t.type[n];
-      switch (ty) {
-        case "identifier":
-        case "shorthand_property_identifier": {
-          const name2 = textOf(t, n);
-          const b2 = lookup(scopeAt(f2, n), name2, VALUE | NS);
-          if (b2) return bindingVal(f2, b2);
-          if (name2 === "exports") return moduleVal(f2.path);
-          return unknown(\`global \${name2}\`);
-        }
-        case "this":
-          return thisVal(f2, n);
-        case "parenthesized_expression":
-        case "as_expression":
-        case "satisfies_expression":
-        case "non_null_expression":
-        case "type_assertion":
-          return evalExpr(f2, unwrap(t, n));
-        case "member_expression": {
-          const obj = child(t, n, "object");
-          const name2 = propName(t, child(t, n, "property"));
-          if (t.type[obj] === "identifier" && textOf(t, obj) === "module" && !lookup(scopeAt(f2, n), "module", VALUE) && name2 === "exports") return moduleVal(f2.path);
-          if (name2 === "prototype") return asSide(evalExpr(f2, obj), "instance");
-          return memberOf(receiverVal(f2, obj), name2).next;
-        }
-        case "subscript_expression": {
-          const idx = child(t, n, "index");
-          if (t.type[idx] !== "string") return unknown("computed member");
-          return memberOf(receiverVal(f2, child(t, n, "object")), propName(t, idx)).next;
-        }
-        case "new_expression": {
-          const ctor = child(t, n, "constructor");
-          if (t.type[ctor] === "identifier" && !lookup(scopeAt(f2, n), textOf(t, ctor), VALUE)) return { ...NONE3, external: \`new \${textOf(t, ctor)}\` };
-          const c = evalExpr(f2, ctor);
-          if (c.external) return { ...NONE3, external: c.external };
-          if (c.unknown) return unknown(\`new on \${c.unknown}\`);
-          return asSide(c, "instance");
-        }
-        case "call_expression": {
-          const spec = requireSpec(t, n, scopeAt(f2, n));
-          if (spec !== null) {
-            const target = resolveModule(f2.path, spec);
-            if (target.path) return moduleVal(target.path);
-            return unknown(\`external module '\${spec}'\`);
-          }
-          const fn = child(t, n, "function");
-          const fnText = fn >= 0 ? textOf(t, fn) : "";
-          if (/^(Object\\.)?(freeze|seal|assign)$|^Object(Freeze|Seal|Assign)$/.test(fnText)) {
-            const args2 = child(t, n, "arguments");
-            const first = args2 >= 0 ? namedChildren(t, args2)[0] : void 0;
-            if (first !== void 0) return evalExpr(f2, first);
-          }
-          return unknown("call result");
-        }
-        case "await_expression": {
-          const inner = namedChildren(t, n)[0];
-          if (inner !== void 0 && t.type[inner] === "call_expression" && t.type[child(t, inner, "function")] === "import") {
-            const args2 = child(t, inner, "arguments");
-            const first = args2 >= 0 ? namedChildren(t, args2)[0] : void 0;
-            const spec = first !== void 0 && t.type[first] === "string" ? propName(t, first) : null;
-            const target = spec ? resolveModule(f2.path, spec) : null;
-            if (target?.path && byPath.has(target.path)) return { units: [], shapes: [], module: target.path };
-          }
-          return unknown("awaited value");
-        }
-        case "assignment_expression": {
-          const lhs = child(t, n, "left");
-          if (t.type[lhs] === "member_expression" && propName(t, child(t, lhs, "property")) === "prototype") return evalExpr(f2, lhs);
-          return evalExpr(f2, child(t, n, "right"));
-        }
-        case "ternary_expression":
-          return merge(evalExpr(f2, child(t, n, "consequence")), evalExpr(f2, child(t, n, "alternative")));
-        case "binary_expression": {
-          const op = tokensOf(t, n).find((x2) => x2 === "||" || x2 === "??" || x2 === "&&");
-          if (!op) return NONE3;
-          return merge(evalExpr(f2, child(t, n, "left")), evalExpr(f2, child(t, n, "right")));
-        }
-        case "object": {
-          const s = shapeOf(f2, n);
-          const u = unitOfValue(f2, n);
-          return { units: u ? [u] : [], shapes: s ? [{ shape: s, side: "instance", file: f2 }] : [] };
-        }
-        case "class": {
-          const s = shapeOf(f2, n);
-          const u = unitOfValue(f2, n);
-          return { units: u ? [u] : [], shapes: s ? [{ shape: s, side: "static", file: f2 }] : [] };
-        }
-        case "function_expression":
-        case "function":
-        case "arrow_function":
-        case "generator_function": {
-          const u = unitOfValue(f2, n);
-          const s = shapeOf(f2, n);
-          return { units: u ? [u] : [], shapes: s ? [{ shape: s, side: "static", file: f2 }] : [] };
-        }
-        case "string":
-        case "template_string":
-        case "number":
-        case "true":
-        case "false":
-        case "null":
-        case "undefined":
-        case "regex":
-        case "array":
-        case "unary_expression":
-        case "update_expression":
-          return NONE3;
-        default:
-          return unknown(\`expression \${ty}\`);
-      }
-    };
-    const receiverVal = (f2, obj) => {
-      const t = f2.flat;
-      if (obj >= 0 && t.type[obj] === "super") {
-        const self2 = thisVal(f2, obj);
-        if (self2.unknown) return self2;
-        const bases = self2.shapes.flatMap((s) => s.shape.heritage.map((h) => ({ h, side: s.side, file: s.file })));
-        if (bases.length === 0) return unknown("super without a base class");
-        return { ...merge(...bases.map((b2) => asSide(evalExpr(b2.file, b2.h), b2.side))), protoOnly: true };
-      }
-      return evalExpr(f2, obj);
+      return typeVal(f2, name2);
     };
     const memberCache = /* @__PURE__ */ new Map();
-    const membersOf = (s, side, f2) => {
+    const membersOf3 = (s, side, f2) => {
       let bySide = memberCache.get(s);
       if (!bySide) memberCache.set(s, bySide = /* @__PURE__ */ new Map());
       let list = bySide.get(side);
-      if (!list) bySide.set(side, list = membersUncached(s, side, f2));
+      if (!list) bySide.set(side, list = sideMembers(s, side, f2));
       return list;
     };
-    const membersUncached = (s, side, f2) => {
-      const own = s.members.filter((m2) => s.kind === "class" || s.kind === "function" ? m2.static === (side === "static") : true);
-      if (s.kind !== "class" && s.kind !== "function") return own;
-      const extra = [];
-      for (const a of f2.assignments) {
-        if (a.owner !== s.name || a.proto !== (side === "instance")) continue;
-        if (a.name === "*") {
-          const os = f2.shapes.get(a.value);
-          if (os) extra.push(...os.members);
-          continue;
-        }
-        extra.push({ name: a.name, static: side === "static", kind: "proto", node: a.node, nameStart: a.nameStart, ...a.unit ? { unit: a.unit } : {}, value: a.value, typeNode: -1 });
-      }
-      return [...own, ...extra];
+    const sideMembers = (s, side, f2) => {
+      if (!hasSides(s)) return s.members;
+      const isStatic = side === "static";
+      const assigned = f2.assignments.filter((a) => a.owner === s.name && a.proto !== isStatic).flatMap((a) => a.name === "*" ? f2.shapes.get(a.value)?.members ?? [] : [{ name: a.name, static: isStatic, kind: "proto", ...a.unit ? { unit: a.unit } : {}, value: a.value, typeNode: -1 }]);
+      return [...s.members.filter((m2) => m2.static === isStatic), ...assigned];
     };
-    const memberOf = (v2, name2, depth = 0, write = false) => {
+    const memberOf = (v2, name2, write = false, depth = 0) => {
       if (depth > 8) return { units: [], next: unknown("deep inheritance"), found: "unknown", why: "deep inheritance" };
       if (v2.module) {
         const e = exportVal(v2.module, name2, /* @__PURE__ */ new Set());
         if (e) return { units: e.units, next: e, found: e.unknown && e.units.length === 0 ? "unknown" : "yes", ...e.unknown ? { why: e.unknown } : {} };
-        if (v2.shapes.length === 0) return { units: [], next: NONE3, found: "no" };
+        if (v2.shapes.length === 0) return NOT_FOUND;
       }
-      if (v2.external && v2.shapes.length === 0 && !v2.module) return { units: [], next: { ...NONE3, external: v2.external }, found: "no" };
-      if (v2.unknown && v2.shapes.length === 0) return { units: [], next: unknown(\`member of \${v2.unknown}\`), found: "unknown", why: v2.unknown };
-      if (v2.shapes.length === 0) return { units: [], next: NONE3, found: "no" };
+      if (v2.shapes.length > 0) return shapesMember(v2, name2, write, depth);
+      if (v2.external) return { units: [], next: external(v2.external), found: "no" };
+      if (v2.unknown) return { units: [], next: unknown(\`member of \${v2.unknown}\`), found: "unknown", why: v2.unknown };
+      return NOT_FOUND;
+    };
+    const shapesMember = (v2, name2, write, depth) => {
       const units = [];
       const nexts = [];
       let found = false;
       let open = false;
       let why = "";
       for (const { shape, side, file } of v2.shapes) {
-        if (name2 === "prototype" && side === "static" && (shape.kind === "class" || shape.kind === "function")) {
-          nexts.push({ units: [], shapes: [{ shape, side: "instance", file }] });
+        if (name2 === "prototype" && side === "static" && hasSides(shape)) {
+          nexts.push(shaped(shape, "instance", file));
           found = true;
           continue;
         }
-        const hits = membersOf(shape, side, file).filter((m2) => m2.name === name2 && !(v2.protoOnly && m2.kind === "this"));
+        const hits = membersOf3(shape, side, file).filter((m2) => m2.name === name2 && !(v2.protoOnly && m2.kind === "this"));
         if (hits.length > 0) {
           found = true;
           const always = hits.some((m2) => !m2.conditional);
@@ -13655,16 +13612,12 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
         if (shape.open) open = true;
         for (const h of shape.heritage) {
           const base = shape.kind === "interface" ? typeVal(file, h) : asSide(evalExpr(file, h), side);
-          if ((base.unknown || base.external) && base.shapes.length === 0) {
-            if (base.external) {
-              why || (why = \`inherits from \${base.external}\`);
-              continue;
-            }
-            open = true;
-            why || (why = \`inherits from \${base.unknown}\`);
+          if (base.shapes.length === 0 && (base.unknown || base.external)) {
+            if (!base.external) open = true;
+            why || (why = \`inherits from \${base.external ?? base.unknown}\`);
             continue;
           }
-          const r = memberOf(base, name2, depth + 1, write);
+          const r = memberOf(base, name2, write, depth + 1);
           if (r.found === "yes") {
             found = true;
             units.push(...r.units);
@@ -13677,97 +13630,21 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
       }
       if (found) return { units: [...new Set(units)], next: merge(...nexts), found: "yes" };
       if (open || v2.unknown) return { units: [], next: unknown(why || "open object"), found: "unknown", why: why || v2.unknown || "open object" };
-      return { units: [], next: NONE3, found: "no" };
+      return NOT_FOUND;
     };
     const memberValue = (f2, m2) => {
-      const t = f2.flat;
-      if (m2.kind === "method" || m2.kind === "get" || m2.kind === "set" || m2.kind === "signature") {
-        return m2.unit ? { units: [m2.unit], shapes: [] } : NONE3;
-      }
+      if (m2.kind === "method" || m2.kind === "get" || m2.kind === "set" || m2.kind === "signature") return m2.unit ? { units: [m2.unit], shapes: [] } : NONE3;
       if (m2.typeNode >= 0) return typeVal(f2, m2.typeNode);
       if (m2.kind === "shorthand") {
-        const b2 = lookup(scopeAt(f2, m2.value), textOf(t, m2.value), VALUE);
+        const b2 = lookup(scopeAt(f2, m2.value), textOf(f2.flat, m2.value), VALUE);
         return b2 ? bindingVal(f2, b2) : unknown("shorthand");
       }
-      if (m2.value >= 0) return evalExpr(f2, m2.value);
-      return unknown("member without value");
+      return m2.value >= 0 ? evalExpr(f2, m2.value) : unknown("member without value");
     };
-    const resolveSite = (f2, s) => {
-      const t = f2.flat;
-      if (s.form === "import" && s.importEntry) return s.importEntry.imported === "*" ? [] : importVal(f2, s.importEntry).units;
-      if (s.form === "require" && s.keyPath) {
-        let a = s.node;
-        while (a >= 0 && t.type[a] !== "variable_declarator") a = t.parent[a];
-        let v2 = a >= 0 ? evalExpr(f2, child(t, a, "value")) : unknown("require");
-        for (const key of s.keyPath) {
-          if (key === "..." || /^\\d+$/.test(key)) return [];
-          const m2 = memberOf(v2, key);
-          v2 = m2.units.length > 0 ? { ...m2.next, units: m2.units } : m2.next;
-        }
-        return v2.units;
-      }
-      if (s.form === "export" && s.exportEntry) {
-        const e = s.exportEntry;
-        if (e.kind === "local") {
-          const b2 = lookup(f2.module, e.local, VALUE | TYPE | NS);
-          return !b2 ? [] : b2.unit ? [b2.unit] : b2.kind === "import" ? bindingVal(f2, b2).units : [];
-        }
-        if (e.kind === "reexport") {
-          const target = resolveModule(f2.path, e.spec);
-          return target.path ? exportVal(target.path, e.imported, /* @__PURE__ */ new Set())?.units ?? [] : [];
-        }
-        return [];
-      }
-      if (s.form === "bare") {
-        const meaning = t.type[s.node] === "type_identifier" ? TYPE : s.ref === "type" && t.type[t.parent[s.node]] === "nested_type_identifier" ? NS | VALUE : VALUE | NS;
-        const b2 = lookup(s.scope, s.name, meaning);
-        if (!b2) return [];
-        if (b2.kind === "import") {
-          const entry = f2.imports.find((i2) => i2.node === b2.node || i2.local === b2.name);
-          return entry && (entry.imported === "*" || entry.imported === "=") ? [] : bindingVal(f2, b2).units;
-        }
-        return b2.unit ? [b2.unit, ...requireAlias(f2, b2)] : [];
-      }
-      const recv = t.type[t.parent[s.node]] === "nested_type_identifier" ? evalExpr(f2, s.receiver) : receiverVal(f2, s.receiver);
-      const hit = memberOf(recv, s.name, 0, s.ref === "write");
-      return hit.found === "yes" ? hit.units : [];
-    };
-    const requireAlias = (f2, b2) => {
-      const t = f2.flat;
-      if (b2.init < 0 || b2.path) return [];
-      const keys = [];
-      let e = unwrap(t, b2.init);
-      while (e >= 0 && t.type[e] === "member_expression") {
-        keys.unshift(propName(t, child(t, e, "property")));
-        e = unwrap(t, child(t, e, "object"));
-      }
-      const spec = requireSpec(t, e, scopeAt(f2, e));
-      const target = spec === null ? null : resolveModule(f2.path, spec);
-      const m2 = target?.path ? byPath.get(target.path) : void 0;
-      if (!m2) return [];
-      let v2 = m2.moduleExports >= 0 ? evalExpr(m2, m2.moduleExports) : exportVal(m2.path, "default", /* @__PURE__ */ new Set()) ?? { units: [], shapes: [], module: m2.path };
-      if (keys.length > 0) v2 = moduleVal(m2.path);
-      for (const k2 of keys) {
-        const hit = memberOf(v2, k2);
-        v2 = hit.units.length > 0 ? { ...hit.next, units: hit.units } : hit.next;
-      }
-      return v2.units.filter((u) => u !== b2.unit);
-    };
-    return { resolveModule, resolveSite };
+    return { byPath, resolveModule, importVal, moduleVal, exportVal, bindingVal, evalExpr, receiverVal, memberOf };
   };
-  var resolveAll = (files, changed, config) => {
-    const program2 = createProgram2(files, config);
-    const holdsCards = (f2) => changed.has(f2.path) || f2.specifiers.some((sp) => changed.has(program2.resolveModule(f2.path, sp.spec).path ?? ""));
-    const refs = [];
-    for (const f2 of files) {
-      if (!holdsCards(f2)) continue;
-      for (const s of f2.sites) {
-        const units = program2.resolveSite(f2, s);
-        if (units.length > 0) refs.push({ path: f2.path, start: s.start, line: s.line, ref: s.ref, units });
-      }
-    }
-    return refs;
-  };
+
+  // src/lib/linker/builtins.ts
   var NODE_BUILTINS = /* @__PURE__ */ new Set([
     "_http_agent",
     "_http_client",
@@ -13842,9 +13719,12 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
     "node:test",
     "node:test/reporters"
   ]);
+  var SOURCES = {
+    "nodejs/node": (name2) => \`lib/\${name2}.js\`,
+    "oven-sh/bun": (name2) => \`src/js/node/\${name2.replaceAll("/", ".")}.ts\`
+  };
   var builtinRule = (base, changed) => {
-    const repo = \`\${base.owner}/\${base.repo}\`.toLowerCase();
-    const fileOf = repo === "nodejs/node" ? (name2) => \`lib/\${name2}.js\` : repo === "oven-sh/bun" ? (name2) => \`src/js/node/\${name2.replaceAll("/", ".")}.ts\` : null;
+    const fileOf = SOURCES[\`\${base.owner}/\${base.repo}\`.toLowerCase()];
     if (!fileOf) return () => null;
     return (spec) => {
       const name2 = spec.replace(/^node:/, "");
@@ -13853,36 +13733,605 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
       return changed.has(path) ? path : null;
     };
   };
-  var classOfBody = (t, body2) => body2 >= 0 && t.type[body2] === "class_body" ? t.parent[body2] : -1;
-  var flattenUnion = (t, n) => t.type[n] === "union_type" ? namedChildren(t, n).flatMap((c) => flattenUnion(t, c)) : [n];
 
-  // src/lib/sources.ts
-  var READ = { code: 40, tests: 40, chars: 4e5, imports: 300, inFlight: 16 };
-  var topDir = (path) => path.includes("/") ? path.split("/")[0] : "";
-  var pickFiles = (files, max) => {
-    if (files.length <= max) return [...files];
-    const size = (f2) => f2.additions + f2.deletions;
-    const total = files.reduce((n, f2) => n + size(f2), 0);
-    const byLanguage = /* @__PURE__ */ new Map();
-    for (const f2 of files) byLanguage.set(languageOf(f2.path), (byLanguage.get(languageOf(f2.path)) ?? 0) + size(f2));
-    const main = new Set([...byLanguage].filter(([, n]) => n >= total / 10).map(([lang]) => lang));
-    const groups = /* @__PURE__ */ new Map();
-    for (const f2 of files.filter((f3) => main.has(languageOf(f3.path)))) {
-      const group = groups.get(topDir(f2.path));
-      if (group) group.push(f2);
-      else groups.set(topDir(f2.path), [f2]);
+  // src/lib/linker.ts
+  var resolveAll = (files, changed, config) => {
+    const evaluator = createEvaluator(files, config);
+    const resolveSite2 = siteResolver(evaluator);
+    const holdsCards = (f2) => changed.has(f2.path) || f2.specifiers.some((spec) => changed.has(evaluator.resolveModule(f2.path, spec).path ?? ""));
+    const refs = [];
+    for (const f2 of files.filter(holdsCards)) {
+      for (const s of f2.sites) {
+        const units = resolveSite2(f2, s);
+        if (units.length > 0) refs.push({ path: f2.path, start: s.start, line: s.line, ref: s.ref, units });
+      }
     }
-    const queues = [...groups.values()].map((g) => [...g].sort((a, b2) => size(b2) - size(a))).sort((a, b2) => b2.reduce((n, f2) => n + size(f2), 0) - a.reduce((n, f2) => n + size(f2), 0));
-    const picked = /* @__PURE__ */ new Set();
-    while (picked.size < max && queues.some((q2) => q2.length > 0)) for (const q2 of queues) if (q2.length > 0 && picked.size < max) picked.add(q2.shift());
-    return files.filter((f2) => picked.has(f2));
+    return refs;
   };
-  var changedSources = (files) => {
-    const live = files.filter((f2) => f2.status !== "removed");
-    const code2 = live.filter((f2) => roleOf(f2.path) === "code" && languageOf(f2.path) !== "text" && (grammarOf(f2.path) !== null || f2.patch !== void 0 || f2.status === "added"));
-    const tests = live.filter((f2) => roleOf(f2.path) === "test" && grammarOf(f2.path) !== null && !langOf(f2.path)?.local);
-    return [...pickFiles(code2, READ.code), ...pickFiles(tests, READ.tests)];
+  var siteResolver = ({ byPath, resolveModule, importVal, moduleVal, exportVal, bindingVal, evalExpr, receiverVal, memberOf }) => {
+    const resolveSite2 = (f2, s) => {
+      if (s.importEntry) return s.importEntry.imported === "*" ? [] : importVal(f2, s.importEntry).units;
+      if (s.keyPath) return requiredUnits(f2, s.node, s.keyPath);
+      if (s.exportEntry) return exportedUnits(f2, s.exportEntry);
+      return s.form === "bare" ? bareUnits(f2, s) : memberUnits(f2, s);
+    };
+    const requiredUnits = (f2, node, keyPath) => {
+      const t = f2.flat;
+      let a = node;
+      while (a >= 0 && t.type[a] !== "variable_declarator") a = t.parent[a];
+      let v2 = a >= 0 ? evalExpr(f2, child(t, a, "value")) : unknown("require");
+      for (const key of keyPath) {
+        if (positional(key)) return [];
+        v2 = step(v2, key);
+      }
+      return v2.units;
+    };
+    const exportedUnits = (f2, e) => {
+      if (e.kind === "local") {
+        const b2 = lookup(f2.module, e.local, VALUE | TYPE | NS);
+        if (!b2) return [];
+        if (b2.unit) return [b2.unit];
+        return b2.kind === "import" ? bindingVal(f2, b2).units : [];
+      }
+      if (e.kind !== "reexport") return [];
+      const target = resolveModule(f2.path, e.spec);
+      return target.path ? exportVal(target.path, e.imported, /* @__PURE__ */ new Set())?.units ?? [] : [];
+    };
+    const bareUnits = (f2, s) => {
+      const b2 = lookup(s.scope, s.name, f2.flat.type[s.node] === "type_identifier" ? TYPE : VALUE | NS);
+      if (!b2) return [];
+      if (b2.kind === "import") {
+        const entry = importOf(f2, b2);
+        return entry && (entry.imported === "*" || entry.imported === "=") ? [] : bindingVal(f2, b2).units;
+      }
+      return b2.unit ? [b2.unit, ...requireAlias(f2, b2)] : [];
+    };
+    const memberUnits = (f2, s) => {
+      const t = f2.flat;
+      const receiver = t.type[t.parent[s.node]] === "nested_type_identifier" ? evalExpr(f2, s.receiver) : receiverVal(f2, s.receiver);
+      const hit = memberOf(receiver, s.name, s.ref === "write");
+      return hit.found === "yes" ? hit.units : [];
+    };
+    const requireAlias = (f2, b2) => {
+      const t = f2.flat;
+      if (b2.init < 0 || b2.path) return [];
+      const keys = [];
+      let e = unwrap(t, b2.init);
+      while (t.type[e] === "member_expression") {
+        keys.unshift(propName(t, child(t, e, "property")));
+        e = unwrap(t, child(t, e, "object"));
+      }
+      const spec = requireSpec(t, e, scopeAt(f2, e));
+      const m2 = spec === null ? void 0 : byPath.get(resolveModule(f2.path, spec).path ?? "");
+      if (!m2) return [];
+      let v2 = keys.length > 0 ? moduleVal(m2.path) : m2.moduleExports >= 0 ? evalExpr(m2, m2.moduleExports) : exportVal(m2.path, "default", /* @__PURE__ */ new Set()) ?? namespace(m2.path);
+      for (const k2 of keys) v2 = step(v2, k2);
+      return v2.units.filter((u) => u !== b2.unit);
+    };
+    const step = (v2, key) => {
+      const hit = memberOf(v2, key);
+      return hit.units.length > 0 ? { ...hit.next, units: hit.units } : hit.next;
+    };
+    return resolveSite2;
   };
+
+  // src/lib/model/changes.ts
+  var pinFrom = (s) => Math.min(s.from, s.start);
+  var parsedChanges = (path, lang, parsed, hunks, nameOf) => {
+    const text = parsed.flat.text.split("\\n");
+    const changed = allLines(hunks).filter((l3) => l3.t !== "ctx" && !(l3.t === "add" && (text[l3.at - 1] ?? "").trim() === ""));
+    const owners = innermostByLine(parsed.units, text.length, (u) => [u.docLine, u.endLine]);
+    const [owned, loose] = partition(changed, (l3) => owners[l3.at] !== void 0);
+    const linesOf = new Map(parsed.units.map((u) => [u, []]));
+    for (const l3 of owned) linesOf.get(owners[l3.at]).push(l3);
+    const added = addedLines(changed);
+    const units = parsed.units.filter((u) => linesOf.get(u).length > 0);
+    const symbols = units.map(
+      (u) => ({
+        id: u.id,
+        path,
+        lang,
+        name: u.name,
+        label: nameOf(u),
+        kind: u.kind,
+        status: added.has(u.nameLine) ? "new" : "changed",
+        start: u.startLine,
+        end: u.endLine,
+        ...changeSpan(linesOf.get(u))
+      })
+    );
+    return { symbols, loose: looseRuns(path, loose), units };
+  };
+  var reviewFiles = (prFiles, analysed, heads, nameOf) => {
+    const units = /* @__PURE__ */ new Map();
+    const changesOf = (f2, role5, lang, hunks) => {
+      const parsed = role5 === "code" && f2.status !== "removed" ? analysed.facts.get(f2.path) : void 0;
+      if (!parsed) return role5 === "code" ? changedSymbols(f2.path, lang, heads.get(f2.path) ?? null, hunks) : { symbols: [], loose: [] };
+      const found = parsedChanges(f2.path, lang, parsed, hunks, nameOf);
+      for (const u of found.units) units.set(u.id, u);
+      return found;
+    };
+    const files = prFiles.map((f2) => {
+      const role5 = roleOf(f2.path);
+      const lang = languageOf(f2.path);
+      const whole = f2.patch === void 0 && f2.status === "added" ? analysed.texts.get(f2.path) : void 0;
+      const hunks = f2.patch ? parsePatch(f2.patch) : whole !== void 0 ? addedHunks(whole) : [];
+      const found = changesOf(f2, role5, lang, hunks);
+      return {
+        path: f2.path,
+        ...f2.previousPath ? { previousPath: f2.previousPath } : {},
+        status: f2.status,
+        role: role5,
+        lang,
+        additions: f2.additions,
+        deletions: f2.deletions,
+        hunks,
+        hasPatch: f2.patch !== void 0 || whole !== void 0,
+        symbols: found.symbols,
+        // A loose run inside the lines a change card shows is already on that card.
+        loose: found.loose.filter((r) => !found.symbols.some((s) => pinFrom(s) <= r.from && r.to <= s.end)),
+        cases: role5 === "test" ? testCases(hunks) : []
+      };
+    });
+    return { files, units };
+  };
+
+  // src/lib/model/threads.ts
+  var adjacency = (edges) => mapValues(
+    groupBy(edges, (e) => e.from),
+    (es) => es.map((e) => e.to)
+  );
+  var components = (ids, edges) => {
+    const known = new Set(ids);
+    const next = adjacency([...edges, ...edges.map((e) => ({ from: e.to, to: e.from }))]);
+    const group = /* @__PURE__ */ new Map();
+    let groups = 0;
+    for (const id of ids) {
+      if (group.has(id)) continue;
+      const g = groups++;
+      group.set(id, g);
+      const stack = [id];
+      while (stack.length > 0) {
+        for (const n of next[stack.pop()] ?? []) {
+          if (group.has(n) || !known.has(n)) continue;
+          group.set(n, g);
+          stack.push(n);
+        }
+      }
+    }
+    const out2 = Array.from({ length: groups }, () => []);
+    for (const id of ids) out2[group.get(id)].push(id);
+    return out2;
+  };
+  var layers = (ids, edges) => {
+    const known = new Set(ids);
+    const out2 = adjacency(edges.filter((e) => known.has(e.from) && known.has(e.to) && e.from !== e.to));
+    const state = /* @__PURE__ */ new Map();
+    const kept = [];
+    const visit = (id) => {
+      state.set(id, "open");
+      for (const next of out2[id] ?? []) {
+        const s = state.get(next);
+        if (s === "open") continue;
+        kept.push({ from: id, to: next });
+        if (!s) visit(next);
+      }
+      state.set(id, "done");
+    };
+    for (const id of ids) if (!state.has(id)) visit(id);
+    const layer = new Map(ids.map((id) => [id, 0]));
+    const waiting = new Map(ids.map((id) => [id, 0]));
+    for (const e of kept) waiting.set(e.to, waiting.get(e.to) + 1);
+    const after = adjacency(kept);
+    const ready = [...waiting].filter(([, n]) => n === 0).map(([id]) => id);
+    for (let i2 = 0; i2 < ready.length; i2++) {
+      const a = ready[i2];
+      for (const b2 of after[a] ?? []) {
+        layer.set(b2, Math.max(layer.get(b2), layer.get(a) + 1));
+        waiting.set(b2, waiting.get(b2) - 1);
+        if (waiting.get(b2) === 0) ready.push(b2);
+      }
+    }
+    return layer;
+  };
+  var layThreads = (ids, edges, pinOf) => {
+    const first = /* @__PURE__ */ new Map();
+    for (const [i2, id] of ids.entries()) if (!first.has(id)) first.set(id, i2);
+    const threads = sortBy(
+      components(ids, edges).filter((g) => g.length >= 2),
+      (g) => -g.length,
+      (g) => first.get(g[0])
+    );
+    const threadOf = new Map(threads.flatMap((members, b2) => members.map((id) => [id, b2])));
+    const within = threads.map(() => []);
+    for (const e of edges) {
+      const b2 = threadOf.get(e.from);
+      if (b2 !== void 0 && threadOf.get(e.to) === b2) within[b2].push(e);
+    }
+    const pins = [];
+    const bands = threads.map((members, b2) => {
+      const depth = layers(members, within[b2]);
+      for (const id of members) pins.push(pinOf(id, b2, depth.get(id) + 1));
+      return { entries: members.filter((id) => depth.get(id) === 0) };
+    });
+    return { pins, bands };
+  };
+
+  // src/lib/model/cards.ts
+  var fileName = (path) => path.split("/").pop() ?? path;
+  var nests = (a, b2) => a.path === b2.path && (a.start <= b2.start && b2.end <= a.end || b2.start <= a.start && a.end <= b2.end);
+  var innermost = (units, path, offset) => minBy(
+    units.filter((u) => u.path === path && u.start <= offset && offset < u.end),
+    (u) => u.end - u.start
+  );
+  var prPin = () => ({ id: "pr", kind: "pr", name: "The PR", from: 0, to: 0, band: 0, lane: "flow", column: 0, status: "changed", add: 0, del: 0 });
+  var filePin = (f2, band, lane, column, ranges, name2 = fileName(f2.path)) => ({
+    id: \`file:\${f2.path}\`,
+    kind: "file",
+    name: name2,
+    path: f2.path,
+    from: ranges ? Math.min(...ranges.map((r) => r.from)) : 1,
+    to: ranges ? Math.max(...ranges.map((r) => r.to)) : Number.MAX_SAFE_INTEGER,
+    band,
+    lane,
+    column,
+    status: f2.status === "added" ? "new" : "changed",
+    add: ranges ? sumBy(f2.loose, (l3) => l3.add) : f2.additions,
+    del: ranges ? sumBy(f2.loose, (l3) => l3.del) : f2.deletions,
+    ...ranges ? { ranges } : {}
+  });
+  var testPins = (files, restBand) => files.filter((f2) => f2.role === "test").map((t) => ({ id: \`test:\${t.path}\`, kind: "test", name: fileName(t.path), path: t.path, from: 1, to: Number.MAX_SAFE_INTEGER, band: restBand, lane: "rest", column: 0, status: t.status === "added" ? "new" : "changed", add: t.additions, del: t.deletions }));
+  var unitEdges = (parsed, ctx) => {
+    const { refs, units } = ctx;
+    const changedUnits = groupBy(
+      parsed.map((s) => units.get(s.id)),
+      (u) => u.path
+    );
+    const edges = /* @__PURE__ */ new Map();
+    for (const r of refs) {
+      const src = innermost(changedUnits[r.path] ?? [], r.path, r.start);
+      if (!src || src.kind === "class") continue;
+      for (const named2 of r.units) {
+        const target = !units.has(named2.id) && r.alt ? r.alt : named2;
+        if (!units.has(target.id) || target.id === src.id || nests(src, target)) continue;
+        edges.set(\`\${src.id}>\${target.id}\`, { from: src.id, to: target.id });
+      }
+    }
+    return [...edges.values()];
+  };
+  var fileBoard = ({ files, refs }) => {
+    const code2 = files.filter((f2) => f2.role === "code");
+    const codePaths = new Set(code2.map((f2) => f2.path));
+    const edges = /* @__PURE__ */ new Map();
+    for (const r of refs) {
+      if (!codePaths.has(r.path)) continue;
+      for (const u of r.units) if (u.path !== r.path && codePaths.has(u.path)) edges.set(\`\${r.path}>\${u.path}\`, { from: \`file:\${r.path}\`, to: \`file:\${u.path}\` });
+    }
+    const fileOf = /* @__PURE__ */ new Map();
+    for (const f2 of files) if (!fileOf.has(\`file:\${f2.path}\`)) fileOf.set(\`file:\${f2.path}\`, f2);
+    const flow = layThreads(
+      code2.map((f2) => \`file:\${f2.path}\`),
+      [...edges.values()],
+      (id, band, column) => filePin(fileOf.get(id), band, "flow", column)
+    );
+    const restBand = flow.bands.length;
+    const inFlow = new Set(flow.pins.map((p) => p.id));
+    const rest = files.filter((f2) => f2.role !== "test" && !inFlow.has(\`file:\${f2.path}\`)).map((f2) => filePin(f2, restBand, "rest", 0));
+    return { mode: "files", pins: [prPin(), ...flow.pins, ...rest, ...testPins(files, restBand)], bands: flow.bands };
+  };
+  var symbolBoard = (ctx) => {
+    const { files, heads, units } = ctx;
+    const symbols = files.flatMap((f2) => f2.symbols);
+    const [parsed, patterned] = partition(symbols, (s) => units.has(s.id));
+    const ids = [...parsed, ...patterned].map((s) => s.id);
+    const symbolOf = new Map(symbols.map((s) => [s.id, s]));
+    const changePin = (id, band, lane, column) => {
+      const s = symbolOf.get(id);
+      const from = pinFrom(s);
+      return { id: s.id, kind: "change", name: s.label, path: s.path, symbol: s, from, to: s.end, band, lane, column, status: s.status, add: s.add, del: s.del, head: (heads.get(s.path) ?? []).slice(from - 1, s.end) };
+    };
+    const flow = layThreads(ids, unitEdges(parsed, ctx), (id, band, column) => changePin(id, band, "flow", column));
+    const restBand = flow.bands.length;
+    const inFlow = new Set(flow.pins.map((p) => p.id));
+    const rest = ids.filter((id) => !inFlow.has(id)).map((id) => changePin(id, restBand, "rest", 0));
+    return { mode: "symbols", pins: [prPin(), ...flow.pins, ...rest, ...contextCallers(flow.bands, ctx), ...fileCards(ctx, restBand), ...testPins(files, restBand)], bands: flow.bands };
+  };
+  var isDeprecated = (lines, start2, lang) => {
+    for (let n = start2 - 1; n >= 1 && n >= start2 - 40; n--) {
+      const line = lines[n - 1];
+      if (!isComment(line, lang) && !/^\\s*@/.test(line)) return false;
+      if (/@deprecated\\b/.test(line)) return true;
+    }
+    return false;
+  };
+  var contextCallers = (bands, ctx) => {
+    const { files, heads, facts, refs, units, nameOf } = ctx;
+    const changedPaths = new Set(files.map((f2) => f2.path));
+    const refsTo = groupBy(
+      refs.flatMap((r) => r.units.map((u) => ({ id: u.id, r }))),
+      (x2) => x2.id
+    );
+    const candidates = sortBy(
+      [...facts.values()].filter((f2) => roleOf(f2.path) === "code").flatMap((f2) => f2.units.filter((u) => u.kind === "function" || u.kind === "method")),
+      (u) => u.path,
+      (u) => u.startLine
+    ).filter((u) => !units.has(u.id));
+    const callerOf = (entry, band) => {
+      const sites = (refsTo[entry.id] ?? []).map((x2) => x2.r);
+      if (sites.length === 0) return null;
+      const around = new Set(sites.map((s) => innermost(facts.get(s.path)?.units ?? [], s.path, s.start)));
+      const near = sortBy(candidates, (u2) => u2.path === entry.path ? 0 : changedPaths.has(u2.path) ? 1 : 2);
+      const u = near.find((u2) => around.has(u2) && !nests(u2, entry) && !(entry.name.startsWith("#") && u2.path !== entry.path) && !isDeprecated(heads.get(u2.path) ?? [], u2.startLine, languageOf(u2.path)));
+      if (!u) return null;
+      return { id: \`ctx:\${u.id}\`, kind: "context", name: nameOf(u), path: u.path, from: u.startLine, to: u.endLine, band, lane: "flow", column: 0, status: "unchanged", add: 0, del: 0, head: (heads.get(u.path) ?? []).slice(u.startLine - 1, u.endLine) };
+    };
+    const pins = [];
+    bands.forEach((band, b2) => {
+      for (const entry of band.entries) {
+        const unit5 = units.get(entry);
+        const caller = unit5 ? callerOf(unit5, b2) : null;
+        if (!caller) continue;
+        if (!pins.some((p) => p.id === caller.id)) pins.push(caller);
+        return;
+      }
+    });
+    return pins;
+  };
+  var IMPORT_LINE = /^\\s*(import\\b|from\\s+\\S+\\s+import\\b|export\\s.*\\bfrom\\b|use\\s|#include|require\\(|const\\s.*=\\s*require\\()/;
+  var IMPORTS = /* @__PURE__ */ new Set(["import_from_statement", "future_import_statement", "import_declaration", "use_declaration"]);
+  var importLines = (t) => {
+    const lines = /* @__PURE__ */ new Set();
+    for (let n = t.first[0]; n >= 0; n = t.next[n]) {
+      const ty = t.type[n];
+      const text = textOf(t, n);
+      const isImport = ty === "import_statement" || IMPORTS.has(ty) || ty === "export_statement" && /\\bfrom\\s*["']/.test(text) && !/^export\\s+(default\\s+)?(async\\s+)?(function|class|const|let|var|interface|type|enum)\\b/.test(text) || (ty === "lexical_declaration" || ty === "variable_declaration") && /^\\s*(const|let|var)\\b[^=]*=\\s*require\\s*\\(\\s*["'][^"']+["']\\s*\\)\\s*;?\\s*$/.test(text);
+      if (isImport) for (let l3 = lineOf(t, t.start[n]); l3 <= lineOf(t, Math.max(t.start[n], t.end[n] - 1)); l3++) lines.add(l3);
+    }
+    return lines;
+  };
+  var onlyImports = (f2, ranges, parsed) => {
+    const inImports = parsed ? importLines(parsed.flat) : /* @__PURE__ */ new Set();
+    const lines = allLines(f2.hunks).filter((l3) => l3.t !== "ctx" && l3.text.trim() !== "" && ranges.some((r) => l3.at >= r.from && l3.at <= r.to));
+    return lines.length > 0 && lines.every((l3) => inImports.has(l3.n ?? l3.at) || IMPORT_LINE.test(l3.text));
+  };
+  var fileCards = ({ files, facts }, band) => files.flatMap((f2) => {
+    if (f2.role === "test") return [];
+    if (f2.role !== "code" || f2.symbols.length === 0) return [filePin(f2, band, "rest", 0)];
+    if (f2.loose.length === 0) return [];
+    const ranges = f2.loose.map((l3) => ({ from: l3.from, to: l3.to }));
+    return [filePin(f2, band, "rest", 0, ranges, \`\${fileName(f2.path)}\${onlyImports(f2, ranges, facts.get(f2.path)) ? " imports" : ", other lines"}\`)];
+  });
+
+  // src/lib/model/limit.ts
+  var LIMITS = { cards: 32, part: 8 };
+  var limit = (board, files) => board.pins.length <= LIMITS.cards ? board : keepOnly(board, bestCut(board, files));
+  var bestCut = ({ pins, bands, links }, files) => {
+    const index = new Map(pins.map((p, i2) => [p.id, i2]));
+    const inBand = groupBy(pins, (p) => p.band);
+    const flow = (b2) => sortBy(
+      (inBand[b2] ?? []).filter((p) => p.lane === "flow" && p.kind !== "pr" && p.kind !== "context"),
+      (p) => p.column,
+      (p) => index.get(p.id)
+    );
+    const tail = (b2) => {
+      const band = inBand[b2] ?? [];
+      return [...band.filter((p) => p.kind === "context"), ...band.filter((p) => p.lane === "under")];
+    };
+    const ranks = new Map(pins.filter((p) => p.lane === "rest").map((p) => [p.id, laneRank(p, files)]));
+    const rank = (p) => ranks.get(p.id);
+    const rest = sortBy(
+      pins.filter((p) => p.lane === "rest"),
+      (p) => rank(p)[0],
+      (p) => -(p.add + p.del),
+      (p) => rank(p)[1],
+      (p) => rank(p)[2]
+    );
+    const nearest = [pins[0], ...bands.flatMap((_2, b2) => [...flow(b2), ...tail(b2)]), ...rest];
+    const linksTo = adjacency(links);
+    const callsTo = adjacency(links.filter((l3) => l3.kind === "calls"));
+    const linked = adjacency([...links, ...links.map((l3) => ({ from: l3.to, to: l3.from }))]);
+    const shared = (ids, via) => sumBy([...ids], (id) => (via[id] ?? []).filter((x2) => ids.has(x2)).length);
+    const grow = (entry, members, tree, via) => {
+      const queue = [entry.id];
+      const seen = /* @__PURE__ */ new Set();
+      while (queue.length > 0 && tree.size < LIMITS.part) {
+        const id = queue.shift();
+        if (seen.has(id)) continue;
+        seen.add(id);
+        tree.add(id);
+        const next = (via[id] ?? []).filter((x2) => members.has(x2) && !seen.has(x2));
+        queue.push(
+          ...sortBy(
+            next,
+            (x2) => -(via[x2]?.length ?? 0),
+            (x2) => index.get(x2)
+          ).slice(0, 3)
+        );
+      }
+      return tree;
+    };
+    const firstColumn = (members) => {
+      const first = Math.min(...members.map((p) => p.column));
+      return members.filter((p) => p.column === first);
+    };
+    const uncalled = (members) => {
+      const called = new Set(members.flatMap((p) => callsTo[p.id] ?? []));
+      return members.filter((p) => !called.has(p.id));
+    };
+    const part = (b2, via, entriesOf) => {
+      const members = flow(b2);
+      if (members.length <= LIMITS.part) return [...members, ...tail(b2)];
+      const ids = new Set(members.map((p) => p.id));
+      const firsts = entriesOf(members);
+      const own = new Map(firsts.map((e) => [e, shared(grow(e, ids, /* @__PURE__ */ new Set(), via), via)]));
+      const entries = sortBy(
+        firsts,
+        (e) => -own.get(e),
+        (e) => index.get(e.id)
+      );
+      const tree = /* @__PURE__ */ new Set();
+      for (const e of entries) if (tree.size < LIMITS.part) grow(e, ids, tree, via);
+      return [...members.filter((p) => tree.has(p.id)), ...tail(b2).filter((p) => (linked[p.id] ?? []).some((x2) => tree.has(x2)))];
+    };
+    const grownAlong = (parts2) => {
+      const inParts = new Set(parts2.flat().map((p) => p.id));
+      return [pins[0], ...parts2.flat(), ...bands.flatMap((_2, b2) => [...flow(b2), ...tail(b2)].filter((p) => !inParts.has(p.id))), ...rest];
+    };
+    const callParts = bands.map((_2, b2) => part(b2, callsTo, uncalled));
+    const grown = grownAlong(bands.map((_2, b2) => part(b2, linksTo, firstColumn)));
+    const grownByCalls = grownAlong(
+      sortBy(
+        callParts,
+        (ps) => -shared(new Set(ps.map((p) => p.id)), callsTo),
+        (ps) => callParts.indexOf(ps)
+      )
+    );
+    const cut = (order) => new Set(order.slice(0, LIMITS.cards).map((p) => p.id));
+    const beats = (ids, best) => {
+      const [calls, bestCalls] = [shared(ids, callsTo), shared(best, callsTo)];
+      return calls > bestCalls || calls === bestCalls && shared(ids, linksTo) > shared(best, linksTo);
+    };
+    return [grown, grownByCalls].map(cut).reduce((best, ids) => beats(ids, best) ? ids : best, cut(nearest));
+  };
+  var keepOnly = (board, keep) => {
+    const inBand = groupBy(board.pins, (p) => p.band);
+    const kept = board.bands.map((_2, b2) => b2).filter((b2) => (inBand[b2] ?? []).some((p) => p.lane === "flow" && p.kind !== "pr" && keep.has(p.id)));
+    const renumber = new Map(kept.map((b2, i2) => [b2, i2]));
+    return {
+      ...board,
+      // The PR card heads the first band kept, whichever that is.
+      pins: board.pins.filter((p) => keep.has(p.id)).map((p) => ({ ...p, band: p.kind === "pr" ? 0 : p.lane === "rest" ? kept.length : renumber.get(p.band) ?? kept.length })),
+      bands: kept.map((b2) => ({ entries: board.bands[b2].entries.filter((id) => keep.has(id)) }))
+    };
+  };
+  var unpinnedOf = (board, files) => {
+    const pinned = new Set(board.pins.map((p) => p.id));
+    const lost = board.mode === "symbols" ? files.flatMap((f2) => f2.symbols).filter((s) => !pinned.has(s.id)) : [];
+    const carded = new Set(board.pins.map((p) => p.path));
+    const counted = new Set(lost.map((s) => s.path));
+    return { functions: lost.length, files: files.filter((f2) => !carded.has(f2.path) && !counted.has(f2.path)).length };
+  };
+
+  // src/lib/model/links.ts
+  var lineStart = (t, line) => line > t.lineStarts.length ? t.text.length : t.lineStarts[Math.max(0, line - 1)];
+  var lineEnd = (t, line) => line < t.lineStarts.length ? t.lineStarts[line] : t.text.length;
+  var regionsOf = (pins, { facts, units }) => {
+    const regions = /* @__PURE__ */ new Map();
+    const represented = /* @__PURE__ */ new Map();
+    const pinIds = new Set(pins.map((p) => p.id));
+    const changedUnits = groupBy([...units.values()], (u) => u.path);
+    const unitOfPin = /* @__PURE__ */ new Map();
+    for (const p of pins) {
+      const u = units.get(p.id) ?? (p.kind === "context" && p.path ? facts.get(p.path)?.units.find((u2) => \`ctx:\${u2.id}\` === p.id) : void 0);
+      if (!p.path || !u) continue;
+      unitOfPin.set(p, u);
+      regions.set(p, [{ pin: p, path: p.path, start: u.start, end: u.end }]);
+      represented.set(u.id, p.id);
+      for (const x2 of changedUnits[u.path] ?? []) if (x2 !== u && u.start <= x2.start && x2.end <= u.end && !pinIds.has(x2.id)) represented.set(x2.id, p.id);
+    }
+    for (const p of pins) {
+      const t = p.path && (p.kind === "file" || p.kind === "test") ? facts.get(p.path)?.flat : void 0;
+      if (!t || !p.path) continue;
+      if (p.kind === "file" && p.ranges) {
+        regions.set(
+          p,
+          p.ranges.map((r) => ({ pin: p, path: p.path, start: lineStart(t, r.from), end: lineEnd(t, r.to) }))
+        );
+        continue;
+      }
+      regions.set(p, [{ pin: p, path: p.path, start: 0, end: t.text.length }]);
+      if (p.kind === "file") {
+        for (const x2 of changedUnits[p.path] ?? []) if (!represented.has(x2.id)) represented.set(x2.id, p.id);
+      }
+    }
+    return { regions, represented, unitOfPin };
+  };
+  var startRow = (calls, rows, changed) => calls.find((n) => changed.has(n)) ?? calls[0] ?? rows.find((n) => changed.has(n)) ?? rows[0];
+  var linksOf = (pins, ctx) => {
+    const { regions, represented, unitOfPin } = regionsOf(pins, ctx);
+    const regionsIn = groupBy([...regions.values()].flat(), (r) => r.path);
+    const pinAt = (path, offset) => minBy(
+      (regionsIn[path] ?? []).filter((r) => offset >= r.start && offset < r.end),
+      (r) => r.end - r.start
+    )?.pin;
+    const holds2 = (a, b2) => {
+      const ra = regions.get(a) ?? [];
+      const rb = regions.get(b2) ?? [];
+      return rb.length > 0 && rb.every((y2) => ra.some((x2) => x2.path === y2.path && x2.start <= y2.start && y2.end <= x2.end));
+    };
+    const isDecl = (p) => (p.kind === "change" || p.kind === "context") && unitOfPin.has(p);
+    const pinById = new Map(pins.map((p) => [p.id, p]));
+    const pairs = /* @__PURE__ */ new Map();
+    for (const r of ctx.refs) {
+      const from = pinAt(r.path, r.start);
+      if (!from) continue;
+      for (const u of r.units) {
+        const to = pinById.get(represented.get(u.id) ?? (r.alt ? represented.get(r.alt.id) : void 0) ?? "");
+        if (!to || to === from) continue;
+        if (isDecl(from) && isDecl(to) && (holds2(from, to) || holds2(to, from))) continue;
+        const key = \`\${from.id}>\${to.id}\`;
+        const pair = pairs.get(key) ?? { from, to, refs: /* @__PURE__ */ new Set() };
+        pair.refs.add(r);
+        pairs.set(key, pair);
+      }
+    }
+    const fileByPath = new Map(ctx.files.map((f2) => [f2.path, f2]));
+    const addedIn = /* @__PURE__ */ new Map();
+    const changedIn = (path = "") => {
+      let lines = addedIn.get(path);
+      if (!lines) addedIn.set(path, lines = addedLines(allLines(fileByPath.get(path)?.hunks ?? [])));
+      return lines;
+    };
+    return [...pairs.values()].map(({ from, to, refs }) => {
+      const rs = [...refs];
+      const calls = [...new Set(rs.filter((r) => r.ref === "call").map((r) => r.line))].sort((a, b2) => a - b2);
+      const all2 = [...new Set(rs.map((r) => r.line))].sort((a, b2) => a - b2);
+      const kind = from.kind === "test" ? "tests" : from.kind === "context" ? "context" : calls.length > 0 ? "calls" : rs.some((r) => r.ref !== "import" && r.ref !== "export") ? "uses" : "imports";
+      const reads = kind === "context" ? calls.length > 0 ? "calls" : "uses" : void 0;
+      const at2 = startRow(calls, all2, changedIn(from.path));
+      return {
+        id: \`\${kind}:\${from.id}>\${to.id}\`,
+        from: from.id,
+        to: to.id,
+        kind,
+        ...reads ? { reads } : {},
+        ...at2 !== void 0 ? { at: at2 } : {},
+        // Its calls for \`calls\` (and a context link that calls), else every reference.
+        rows: kind === "calls" || reads === "calls" ? calls : all2
+      };
+    });
+  };
+
+  // src/lib/model/place.ts
+  var firstBands = (pins) => {
+    const bands = /* @__PURE__ */ new Map();
+    for (const p of pins) if (!bands.has(p.id)) bands.set(p.id, p.band);
+    return bands;
+  };
+  var place2 = (board) => {
+    const restBand = board.bands.length;
+    const flow = board.pins.filter((p) => p.lane === "flow");
+    const flowBands = firstBands(flow);
+    const codeBands = firstBands(flow.filter((p) => p.kind === "change" || p.kind === "file"));
+    const linksFrom = groupBy(board.links, (l3) => l3.from);
+    const rest = (p) => ({ ...p, lane: "rest", band: restBand });
+    return {
+      ...board,
+      pins: board.pins.map((p) => {
+        const links = linksFrom[p.id] ?? [];
+        if (p.kind === "test") {
+          const bands2 = links.filter((l3) => l3.kind === "tests").flatMap((l3) => codeBands.get(l3.to) ?? []);
+          return bands2.length > 0 ? { ...p, lane: "under", band: Math.min(...bands2) } : rest(p);
+        }
+        if (p.kind !== "file" || p.lane === "flow") return p;
+        const bands = new Set(links.map((l3) => flowBands.get(l3.to)));
+        const [band] = bands;
+        return bands.size === 1 && band !== void 0 ? { ...p, lane: "under", band } : rest(p);
+      })
+    };
+  };
+
+  // src/lib/sources/tsconfig.ts
   var parseJsonc = (text) => {
     let out2 = "";
     let inString = false;
@@ -13908,24 +14357,7 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
     }
     return JSON.parse(out2.replace(/,(\\s*[}\\]])/g, "$1"));
   };
-  var breathe = () => new Promise((resolve) => setTimeout(resolve, 0));
-  var readSources = async (files, read, parse2) => {
-    const slot = limiter(READ.inFlight);
-    const answers = /* @__PURE__ */ new Map();
-    const found = /* @__PURE__ */ new Map();
-    const once = (path) => {
-      let answer = answers.get(path);
-      if (!answer)
-        answers.set(
-          path,
-          answer = slot(() => read(path)).then(
-            (text) => (found.set(path, text !== null), text),
-            () => null
-          )
-        );
-      return answer;
-    };
-    const usable = (text) => text !== null && text.length <= READ.chars;
+  var tsconfigs = (read) => {
     const typings = /* @__PURE__ */ new Set();
     const configs = /* @__PURE__ */ new Map();
     const loadConfig = (path, depth = 0) => {
@@ -13934,7 +14366,7 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
       return hit;
     };
     const configUncached = async (path, depth) => {
-      const text = await once(path);
+      const text = await read(path);
       if (text === null) return null;
       let json;
       try {
@@ -13970,9 +14402,73 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
       }
       return dir ? mappingsFor(dirOf(dir)) : [];
     };
-    const changed = changedSources(files);
-    const parsedChanged = changed.filter((f2) => grammarOf(f2.path) !== null);
-    const mappings = Promise.all(parsedChanged.filter((f2) => !langOf(f2.path)).map((f2) => mappingsFor(dirOf(f2.path))));
+    const settle = async () => {
+      const mappings = /* @__PURE__ */ new Map();
+      for (const [dir, m2] of byDir) mappings.set(dir, await m2);
+      return (from) => {
+        for (let d = dirOf(from); ; d = dirOf(d)) {
+          if (byDir.has(d)) return mappings.get(d) ?? [];
+          if (!d) return [];
+        }
+      };
+    };
+    return { typings, mappingsFor, settle };
+  };
+
+  // src/lib/sources.ts
+  var READ = { code: 40, tests: 40, chars: 4e5, imports: 300, inFlight: 16 };
+  var topDir = (path) => path.includes("/") ? path.split("/")[0] : "";
+  var pickFiles = (files, max) => {
+    if (files.length <= max) return [...files];
+    const size = (f2) => f2.additions + f2.deletions;
+    const total = sumBy(files, size);
+    const byLanguage = mapValues(
+      groupBy(files, (f2) => languageOf(f2.path)),
+      (fs) => sumBy(fs, size)
+    );
+    const main = files.filter((f2) => byLanguage[languageOf(f2.path)] >= total / 10);
+    const byDir = groupBy(main, (f2) => topDir(f2.path));
+    const queues = sortBy(
+      [...new Set(main.map((f2) => topDir(f2.path)))].map((dir) => byDir[dir]),
+      (q2) => -sumBy(q2, size)
+    ).map((q2) => sortBy(q2, (f2) => -size(f2)));
+    const picked = /* @__PURE__ */ new Set();
+    while (picked.size < max && queues.some((q2) => q2.length > 0)) for (const q2 of queues) if (q2.length > 0 && picked.size < max) picked.add(q2.shift());
+    return files.filter((f2) => picked.has(f2));
+  };
+  var changedSources = (files) => {
+    const live = files.filter((f2) => f2.status !== "removed");
+    const code2 = live.filter((f2) => roleOf(f2.path) === "code" && languageOf(f2.path) !== "text" && (grammarOf(f2.path) !== null || f2.patch !== void 0 || f2.status === "added"));
+    const tests = live.filter((f2) => roleOf(f2.path) === "test" && grammarOf(f2.path) !== null && !langOf(f2.path)?.local);
+    return [...pickFiles(code2, READ.code), ...pickFiles(tests, READ.tests)];
+  };
+  var breathe = () => new Promise((resolve) => setTimeout(resolve, 0));
+  var usable = (text) => text !== null && text.length <= READ.chars;
+  var reader = (read) => {
+    const slot = limiter(READ.inFlight);
+    const answers = /* @__PURE__ */ new Map();
+    const found = /* @__PURE__ */ new Map();
+    const once2 = (path) => {
+      let answer = answers.get(path);
+      if (!answer)
+        answers.set(
+          path,
+          answer = slot(() => read(path)).then(
+            (text) => (found.set(path, text !== null), text),
+            () => null
+          )
+        );
+      return answer;
+    };
+    return { once: once2, found, asked: (path) => answers.has(path) };
+  };
+  var moduleResolver = (path) => {
+    const resolver = langOf(path)?.resolver;
+    return resolver && "typing" in resolver ? resolver : null;
+  };
+  var readSources = async (files, read, parse2) => {
+    const { once: once2, found, asked } = reader(read);
+    const configs = tsconfigs(once2);
     const texts = /* @__PURE__ */ new Map();
     const facts = /* @__PURE__ */ new Map();
     const take = async (path, text) => {
@@ -13981,29 +14477,32 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
       if (f2) facts.set(path, f2);
       await breathe();
     };
-    const changedTexts = changed.map((f2) => once(f2.path));
+    const changed = changedSources(files);
+    const parsedChanged = changed.filter((f2) => grammarOf(f2.path) !== null);
+    const mappings = Promise.all(parsedChanged.filter((f2) => !langOf(f2.path)).map((f2) => configs.mappingsFor(dirOf(f2.path))));
+    const changedTexts = changed.map((f2) => once2(f2.path));
     for (const [i2, f2] of changed.entries()) {
       const text = await changedTexts[i2];
       if (usable(text)) await take(f2.path, text);
     }
     await mappings;
-    for (const path of [...typings].sort()) {
+    for (const path of [...configs.typings].sort()) {
       if (texts.has(path)) continue;
-      const text = await once(path);
+      const text = await once2(path);
       if (usable(text)) await take(path, text);
     }
     const beside = await Promise.all(
       parsedChanged.map(async (f2) => {
-        const found2 = [];
+        const got = [];
         for (const list of langOf(f2.path)?.configFiles?.(f2.path) ?? []) {
           for (const c of list) {
-            const text = await once(c);
+            const text = await once2(c);
             if (text === null) continue;
-            found2.push([c, text]);
+            got.push([c, text]);
             break;
           }
         }
-        return found2;
+        return got;
       })
     );
     for (const [path, text] of beside.flat()) texts.set(path, text);
@@ -14016,7 +14515,7 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
           path,
           hit = (async () => {
             for (const m2 of langOf(path)?.packageMarkers?.(path) ?? []) {
-              const text = await once(m2);
+              const text = await once2(m2);
               if (text === null) break;
               if (texts.has(m2)) continue;
               texts.set(m2, text);
@@ -14029,29 +14528,18 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
     };
     await Promise.all(parsedChanged.map((f2) => markers(f2.path)));
     const known = new Set(texts.keys());
-    const paths = (from) => {
-      for (let d = dirOf(from); ; d = dirOf(d)) {
-        if (byDir.has(d)) return resolvedMappings.get(d) ?? [];
-        if (!d) return [];
-      }
-    };
-    const resolvedMappings = /* @__PURE__ */ new Map();
-    for (const [dir, m2] of byDir) resolvedMappings.set(dir, await m2);
+    const paths = await configs.settle();
     const firstAnswer = async (candidates) => {
       const already = candidates.find((c) => known.has(c));
       if (already) return already;
-      for (const c of candidates) if (await once(c) !== null) return c;
+      for (const c of candidates) if (await once2(c) !== null) return c;
       return null;
     };
     const context = { known: /* @__PURE__ */ new Set([...files.map((f2) => f2.path), ...texts.keys()]), text: (path) => texts.get(path) };
-    const exists = async (path) => known.has(path) || await once(path) !== null;
+    const exists = async (path) => known.has(path) || await once2(path) !== null;
     const firstExisting = async (paths2) => {
       for (const p of paths2) if (await exists(p)) return p;
       return null;
-    };
-    const moduleResolver = (path) => {
-      const resolver = langOf(path)?.resolver;
-      return resolver && "typing" in resolver ? resolver : null;
     };
     const moduleAnswers = async (from, spec, level) => {
       const resolver = moduleResolver(from);
@@ -14059,15 +14547,15 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
       const out2 = [];
       for (const t of tries) {
         if (t.first && await firstExisting(t.first) === null) continue;
-        const found2 = await firstExisting(t.files);
-        if (found2) out2.push(found2);
+        const file = await firstExisting(t.files);
+        if (file) out2.push(file);
       }
       return out2;
     };
     const genericImports = async (f2) => {
       const lang = langOf(f2.path);
       await markers(f2.path);
-      const found2 = await Promise.all(
+      const answers = await Promise.all(
         f2.imports.map(async (i2) => {
           if (i2.unproven) return [];
           const mods = await moduleAnswers(f2.path, i2.spec, i2.level);
@@ -14075,24 +14563,23 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
           return [...mods, ...await moduleAnswers(f2.path, i2.spec ? \`\${i2.spec}.\${i2.name}\` : i2.name, i2.level)];
         })
       );
-      return found2.flat();
+      return answers.flat();
     };
-    const imports5 = parsedChanged.flatMap((c) => facts.get(c.path) ?? []).flatMap((f2) => isGeneric(f2) ? moduleResolver(f2.path) ? [genericImports(f2)] : [] : f2.specifiers.map((s) => firstAnswer(moduleCandidates(f2.path, s.spec, paths(f2.path)).candidates)));
     let added = 0;
     const taken = new Set([...texts.keys()].filter((p) => !onlyMarkers.has(p)));
-    const readAll = async (targets2) => {
-      for (const target of targets2) {
-        for (const path of [await target ?? []].flat()) {
-          if (taken.has(path) || added >= READ.imports) continue;
-          const text = await once(path);
-          if (!usable(text)) continue;
-          taken.add(path);
-          added++;
-          await take(path, text);
-        }
-      }
+    const room = (path) => !taken.has(path) && added < READ.imports;
+    const takeImported = async (path, text) => {
+      if (!room(path) || !usable(text)) return;
+      taken.add(path);
+      added++;
+      await take(path, text);
     };
-    await readAll(imports5);
+    const readAll = async (targets2) => {
+      for (const target of targets2) for (const path of [await target ?? []].flat()) if (room(path)) await takeImported(path, await once2(path));
+    };
+    await readAll(
+      parsedChanged.flatMap((c) => facts.get(c.path) ?? []).flatMap((f2) => isGeneric(f2) ? moduleResolver(f2.path) ? [genericImports(f2)] : [] : f2.specifiers.map((spec) => firstAnswer(moduleCandidates(f2.path, spec, paths(f2.path)).candidates)))
+    );
     const reexports = [];
     for (const c of parsedChanged) {
       const f2 = facts.get(c.path);
@@ -14114,24 +14601,16 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
     for (const lang of wanting) {
       for (; ; ) {
         const own = [...facts.values()].filter((f2) => isGeneric(f2) && langOf(f2.path) === lang);
-        const fresh = [...new Set(lang.wants(own, live, (path) => changedPaths.has(path)))].filter((path) => !answers.has(path));
+        const fresh = [...new Set(lang.wants(own, live, (path) => changedPaths.has(path)))].filter((path) => !asked(path));
         if (fresh.length === 0 || added >= READ.imports) break;
-        const asked = fresh.map((path) => once(path));
-        for (const [i2, path] of fresh.entries()) {
-          const text = await asked[i2];
-          if (taken.has(path) || added >= READ.imports || !usable(text)) continue;
-          taken.add(path);
-          added++;
-          await take(path, text);
-        }
+        const answers = fresh.map((path) => once2(path));
+        for (const [i2, path] of fresh.entries()) await takeImported(path, await answers[i2]);
       }
     }
     return { texts, facts, paths, exists: existing };
   };
 
   // src/lib/model.ts
-  var LIMITS = { cards: 32, part: 8 };
-  var fileName = (path) => path.split("/").pop() ?? path;
   var analyse = async (pr, files, read, parse2) => {
     const sources = await readSources(files, read, parse2);
     const changed = new Set(files.filter((f2) => f2.status !== "removed").map((f2) => f2.path));
@@ -14148,151 +14627,14 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
     const labels = new Map(generic.flatMap((f2) => [...f2.labels]));
     return buildReview(pr, files, { texts: sources.texts, facts: sources.facts, refs, labels });
   };
-  var push2 = (map, key, value) => {
-    const values = map.get(key);
-    if (values) values.push(value);
-    else map.set(key, [value]);
-  };
-  var components = (ids, edges) => {
-    const known = new Set(ids);
-    const adj = /* @__PURE__ */ new Map();
-    for (const e of edges) {
-      push2(adj, e.from, e.to);
-      push2(adj, e.to, e.from);
-    }
-    const group = /* @__PURE__ */ new Map();
-    let groups = 0;
-    for (const id of ids) {
-      if (group.has(id)) continue;
-      const g = groups++;
-      group.set(id, g);
-      const stack = [id];
-      while (stack.length > 0) {
-        for (const next of adj.get(stack.pop()) ?? []) {
-          if (group.has(next) || !known.has(next)) continue;
-          group.set(next, g);
-          stack.push(next);
-        }
-      }
-    }
-    const out2 = Array.from({ length: groups }, () => []);
-    for (const id of ids) out2[group.get(id)].push(id);
-    return out2;
-  };
-  var threadsOf = (ids, edges) => {
-    const first = /* @__PURE__ */ new Map();
-    for (const [i2, id] of ids.entries()) if (!first.has(id)) first.set(id, i2);
-    return sortBy(
-      components(ids, edges).filter((g) => g.length >= 2),
-      (g) => -g.length,
-      (g) => first.get(g[0])
-    );
-  };
-  var threadEdges = (threads, edges) => {
-    const threadOf = new Map(threads.flatMap((members, b2) => members.map((id) => [id, b2])));
-    const out2 = threads.map(() => []);
-    for (const e of edges) {
-      const b2 = threadOf.get(e.from);
-      if (b2 !== void 0 && threadOf.get(e.to) === b2) out2[b2].push([e.from, e.to]);
-    }
-    return out2;
-  };
-  var IMPORT_LINE = /^\\s*(import\\b|from\\s+\\S+\\s+import\\b|export\\s.*\\bfrom\\b|use\\s|#include|require\\(|const\\s.*=\\s*require\\()/;
-  var IMPORTS = /* @__PURE__ */ new Set(["import_from_statement", "future_import_statement", "import_declaration", "use_declaration"]);
-  var importLines = (t) => {
-    const lines = /* @__PURE__ */ new Set();
-    for (let n = t.first[0]; n >= 0; n = t.next[n]) {
-      const ty = t.type[n];
-      const text = textOf(t, n);
-      const isImport = ty === "import_statement" || IMPORTS.has(ty) || ty === "export_statement" && /\\bfrom\\s*["']/.test(text) && !/^export\\s+(default\\s+)?(async\\s+)?(function|class|const|let|var|interface|type|enum)\\b/.test(text) || (ty === "lexical_declaration" || ty === "variable_declaration") && /^\\s*(const|let|var)\\b[^=]*=\\s*require\\s*\\(\\s*["'][^"']+["']\\s*\\)\\s*;?\\s*$/.test(text);
-      if (isImport) for (let l3 = lineOf(t, t.start[n]); l3 <= lineOf(t, Math.max(t.start[n], t.end[n] - 1)); l3++) lines.add(l3);
-    }
-    return lines;
-  };
-  var isDeprecated = (lines, start2, lang) => {
-    for (let n = start2 - 1; n >= 1 && n >= start2 - 40; n--) {
-      const line = lines[n - 1];
-      if (!isComment(line, lang) && !/^\\s*@/.test(line)) return false;
-      if (/@deprecated\\b/.test(line)) return true;
-    }
-    return false;
-  };
-  var parsedChanges = (path, lang, ff, hunks, units, nameOf) => {
-    const text = ff.flat.text.split("\\n");
-    const changed = hunks.flatMap((h) => h.lines).filter((l3) => l3.t !== "ctx" && !(l3.t === "add" && (text[l3.at - 1] ?? "").trim() === ""));
-    const owners = new Array(text.length + 2).fill(void 0);
-    for (const u of ff.units) {
-      for (let n = u.docLine; n <= u.endLine; n++) {
-        const best = owners[n];
-        if (!best || u.endLine - u.docLine < best.endLine - best.docLine) owners[n] = u;
-      }
-    }
-    const owned = /* @__PURE__ */ new Map();
-    const loose = [];
-    for (const l3 of changed) {
-      const owner = owners[l3.at];
-      if (owner) push2(owned, owner, l3);
-      else loose.push(l3);
-    }
-    const added = new Set(changed.filter((l3) => l3.t === "add").map((l3) => l3.n));
-    const symbols = ff.units.flatMap((u) => {
-      const ls = owned.get(u);
-      if (!ls) return [];
-      units.set(u.id, u);
-      const ats = ls.map((l3) => l3.at);
-      return [
-        {
-          id: u.id,
-          path,
-          lang,
-          name: u.name,
-          label: nameOf(u),
-          kind: u.kind,
-          status: added.has(u.nameLine) ? "new" : "changed",
-          start: u.startLine,
-          end: u.endLine,
-          from: ats.reduce((a, b2) => Math.min(a, b2)),
-          to: ats.reduce((a, b2) => Math.max(a, b2)),
-          add: ls.filter((l3) => l3.t === "add").length,
-          del: ls.filter((l3) => l3.t === "del").length
-        }
-      ];
-    });
-    return { symbols, loose: looseRuns(path, loose) };
-  };
-  var pinFrom = (s) => Math.min(s.from, s.start);
   var buildReview = (pr, prFiles, analysed) => {
-    const { facts } = analysed;
     const heads = new Map([...analysed.texts].map(([path, text]) => [path, text.split("\\n")]));
-    const units = /* @__PURE__ */ new Map();
     const nameOf = (u) => analysed.labels.get(u.id) ?? labelOf(u);
-    const files = prFiles.map((f2) => {
-      const role5 = roleOf(f2.path);
-      const lang = languageOf(f2.path);
-      const whole = f2.patch === void 0 && f2.status === "added" ? analysed.texts.get(f2.path) : void 0;
-      const hunks = f2.patch ? parsePatch(f2.patch) : whole !== void 0 ? addedHunks(whole) : [];
-      const ff = role5 === "code" && f2.status !== "removed" ? facts.get(f2.path) : void 0;
-      const found = ff ? parsedChanges(f2.path, lang, ff, hunks, units, nameOf) : role5 === "code" ? changedSymbols(f2.path, lang, heads.get(f2.path) ?? null, hunks) : { symbols: [], loose: [] };
-      const loose = found.loose.filter((r) => !found.symbols.some((s) => pinFrom(s) <= r.from && r.to <= s.end));
-      return {
-        path: f2.path,
-        ...f2.previousPath ? { previousPath: f2.previousPath } : {},
-        status: f2.status,
-        role: role5,
-        lang,
-        additions: f2.additions,
-        deletions: f2.deletions,
-        hunks,
-        hasPatch: f2.patch !== void 0 || whole !== void 0,
-        symbols: found.symbols,
-        loose,
-        cases: role5 === "test" ? testCases(hunks) : []
-      };
-    });
-    const context = { files, heads, facts, refs: analysed.refs, units, nameOf };
+    const { files, units } = reviewFiles(prFiles, analysed, heads, nameOf);
+    const context = { files, heads, facts: analysed.facts, refs: analysed.refs, units, nameOf };
     const draft = files.flatMap((f2) => f2.symbols).length >= 2 ? symbolBoard(context) : fileBoard(context);
-    const limited = limit(place({ ...draft, links: linksOf(draft.pins, context) }), files);
-    const board = place({ ...limited, links: linksOf(limited.pins, context) });
+    const limited = limit(place2({ ...draft, links: linksOf(draft.pins, context) }), files);
+    const board = place2({ ...limited, links: linksOf(limited.pins, context) });
     const review = { pr, files, ...board, order: [], unpinned: unpinnedOf(board, files) };
     const plan = planBoard(review);
     return { review: { ...review, order: plan.order }, plan };
@@ -14300,380 +14642,6 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
   var compact = (review) => {
     const carded = new Set(review.pins.map((p) => p.path));
     return { ...review, files: review.files.map((f2) => carded.has(f2.path) ? f2 : { ...f2, hunks: [], symbols: [], loose: [], cases: [] }) };
-  };
-  var prPin = () => ({ id: "pr", kind: "pr", name: "The PR", from: 0, to: 0, band: 0, lane: "flow", column: 0, status: "changed", add: 0, del: 0 });
-  var nests = (a, b2) => a.path === b2.path && (a.start <= b2.start && b2.end <= a.end || b2.start <= a.start && a.end <= b2.end);
-  var innermost = (units, path, offset) => sortBy(
-    units.filter((u) => u.path === path && u.start <= offset && offset < u.end),
-    (u) => u.end - u.start
-  )[0];
-  var filePin = (f2, band, lane, column, ranges, name2 = fileName(f2.path)) => ({
-    id: \`file:\${f2.path}\`,
-    kind: "file",
-    name: name2,
-    path: f2.path,
-    from: ranges ? Math.min(...ranges.map((r) => r.from)) : 1,
-    to: ranges ? Math.max(...ranges.map((r) => r.to)) : Number.MAX_SAFE_INTEGER,
-    band,
-    lane,
-    column,
-    status: f2.status === "added" ? "new" : "changed",
-    add: ranges ? f2.loose.reduce((n, l3) => n + l3.add, 0) : f2.additions,
-    del: ranges ? f2.loose.reduce((n, l3) => n + l3.del, 0) : f2.deletions,
-    ...ranges ? { ranges } : {}
-  });
-  var testPins = (files, restBand) => files.filter((f2) => f2.role === "test").map((t) => ({ id: \`test:\${t.path}\`, kind: "test", name: fileName(t.path), path: t.path, from: 1, to: Number.MAX_SAFE_INTEGER, band: restBand, lane: "rest", column: 0, status: t.status === "added" ? "new" : "changed", add: t.additions, del: t.deletions }));
-  var symbolBoard = (ctx) => {
-    const { files, heads, facts, refs, units, nameOf } = ctx;
-    const symbols = files.flatMap((f2) => f2.symbols);
-    const parsed = symbols.filter((s) => units.has(s.id));
-    const patterned = symbols.filter((s) => !units.has(s.id));
-    const ids = [...parsed, ...patterned].map((s) => s.id);
-    const symbolOf = new Map(symbols.map((s) => [s.id, s]));
-    const changedUnits = /* @__PURE__ */ new Map();
-    for (const u of parsed.map((s) => units.get(s.id))) push2(changedUnits, u.path, u);
-    const edgeSet = /* @__PURE__ */ new Map();
-    for (const r of refs) {
-      const src = innermost(changedUnits.get(r.path) ?? [], r.path, r.start);
-      if (!src || src.kind === "class") continue;
-      for (const named of r.units) {
-        const target = !units.has(named.id) && r.alt ? r.alt : named;
-        if (!units.has(target.id) || target.id === src.id || nests(src, target)) continue;
-        edgeSet.set(\`\${src.id}>\${target.id}\`, { from: src.id, to: target.id });
-      }
-    }
-    const edges = [...edgeSet.values()];
-    const threads = threadsOf(ids, edges);
-    const inThread = new Set(threads.flat());
-    const pins = [prPin()];
-    const bands = [];
-    const restBand = threads.length;
-    const changePin = (s, band, lane, column) => {
-      const from = pinFrom(s);
-      return { id: s.id, kind: "change", name: s.label, path: s.path, symbol: s, from, to: s.end, band, lane, column, status: s.status, add: s.add, del: s.del, head: (heads.get(s.path) ?? []).slice(from - 1, s.end) };
-    };
-    const within = threadEdges(threads, edges);
-    threads.forEach((members, b2) => {
-      const depth = layers(members, within[b2]);
-      for (const id of members) pins.push(changePin(symbolOf.get(id), b2, "flow", depth.get(id) + 1));
-      bands.push({ entries: members.filter((id) => depth.get(id) === 0) });
-    });
-    for (const id of ids.filter((id2) => !inThread.has(id2))) pins.push(changePin(symbolOf.get(id), restBand, "rest", 0));
-    const contextPin = (id, path, name2, from, to, band) => ({
-      id,
-      kind: "context",
-      name: name2,
-      path,
-      from,
-      to,
-      band,
-      lane: "flow",
-      column: 0,
-      status: "unchanged",
-      add: 0,
-      del: 0,
-      head: (heads.get(path) ?? []).slice(from - 1, to)
-    });
-    const changedPaths = new Set(files.map((f2) => f2.path));
-    const refsTo = /* @__PURE__ */ new Map();
-    for (const r of refs) for (const u of r.units) push2(refsTo, u.id, r);
-    const candidates = sortBy(
-      [...facts.values()].filter((f2) => roleOf(f2.path) === "code").flatMap((f2) => f2.units.filter((u) => u.kind === "function" || u.kind === "method")),
-      (u) => u.path,
-      (u) => u.startLine
-    ).filter((u) => !units.has(u.id));
-    const parsedCandidates = (near) => {
-      const rank = (u) => u.path === near ? 0 : changedPaths.has(u.path) ? 1 : 2;
-      return [0, 1, 2].flatMap((r) => candidates.filter((u) => rank(u) === r));
-    };
-    const parsedCaller = (entry, band) => {
-      const sites = refsTo.get(entry.id) ?? [];
-      if (sites.length === 0) return null;
-      const around = new Set(sites.map((s) => innermost(facts.get(s.path)?.units ?? [], s.path, s.start)));
-      for (const u of parsedCandidates(entry.path)) {
-        if (!around.has(u) || nests(u, entry) || entry.name.startsWith("#") && u.path !== entry.path) continue;
-        if (isDeprecated(heads.get(u.path) ?? [], u.startLine, languageOf(u.path))) continue;
-        return contextPin(\`ctx:\${u.id}\`, u.path, nameOf(u), u.startLine, u.endLine, band);
-      }
-      return null;
-    };
-    const callerIds = /* @__PURE__ */ new Set();
-    bands.forEach((band, b2) => {
-      for (const entry of band.entries) {
-        const unit5 = units.get(entry);
-        const caller = unit5 ? parsedCaller(unit5, b2) : null;
-        if (!caller) continue;
-        if (!callerIds.has(caller.id)) pins.push(caller);
-        callerIds.add(caller.id);
-        return;
-      }
-    });
-    for (const f2 of files) {
-      if (f2.role === "test") continue;
-      const whole = f2.role !== "code" || f2.symbols.length === 0;
-      if (!whole && f2.loose.length === 0) continue;
-      const ranges = whole ? void 0 : f2.loose.map((l3) => ({ from: l3.from, to: l3.to }));
-      const ff = facts.get(f2.path);
-      const inImports = ff ? importLines(ff.flat) : /* @__PURE__ */ new Set();
-      const lines = whole ? [] : f2.hunks.flatMap((h) => h.lines).filter((l3) => l3.t !== "ctx" && l3.text.trim() !== "" && ranges.some((r) => l3.at >= r.from && l3.at <= r.to));
-      const imports5 = lines.length > 0 && lines.every((l3) => inImports.has(l3.n ?? l3.at) || IMPORT_LINE.test(l3.text));
-      pins.push(filePin(f2, restBand, "rest", 0, ranges, whole ? fileName(f2.path) : imports5 ? \`\${fileName(f2.path)} imports\` : \`\${fileName(f2.path)}, other lines\`));
-    }
-    pins.push(...testPins(files, restBand));
-    return { mode: "symbols", pins, bands };
-  };
-  var fileBoard = (ctx) => {
-    const { files, refs } = ctx;
-    const code2 = files.filter((f2) => f2.role === "code");
-    const ids = code2.map((f2) => \`file:\${f2.path}\`);
-    const codePaths = new Set(code2.map((f2) => f2.path));
-    const edgeSet = /* @__PURE__ */ new Map();
-    for (const r of refs) {
-      if (!codePaths.has(r.path)) continue;
-      for (const u of r.units) if (u.path !== r.path && codePaths.has(u.path)) edgeSet.set(\`\${r.path}>\${u.path}\`, { from: \`file:\${r.path}\`, to: \`file:\${u.path}\` });
-    }
-    const edges = [...edgeSet.values()];
-    const threads = threadsOf(ids, edges);
-    const pins = [prPin()];
-    const bands = [];
-    const fileOf = /* @__PURE__ */ new Map();
-    for (const f2 of files) if (!fileOf.has(\`file:\${f2.path}\`)) fileOf.set(\`file:\${f2.path}\`, f2);
-    const within = threadEdges(threads, edges);
-    threads.forEach((members, b2) => {
-      const depth = layers(members, within[b2]);
-      for (const id of members) pins.push(filePin(fileOf.get(id), b2, "flow", depth.get(id) + 1));
-      bands.push({ entries: members.filter((id) => depth.get(id) === 0) });
-    });
-    const placed = new Set(pins.map((p) => p.id));
-    for (const f2 of files) if (f2.role !== "test" && !placed.has(\`file:\${f2.path}\`)) pins.push(filePin(f2, threads.length, "rest", 0));
-    pins.push(...testPins(files, threads.length));
-    return { mode: "files", pins, bands };
-  };
-  var link = (kind, from, to, rows, at3, reads) => ({
-    id: \`\${kind}:\${from}>\${to}\`,
-    from,
-    to,
-    kind,
-    ...reads ? { reads } : {},
-    ...at3 !== void 0 ? { at: at3 } : {},
-    rows: [...rows]
-  });
-  var startRow = (calls, rows, changed) => calls.find((n) => changed.has(n)) ?? calls[0] ?? rows.find((n) => changed.has(n)) ?? rows[0];
-  var linksOf = (pins, ctx) => {
-    const { files, facts, refs, units } = ctx;
-    const regions = [];
-    const represented = /* @__PURE__ */ new Map();
-    const pinIds = new Set(pins.map((p) => p.id));
-    const changedUnits = /* @__PURE__ */ new Map();
-    for (const u of units.values()) push2(changedUnits, u.path, u);
-    const offsetOfLine = (path, line, end = false) => {
-      const t = facts.get(path)?.flat;
-      if (!t) return 0;
-      if (line > t.lineStarts.length) return t.text.length;
-      return end ? line < t.lineStarts.length ? t.lineStarts[line] : t.text.length : t.lineStarts[Math.max(0, line - 1)];
-    };
-    const unitOfPin = /* @__PURE__ */ new Map();
-    const unitOf = (p) => {
-      if (!unitOfPin.has(p)) unitOfPin.set(p, units.get(p.id) ?? (p.kind === "context" && p.path ? facts.get(p.path)?.units.find((u) => \`ctx:\${u.id}\` === p.id) : void 0));
-      return unitOfPin.get(p);
-    };
-    for (const p of pins) {
-      const u = unitOf(p);
-      if (!p.path || !u) continue;
-      regions.push({ pin: p, path: p.path, start: u.start, end: u.end });
-      represented.set(u.id, p.id);
-      for (const x2 of changedUnits.get(u.path) ?? []) if (x2 !== u && u.start <= x2.start && x2.end <= u.end && !pinIds.has(x2.id)) represented.set(x2.id, p.id);
-    }
-    for (const p of pins) {
-      if (!p.path || p.kind !== "file" && p.kind !== "test") continue;
-      const t = facts.get(p.path)?.flat;
-      if (!t) continue;
-      if (p.kind === "test" || !p.ranges) {
-        regions.push({ pin: p, path: p.path, start: 0, end: t.text.length });
-        if (p.kind === "file") {
-          for (const x2 of changedUnits.get(p.path) ?? []) if (!represented.has(x2.id)) represented.set(x2.id, p.id);
-        }
-        continue;
-      }
-      for (const r of p.ranges) regions.push({ pin: p, path: p.path, start: offsetOfLine(p.path, r.from), end: offsetOfLine(p.path, r.to, true) });
-    }
-    const regionsIn = /* @__PURE__ */ new Map();
-    const regionsOf = /* @__PURE__ */ new Map();
-    for (const r of regions) {
-      push2(regionsIn, r.path, r);
-      push2(regionsOf, r.pin, r);
-    }
-    const pinAt = (path, offset) => {
-      let best = null;
-      for (const r of regionsIn.get(path) ?? []) if (offset >= r.start && offset < r.end && (!best || r.end - r.start < best.end - best.start)) best = r;
-      return best?.pin ?? null;
-    };
-    const holds2 = (a, b2) => {
-      const ra = regionsOf.get(a) ?? [];
-      const rb = regionsOf.get(b2) ?? [];
-      return rb.length > 0 && rb.every((y2) => ra.some((x2) => x2.path === y2.path && x2.start <= y2.start && y2.end <= x2.end));
-    };
-    const isDecl = (p) => (p.kind === "change" || p.kind === "context") && unitOf(p) !== void 0;
-    const pinById = new Map(pins.map((p) => [p.id, p]));
-    const pairs = /* @__PURE__ */ new Map();
-    for (const r of refs) {
-      const from = pinAt(r.path, r.start);
-      if (!from) continue;
-      for (const u of r.units) {
-        const to = pinById.get(represented.get(u.id) ?? (r.alt ? represented.get(r.alt.id) : void 0) ?? "");
-        if (!to || to === from) continue;
-        if (isDecl(from) && isDecl(to) && (holds2(from, to) || holds2(to, from))) continue;
-        const key = \`\${from.id}>\${to.id}\`;
-        const pair = pairs.get(key) ?? { from, to, refs: [], seen: /* @__PURE__ */ new Set() };
-        if (!pair.seen.has(r)) {
-          pair.seen.add(r);
-          pair.refs.push(r);
-        }
-        pairs.set(key, pair);
-      }
-    }
-    const fileByPath = new Map(files.map((f2) => [f2.path, f2]));
-    const addedLines = /* @__PURE__ */ new Map();
-    const changedIn = (path = "") => {
-      let hit = addedLines.get(path);
-      if (!hit) {
-        const f2 = fileByPath.get(path);
-        hit = new Set(f2 ? f2.hunks.flatMap((h) => h.lines).filter((l3) => l3.t === "add").map((l3) => l3.n) : []);
-        addedLines.set(path, hit);
-      }
-      return hit;
-    };
-    const links = [...pairs.values()].map(({ from, to, refs: rs }) => {
-      const calls = [...new Set(rs.filter((r) => r.ref === "call").map((r) => r.line))].sort((a, b2) => a - b2);
-      const all2 = [...new Set(rs.map((r) => r.line))].sort((a, b2) => a - b2);
-      const kind = from.kind === "test" ? "tests" : from.kind === "context" ? "context" : calls.length > 0 ? "calls" : rs.some((r) => r.ref !== "import" && r.ref !== "export") ? "uses" : "imports";
-      const rows = kind === "calls" || kind === "context" && calls.length > 0 ? calls : all2;
-      return link(kind, from.id, to.id, rows, startRow(calls, all2, changedIn(from.path)), kind === "context" ? calls.length > 0 ? "calls" : "uses" : void 0);
-    });
-    return links;
-  };
-  var place = (board) => {
-    const restBand = board.bands.length;
-    const flowBands = /* @__PURE__ */ new Map();
-    const codeBands = /* @__PURE__ */ new Map();
-    for (const p of board.pins) {
-      if (p.lane !== "flow") continue;
-      if (!flowBands.has(p.id)) flowBands.set(p.id, p.band);
-      if ((p.kind === "change" || p.kind === "file") && !codeBands.has(p.id)) codeBands.set(p.id, p.band);
-    }
-    const linksFrom = /* @__PURE__ */ new Map();
-    for (const l3 of board.links) push2(linksFrom, l3.from, l3);
-    return {
-      ...board,
-      pins: board.pins.map((p) => {
-        if (p.kind === "test") {
-          const bands2 = (linksFrom.get(p.id) ?? []).filter((l3) => l3.kind === "tests").map((l3) => codeBands.get(l3.to)).filter((b2) => b2 !== void 0);
-          return bands2.length > 0 ? { ...p, lane: "under", band: Math.min(...bands2) } : { ...p, lane: "rest", band: restBand };
-        }
-        if (p.kind !== "file" || p.lane === "flow") return p;
-        const bands = new Set((linksFrom.get(p.id) ?? []).map((l3) => flowBands.get(l3.to)));
-        const [band] = bands;
-        return bands.size === 1 && band !== void 0 ? { ...p, lane: "under", band } : { ...p, lane: "rest", band: restBand };
-      })
-    };
-  };
-  var limit = (board, files) => {
-    const { pins, bands, links } = board;
-    if (pins.length <= LIMITS.cards) return board;
-    const index = new Map(pins.map((p, i2) => [p.id, i2]));
-    const ranks = new Map(pins.filter((p) => p.lane === "rest").map((p) => [p.id, laneRank(p, files)]));
-    const inBand = /* @__PURE__ */ new Map();
-    for (const p of pins) push2(inBand, p.band, p);
-    const flow = (b2) => sortBy(
-      (inBand.get(b2) ?? []).filter((p) => p.lane === "flow" && p.kind !== "pr" && p.kind !== "context"),
-      (p) => p.column,
-      (p) => index.get(p.id)
-    );
-    const tail = (b2) => {
-      const band = inBand.get(b2) ?? [];
-      return [...band.filter((p) => p.kind === "context"), ...band.filter((p) => p.lane === "under")];
-    };
-    const rest = sortBy(
-      pins.filter((p) => p.lane === "rest"),
-      (p) => ranks.get(p.id)[0],
-      (p) => -(p.add + p.del),
-      (p) => ranks.get(p.id)[1],
-      (p) => ranks.get(p.id)[2]
-    );
-    const nearest = [pins[0], ...bands.flatMap((_2, b2) => [...flow(b2), ...tail(b2)]), ...rest];
-    const linksTo = /* @__PURE__ */ new Map();
-    const callsTo = /* @__PURE__ */ new Map();
-    const linked = /* @__PURE__ */ new Map();
-    for (const l3 of links) {
-      push2(linksTo, l3.from, l3.to);
-      if (l3.kind === "calls") push2(callsTo, l3.from, l3.to);
-      push2(linked, l3.from, l3.to);
-      push2(linked, l3.to, l3.from);
-    }
-    const shared = (ids, via) => [...ids].reduce((n, id) => n + (via.get(id) ?? []).filter((x2) => ids.has(x2)).length, 0);
-    const grow = (entry, members, tree, via) => {
-      const queue = [entry.id];
-      const seen = /* @__PURE__ */ new Set();
-      while (queue.length > 0 && tree.size < LIMITS.part) {
-        const id = queue.shift();
-        if (seen.has(id)) continue;
-        seen.add(id);
-        tree.add(id);
-        const next = (via.get(id) ?? []).filter((x2) => members.has(x2) && !seen.has(x2));
-        queue.push(...sortBy(next, (x2) => -(via.get(x2)?.length ?? 0), (x2) => index.get(x2)).slice(0, 3));
-      }
-      return tree;
-    };
-    const part = (b2, via, callers = false) => {
-      const members = flow(b2);
-      if (members.length <= LIMITS.part) return [...members, ...tail(b2)];
-      const ids = new Set(members.map((p) => p.id));
-      const first = Math.min(...members.map((p) => p.column));
-      const called = new Set(members.flatMap((p) => via.get(p.id) ?? []));
-      const firsts = members.filter((p) => callers ? !called.has(p.id) : p.column === first);
-      const own = new Map(firsts.map((e) => [e, shared(grow(e, ids, /* @__PURE__ */ new Set(), via), via)]));
-      const entries = sortBy(
-        firsts,
-        (e) => -own.get(e),
-        (e) => index.get(e.id)
-      );
-      const tree = /* @__PURE__ */ new Set();
-      for (const e of entries) if (tree.size < LIMITS.part) grow(e, ids, tree, via);
-      return [...members.filter((p) => tree.has(p.id)), ...tail(b2).filter((p) => (linked.get(p.id) ?? []).some((x2) => tree.has(x2)))];
-    };
-    const grownAlong = (parts2) => {
-      const inParts = new Set(parts2.flat().map((p) => p.id));
-      return [pins[0], ...parts2.flat(), ...bands.flatMap((_2, b2) => [...flow(b2), ...tail(b2)].filter((p) => !inParts.has(p.id))), ...rest];
-    };
-    const callParts = bands.map((_2, b2) => part(b2, callsTo, true));
-    const callsIn = (ps) => shared(new Set(ps.map((p) => p.id)), callsTo);
-    const grown = grownAlong(bands.map((_2, b2) => part(b2, linksTo)));
-    const grownByCalls = grownAlong(sortBy(callParts, (ps) => -callsIn(ps), (ps) => callParts.indexOf(ps)));
-    const cut = (order) => new Set(order.slice(0, LIMITS.cards).map((p) => p.id));
-    const score = (ids) => [shared(ids, callsTo), shared(ids, linksTo)];
-    let keep = cut(nearest);
-    for (const order of [grown, grownByCalls]) {
-      const ids = cut(order);
-      const [calls, all2] = score(ids);
-      const [keptCalls, keptAll] = score(keep);
-      if (calls > keptCalls || calls === keptCalls && all2 > keptAll) keep = ids;
-    }
-    const kept = bands.filter((_2, b2) => (inBand.get(b2) ?? []).some((p) => p.lane === "flow" && p.kind !== "pr" && keep.has(p.id)));
-    const bandOf = new Map(bands.map((b2, i2) => [b2, i2]));
-    const renumber = new Map(kept.map((b2, i2) => [bandOf.get(b2), i2]));
-    return {
-      ...board,
-      // The PR card heads the first band kept, whichever that is.
-      pins: pins.filter((p) => keep.has(p.id)).map((p) => ({ ...p, band: p.kind === "pr" ? 0 : p.lane === "rest" ? kept.length : renumber.get(p.band) ?? kept.length })),
-      bands: kept.map((b2) => ({ entries: b2.entries.filter((id) => keep.has(id)) }))
-    };
-  };
-  var unpinnedOf = (board, files) => {
-    const pinned = new Set(board.pins.map((p) => p.id));
-    const lost = board.mode === "symbols" ? files.flatMap((f2) => f2.symbols).filter((s) => !pinned.has(s.id)) : [];
-    const carded = new Set(board.pins.map((p) => p.path));
-    const counted = new Set(lost.map((s) => s.path));
-    return { functions: lost.length, files: files.filter((f2) => !carded.has(f2.path) && !counted.has(f2.path)).length };
   };
 
   // src/worker/serve.ts

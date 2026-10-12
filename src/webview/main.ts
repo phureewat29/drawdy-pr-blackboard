@@ -4,9 +4,8 @@ import type { createPanel } from "./panel.ts";
 export type Factories = { createPanel: typeof createPanel };
 
 /**
- * The webview's entry point: wires Drawdy's webview API to the panel. The
- * factory arrives as an argument because every function here is serialized
- * into the webview on its own (see driver/webview-html.ts).
+ * The webview's entry point: wires Drawdy's webview API to the panel. The factory arrives as an argument because
+ * each function is serialized into the webview on its own (driver/webview-html.ts).
  */
 export const webviewMain = ({ createPanel }: Factories): void => {
     const api = acquireDrawdyApi();

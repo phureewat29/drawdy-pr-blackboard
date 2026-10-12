@@ -1,8 +1,8 @@
-/** Opening a pull request: fetch it, build the review, and pin it to the board. */
+/** Opening a PR: read it, build its review, and pin its board. */
 
-import type { DrawdyElementSchema } from "@drawdy/driver-protocol";
 import type { Theme } from "../lib/card.ts";
-import { pageCount, prKey, type Github, type PrFile, type PrInfo, type PrRef } from "../lib/github.ts";
+import { plural } from "../lib/fp.ts";
+import { pageCount, parsePrUrl, prKey, prLabel, type Github, type PrFile, type PrInfo, type PrRef } from "../lib/github.ts";
 import { planBoard, shiftPlan, type BoardPlan, type Point } from "../lib/layout.ts";
 import type { Review } from "../lib/model.ts";
 import { viewportOf } from "./camera.ts";
@@ -12,23 +12,25 @@ import type { Parser } from "./parser.ts";
 import type { Progress } from "./progress.ts";
 import { findFreeSpot } from "./space.ts";
 import type { Store } from "./store.ts";
+import { inWords } from "./words.ts";
 
 /** A review, with its board's plan when it was just built. */
 export type Loaded = { review: Review; plan: BoardPlan | null };
 
-/**
- * The pull request and file list last read in this session, so a retry
- * after the parser failed costs no GitHub request.
- */
+/** What reading a PR takes. */
+export type Loaders = { github: Github; store: Store; parser: Parser };
+
+/** What pinning a board takes; `theme` is the one Drawdy shows the reader who pins it. */
+export type Pinning = { ddp: Ddp; generateId: () => string; theme: () => Theme };
+
+/** The PR and file list last read, so a retry after the parser failed costs no GitHub request. */
 let lastRead: { key: string; pr: PrInfo; files: PrFile[] } | null = null;
 
 /**
- * The review for a pull request's current head: from this device's copy
- * when it has one. `fresh` reads GitHub again and builds the review anew,
- * ignoring that copy and the last read.
+ * The review for a PR's current head: this device's copy when it has one. `fresh` reads GitHub again and builds
+ * the review anew, past that copy and the last read.
  */
-export const loadReview = async (deps: { github: Github; store: Store; parser: Parser }, ref: PrRef, progress: Progress, fresh = false): Promise<Loaded> => {
-    const { github, store, parser } = deps;
+export const loadReview = async ({ github, store, parser }: Loaders, ref: PrRef, progress: Progress, fresh = false): Promise<Loaded> => {
     const key = prKey(ref);
     progress.step("pr", "active");
     const again = !fresh && lastRead?.key === key ? lastRead : null;
@@ -53,20 +55,39 @@ export const loadReview = async (deps: { github: Github; store: Store; parser: P
     return { review, plan };
 };
 
-/**
- * The board's elements in `theme`, for one `add-drawdy-elements` call: with
- * its PR card's top-left corner at `pr`, or in free space near the camera.
- */
-export const layOut = async (deps: { ddp: Ddp; generateId: () => string }, review: Review, theme: Theme, plan: BoardPlan = planBoard(review), pr?: Point): Promise<DrawdyElementSchema[]> => {
-    const { ddp, generateId } = deps;
-    const at = async (): Promise<Point> => {
-        const card = plan.pins.get("pr");
-        if (pr && card) return { x: plan.bounds.x + pr.x - card.x, y: plan.bounds.y + pr.y - card.y };
-        const view = await viewportOf(ddp);
-        const wanted = view
-            ? { x: Math.round(view.x + view.width * 0.06), y: Math.round(view.y + view.height * 0.08), width: plan.bounds.width, height: plan.bounds.height }
-            : { ...plan.bounds, x: 0, y: 0 };
-        return findFreeSpot(ddp, wanted);
-    };
-    return reviewElements(review, shiftPlan(plan, await at()), generateId, theme).elements;
+/** A pinned board's review at its head commit: this device's copy, else GitHub's. Rejects in words when the PR has new commits since. */
+export const reviewAt = async (loaders: Loaders, key: string, sha: string, progress: Progress): Promise<Review> => {
+    const kept = await loaders.store.review(key, sha);
+    if (kept) return kept;
+    // A key is `owner/repo#123`, which reads as a PR reference.
+    const ref = parsePrUrl(key);
+    if (!ref) throw inWords(`PR Blackboard can't tell which PR ${key} is.`);
+    const { review } = await loadReview(loaders, ref, progress);
+    if (review.pr.headSha !== sha) throw inWords(`${prLabel(ref)} has new commits since it was laid out here. Open it again to lay out the latest version.`, "New commits");
+    return review;
+};
+
+/** Where a plan's top-left goes: so its PR card's top-left lands on `corner`, else in free space near the camera. */
+const placeAt = async (ddp: Ddp, plan: BoardPlan, corner?: Point): Promise<Point> => {
+    const card = plan.pins.get("pr");
+    if (corner && card) return { x: plan.bounds.x + corner.x - card.x, y: plan.bounds.y + corner.y - card.y };
+    const view = await viewportOf(ddp);
+    const wanted = view
+        ? { x: Math.round(view.x + view.width * 0.06), y: Math.round(view.y + view.height * 0.08), width: plan.bounds.width, height: plan.bounds.height }
+        : { ...plan.bounds, x: 0, y: 0 };
+    return findFreeSpot(ddp, wanted);
+};
+
+/** Pins a review's board in one add call, so one undo removes it. Rejects in words when Drawdy refuses it. */
+export const pinBoard = async (deps: Pinning, review: Review, plan: BoardPlan | null, progress: Progress, corner?: Point): Promise<void> => {
+    progress.step("pin", "active", { label: `Pinning ${plural(review.pins.length, "card")}` });
+    const theme = deps.theme();
+    const board = plan ?? planBoard(review);
+    const { elements } = reviewElements(review, shiftPlan(board, await placeAt(deps.ddp, board, corner)), deps.generateId, theme);
+    try {
+        await deps.ddp.call("command:scene:add-drawdy-elements", { elements });
+    } catch (err) {
+        console.error("[pr-blackboard]", err);
+        throw inWords("Couldn't pin the board. Try again.");
+    }
 };

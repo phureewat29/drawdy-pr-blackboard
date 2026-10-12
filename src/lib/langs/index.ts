@@ -11,10 +11,17 @@ import { indexFile, type GFile, type LangRules } from "../anyfacts.ts";
 import type { ModuleContext, Resolver } from "../anylink.ts";
 import { parseFacts, type FileFacts } from "../facts.ts";
 import { grammarOf, type Grammar, type Syntax } from "../syntax.ts";
-import { GO, GO_RESOLVER, goModsAbove } from "./go.ts";
-import { JAVA, JAVA_RESOLVER, javaWants } from "./java.ts";
-import { packageMarkers, PYTHON, PYTHON_RESOLVER } from "./python.ts";
-import { RUST, RUST_RESOLVER } from "./rust.ts";
+import { goModsAbove } from "./go/modules.ts";
+import { GO } from "./go/rules.ts";
+import { GO_RESOLVER } from "./go/typing.ts";
+import { JAVA_RESOLVER } from "./java/resolver.ts";
+import { JAVA } from "./java/rules.ts";
+import { javaWants } from "./java/wants.ts";
+import { isPackage, packageMarkers } from "./python/modules.ts";
+import { PYTHON } from "./python/rules.ts";
+import { PYTHON_RESOLVER } from "./python/typing.ts";
+import { RUST } from "./rust/rules.ts";
+import { RUST_RESOLVER } from "./rust/typing.ts";
 
 export type Lang = {
     rules: LangRules;
@@ -37,7 +44,7 @@ export type Lang = {
 };
 
 const LANGS: Partial<Record<Grammar, Lang>> = {
-    python: { rules: PYTHON, resolver: PYTHON_RESOLVER, isPackage: (path) => /(^|\/)__init__\.py$/.test(path), packageMarkers },
+    python: { rules: PYTHON, resolver: PYTHON_RESOLVER, isPackage, packageMarkers },
     go: { rules: GO, resolver: GO_RESOLVER, configFiles: (path) => [goModsAbove(path)] },
     rust: { rules: RUST, resolver: RUST_RESOLVER, local: true },
     java: { rules: JAVA, resolver: JAVA_RESOLVER, wants: javaWants },

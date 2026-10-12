@@ -5,12 +5,12 @@ import { analyse, type Review } from "../lib/model.ts";
 import { testParse } from "./parser.ts";
 
 /**
- * A pull request saved from GitHub, in the shape `scripts/` and the tests
- * read: `pull` and `files` as the API answers them, and `raw`, every file
- * the read tier fetches that answers, by path. A path not in `raw` is a 404.
+ * A PR saved from GitHub, by its file in lib/fixtures or its absolute path: `pull` and `files` as the API answers
+ * them, and `raw`, every file the read tier fetches that answers, by path. A path not in `raw` is a 404.
  */
-const load = (file: string, ref: PrRef) => {
-    const json = JSON.parse(readFileSync(file.startsWith("/") ? file : join(import.meta.dirname, "../lib/fixtures", file), "utf8"));
+export const readSaved = (file: string) => JSON.parse(readFileSync(file.startsWith("/") ? file : join(import.meta.dirname, "../lib/fixtures", file), "utf8"));
+
+const load = (json: any, ref: PrRef) => {
     const pr: PrInfo = {
         ref,
         url: json.pull.html_url,
@@ -42,14 +42,14 @@ export type SavedPr = { pr: PrInfo; files: readonly PrFile[]; raw: ReadonlyMap<s
 export const reviewOf = async (saved: SavedPr): Promise<Review> => (await analyse(saved.pr, saved.files, async (path) => saved.raw.get(path) ?? null, testParse)).review;
 
 /** honojs/hono#5513, saved from GitHub with the files its board reads. */
-export const honoFixture = () => load("hono-5513.json", { owner: "honojs", repo: "hono", number: 5513 });
+export const honoFixture = () => load(readSaved("hono-5513.json"), { owner: "honojs", repo: "hono", number: 5513 });
 
 /** excalidraw/excalidraw#12237: 31 changed declarations in one thread, the stress case for strings and Markdown. */
-export const excalidrawFixture = () => load("excalidraw-12237.json", { owner: "excalidraw", repo: "excalidraw", number: 12237 });
+export const excalidrawFixture = () => load(readSaved("excalidraw-12237.json"), { owner: "excalidraw", repo: "excalidraw", number: 12237 });
 
-/** Any pull request saved in the fixtures' shape, by its file's absolute path: for previewing a board before it becomes a fixture. */
+/** Any PR saved in the fixtures' shape, by its file's absolute path: for previewing a board before it becomes a fixture. */
 export const savedPr = (path: string) => {
-    const url = JSON.parse(readFileSync(path, "utf8")).pull.html_url as string;
-    const [, owner, repo, number] = /github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/.exec(url)!;
-    return load(path, { owner, repo, number: Number(number) });
+    const json = readSaved(path);
+    const [, owner, repo, number] = /github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/.exec(json.pull.html_url)!;
+    return load(json, { owner, repo, number: Number(number) });
 };

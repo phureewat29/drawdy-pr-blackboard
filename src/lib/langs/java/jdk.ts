@@ -1,7 +1,7 @@
 /**
  * The JDK's types that classes most often extend or implement, with their
  * supertypes: what Java's resolver needs to know a class's members when its
- * chain runs through the JDK (`java.ts`). Generated from JDK 21.0.12.1 by
+ * chain runs through the JDK (`langs/java/`). Generated from JDK 21.0.12.1 by
  * reflection (public and protected members; a method overriding one of its
  * supertypes' of the same parameter types left out). One type a line:
  * `fqn|kind|supertypes|methods|fields|member types`. The kind is `c` or

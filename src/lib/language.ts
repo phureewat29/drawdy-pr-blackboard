@@ -103,7 +103,7 @@ export const languageOfFence = (info: string | undefined): Language => {
 };
 
 /**
- * The part a file plays in a pull request, which decides where its card goes
+ * The part a file plays in a PR, which decides where its card goes
  * and whether it starts folded:
  * - `code`: the change itself;
  * - `test`: tests, folded to their case names;

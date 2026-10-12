@@ -1,3 +1,4 @@
+import { sumBy } from "../lib/fp.ts";
 import type { PrFile, PrInfo } from "../lib/github.ts";
 
 /** A function in a synthetic source file: what it calls, and how it changed. */
@@ -91,8 +92,8 @@ export const syntheticPr = (title: string, files: readonly FakeFile[], body = "A
         state: "open",
         headSha: "head",
         headRepo: "example/synthetic",
-        additions: prFiles.reduce((n, f) => n + f.additions, 0),
-        deletions: prFiles.reduce((n, f) => n + f.deletions, 0),
+        additions: sumBy(prFiles, (f) => f.additions),
+        deletions: sumBy(prFiles, (f) => f.deletions),
         changedFiles: prFiles.length,
     };
     return { pr, files: prFiles, raw };

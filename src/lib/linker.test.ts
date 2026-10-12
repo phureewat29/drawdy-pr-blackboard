@@ -58,7 +58,7 @@ describe("resolving a name", () => {
             "5 named → lib/a.ts:1",
             "5 renamed → lib/a.ts:1",
         ]);
-        // A file the pull request didn't read names nothing.
+        // A file the PR didn't read names nothing.
         expect(refs({ "app.ts": ['import { named } from "./lib/a"', "named()"] }, "app.ts")).toEqual([]);
     });
 
@@ -110,7 +110,7 @@ describe("resolving a name", () => {
 describe("the builtin rule", () => {
     const changed = (paths: string[]) => new Set(paths);
 
-    it("takes a Node built-in for the repository's own file in nodejs/node and oven-sh/bun, only when the pull request changes it", () => {
+    it("takes a Node built-in for the repository's own file in nodejs/node and oven-sh/bun, only when the PR changes it", () => {
         const node = builtinRule({ owner: "nodejs", repo: "node", number: 1 }, changed(["lib/events.js", "lib/fs/promises.js", "lib/test.js"]));
         expect(["events", "node:events", "fs/promises", "node:test", "test", "path"].map(node)).toEqual(["lib/events.js", "lib/events.js", "lib/fs/promises.js", "lib/test.js", null, null]);
         const bun = builtinRule({ owner: "oven-sh", repo: "bun", number: 1 }, changed(["src/js/node/events.ts", "src/js/node/fs.promises.ts"]));

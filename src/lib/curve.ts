@@ -1,10 +1,9 @@
 /**
  * The geometry of a string: the curve Drawdy draws through an arrow's bend
- * points, and the distances clearance and clicks are measured by. Pure.
+ * points, and the distances clearance and clicks are measured by.
  */
 
-type P = { x: number; y: number };
-type Box = { x: number; y: number; width: number; height: number };
+import type { Point as P, Rect as Box } from "./layout/geometry.ts";
 
 const catmullRom = (p0: number, p1: number, p2: number, p3: number, t: number): number => {
     const t2 = t * t;
@@ -13,11 +12,8 @@ const catmullRom = (p0: number, p1: number, p2: number, p3: number, t: number): 
 };
 
 /**
- * The polyline Drawdy draws for an arrow with bend points: a uniform
- * Catmull-Rom spline through `[start, ...bend, end]`, `steps` points a
- * segment. A copy of the host's `catmullRomSpline` (packages/editor,
- * curves/catmull.ts), so the preview, clearance and clicks see what the
- * board shows.
+ * The polyline Drawdy draws for an arrow with bend points: a uniform Catmull-Rom spline through `waypoints`, `steps` points a segment.
+ * A copy of the host's (packages/editor, curves/catmull.ts), so the preview, clearance and clicks see what the board shows.
  */
 export const catmullRomSpline = (waypoints: readonly P[], steps = 20): P[] => {
     const n = waypoints.length;

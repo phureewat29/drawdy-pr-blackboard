@@ -126,22 +126,22 @@ An uncertain link is neither drawn nor listed.
 |---|---|---|
 | `vendor/web-tree-sitter.ts` | web-tree-sitter 0.27.1's `web-tree-sitter.js` (MIT), vendored as `marked` is, with three patches: its Node-only branches go (`import("module")`, `import("fs/promises")`, the `fs` loader) and `import.meta.url` reads `undefined`. Unpatched, the marketplace build refuses the bare imports `module` and `fs/promises`. Header: version, the npm file's SHA-256 (`7c49e3c1…4b8110`), the patches, `// @ts-nocheck` | |
 | `lib/sha256.ts` | SHA-256 in plain TypeScript; the driver's worker has no `crypto.subtle` | |
-| `lib/syntax.ts` | A's: grammar by extension, `loadSyntax(bytes)` (`Parser.init` with `wasmBinary` and a `locateFile`, which the bundle needs since it has no module URL), the tree flattened into typed arrays, the call-signature repair for tree-sitter-typescript 0.23.2; for Python, Go, Rust and Java, the definitions of the grammar's `tags.scm`, its other patterns turned off, moved onto the flat tree | the JS patterns in `findDecls` for parsed files |
+| `lib/syntax.ts` | A's: grammar by extension, `createSyntax(runtimeBytes)` (`Parser.init` with `wasmBinary` and a `locateFile`, which the bundle needs since it has no module URL), the tree flattened into typed arrays, the call-signature repair for tree-sitter-typescript 0.23.2; for Python, Go, Rust and Java, the definitions of the grammar's `tags.scm`, its other patterns turned off, moved onto the flat tree | the JS patterns in `findDecls` for parsed files |
 | `lib/tags.ts` | The `tags.scm` of tree-sitter-python 0.25.0, tree-sitter-go 0.25.0, tree-sitter-rust 0.24.0 and tree-sitter-java 0.23.5, copied unchanged from the pinned packages | |
-| `lib/facts.ts` | A's: per file, the declarations a card can stand for (units), scopes and bindings, every identifier that refers to something (sites), imports, exports, class and object shapes | |
-| `lib/linker.ts` | A's resolver, less its uncertain results (2.2.5) | `useEdges`, `referenceRows`, `importEdges` and `mentions` for parsed files |
+| `lib/facts.ts` | A's: per file, the declarations a card can stand for (units), scopes and bindings, every identifier that refers to something (sites), imports, exports, class and object shapes; each part in `lib/facts/` (`units.ts`, `scopes.ts`, `modules.ts`, `sites.ts`, `shapes.ts`, and `nodes.ts`, the syntax helpers they share) | |
+| `lib/linker.ts` | A's resolver, less its uncertain results (2.2.5): what each site names; in `lib/linker/`, what each expression, type and member is known to be (`evaluator.ts`, its values in `values.ts`), the files an import may stand for (`paths.ts`) and the builtin rule (`builtins.ts`) | `useEdges`, `referenceRows`, `importEdges` and `mentions` for parsed files |
 | `lib/anyfacts.ts` | The generic file index (2.2.10): per file, the units its `tags.scm` defines, scopes and bindings, sites and imports, as a language's rule table reads its nodes | |
 | `lib/anylink.ts` | The generic resolver (2.2.10): one declaration proven through scopes, imports, a package's files, and the members of a receiver whose type is written, built or a class's own; a language that resolves its own files (Java) gets them all at once | `callEdges`, `callsTo` and `rust.ts`: the name-matched calls of every other language |
-| `lib/langs/` | The rule tables of Python, Go, Rust and Java (`python.ts`, `go.ts`, `rust.ts`, `java.ts`, Java's with its own resolver and read tier): nodes, scopes, card names, how a module names files; `jdk.ts`, the JDK types Java's resolver knows, generated from JDK 21 by reflection; `index.ts` picks a table by grammar and parses a file with it | |
-| `lib/sources.ts` | The read tier (2.2.3): tsconfig paths, import candidates, reading through an injected `read(path)` | the source list in `open.ts` |
-| `lib/model.ts` | Cards and links from A's `board.ts`: line ownership, thread edges, the context caller, file cards, links by region. `Review`, `Pin` and `Link` keep their shape; a parsed unit becomes a `ChangedSymbol`, id `path:nameLine` | `symbolBoard`, `fileBoard`, `addTests` and the mention block |
+| `lib/langs/` | The rule tables of Python, Go, Rust and Java, a folder each (`python/`, `go/`, `rust/`, `java/`): `rules.ts` (nodes, scopes, card names), what the resolver reads (`typing.ts`; Java's own resolver, `java/resolver.ts`, and read tier, `java/wants.ts`), how a module names files (`modules.ts`); `java/jdk.ts`, the JDK types Java's resolver knows, generated from JDK 21 by reflection; `index.ts` picks a table by grammar and parses a file with it | |
+| `lib/sources.ts` | The read tier (2.2.3): tsconfig paths (`sources/tsconfig.ts`), import candidates, reading through an injected `read(path)` | the source list in `open.ts` |
+| `lib/model.ts` | Cards and links from A's `board.ts`, in `lib/model/`: line ownership (`changes.ts`), threads and their columns (`threads.ts`), the cards with the context caller and file cards (`cards.ts`), links by region (`links.ts`), where tests and file cards hang (`place.ts`), the card limit (`limit.ts`). `Review`, `Pin` and `Link` keep their shape; a parsed unit becomes a `ChangedSymbol`, id `path:nameLine` | `symbolBoard`, `fileBoard`, `addTests` and the mention block |
 | `lib/symbols.ts` | Cards by line patterns, for files no parser reads (2.2.7); card names (`labelOf`); `testCases` | |
 | `driver/grammars.ts` | The parser's files: the pins, the download, kv-storage, the SHA-256 check (2.2.2) | |
 | `worker/serve.ts` | The parser worker (2.2.2): the read tier, the parse, the links and the review with its board's plan, asking the driver for the parser's files | |
 | `worker/script.ts` | `serve` and all it uses, bundled by `npm run worker` into one script kept as text; a test and `npm run check` fail while it is behind its sources | |
 | `driver/parser.ts` | Starts the worker from that script, or runs the script on the driver's thread where no worker starts; answers its asks for files; reports the download | |
-| `driver/words.ts` | `inWords`: an error whose message the panel shows as it is | the runtime's `IN_WORDS` |
-| `driver/open.ts` | `loadReview`: the pull request and its files from GitHub, then the parser's review and plan | |
+| `driver/words.ts` | `inWords`: an error whose message the panel shows as it is; `explain` and `failureOf`: any failure in the reader's words | the runtime's `IN_WORDS` |
+| `driver/open.ts` | `loadReview`: the pull request and its files from GitHub, then the parser's review and plan; `reviewAt`, a pinned board's review; `pinBoard`, the one add call | |
 
 `buildReview` stays pure: it takes the pull request, its files, the texts
 read, and the facts and resolved sites. The facts are not stored; the
@@ -264,7 +264,7 @@ commit, which costs no API quota; the GitHub API costs what it costs today,
    `WebSocketWriter` from `aiohttp/http.py`, which takes it from
    `http_websocket.py`). Go reads no more than its changed files, and Rust
    nothing.
-7. For Java (request 66, `javaWants` in `langs/java.ts`), what its names
+7. For Java (request 66, `javaWants` in `langs/java/wants.ts`), what its names
    need, asked again after each round of reads until no path is new or
    300 files are taken, in the roots a file sees, its own first (a test
    root sees `src/main/java`), never another module's: for a changed
@@ -739,7 +739,7 @@ an import's local name. Measured by the gate (2.2.9) against pyright's
 definitions (Python) and go/types (Go), and by hand on Bun's Rust.
 
 **Java** (request 66). Java shares the index (`anyfacts.ts`) and brings
-its own resolver (`langs/java.ts`), since its names follow the JLS rather
+its own resolver (`langs/java/`), since its names follow the JLS rather
 than nested scopes, and it gets the files read all at once. A name
 resolves only when, for code that compiles, exactly one declaration is
 proven:
@@ -1846,8 +1846,8 @@ SVG, since a schema has no SVG node, stroked in the pinned theme's ink). The
 extension's own icon is the one exception: a generated image (requests
 43, 45 and 59: a stack of diff cards tied with a red string), `.github/assets/icon-256.png` for the listing, 256 px and under the marketplace's 256 KB limit (the 512 px master is `.github/assets/icon.png`),
 and its 64 px copy as a PNG data URI in an SVG for the 20 px action
-button, which Drawdy draws as an image. `npm run icon -- <listing.png>
-<64px.png>` writes both. Only Next's chevron changes the stroke, to 2.5, so it holds its weight on
+button, which Drawdy draws as an image. `npm run icon -- <512px.png>
+<256px.png> <64px.png>` writes all three. Only Next's chevron changes the stroke, to 2.5, so it holds its weight on
 lime. Text that is not an icon stays text: `+N −M`, `–` in `– / 8`, the
 state pill, the cards' `→` and `⋯`.
 
@@ -1898,7 +1898,7 @@ panel. Names have no hover fill, so a colour only has to read on the
 panel's own background; the hover turns the underline the name's colour.
 Colour says which string; the kind word says what it means. As 12 px
 panel text a hue needs 4.5:1, and the design asks 4.6 (`STRING_TEXT`
-beside `STRING_COLOURS` in `layout.ts`): the string's own colour where it
+beside `STRING_COLOURS` in `layout/colours.ts`): the string's own colour where it
 reaches 4.6:1 on the panel, else the nearest OKLCH lightness that does,
 its hue kept, and its chroma where sRGB allows; then no two panel colours
 closer than the board's two closest strings (orange and vermillion, 0.075

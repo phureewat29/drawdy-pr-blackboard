@@ -79,6 +79,9 @@ export const addedHunks = (text: string): Hunk[] => {
 /** Every line of the patch, in order. */
 export const allLines = (hunks: readonly Hunk[]): DiffLine[] => hunks.flatMap((h) => h.lines);
 
+/** The head line numbers of the added lines among some. */
+export const addedLines = (lines: readonly DiffLine[]): Set<number> => new Set(lines.filter((l) => l.t === "add").map((l) => l.n!));
+
 /** Changed lines whose head position falls in [from, to]. */
 export const changesIn = (hunks: readonly Hunk[], from: number, to: number): DiffLine[] =>
     allLines(hunks).filter((l) => l.t !== "ctx" && l.at >= from && l.at <= to);

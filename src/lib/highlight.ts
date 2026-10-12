@@ -56,12 +56,26 @@ export const escapeHtml = (s: string): string =>
 
 const span = (cls: string, text: string) => `<span class="${cls}">${escapeHtml(text)}</span>`;
 
+/** Where a string starting at `i` ends, past its closing quote; a backslash escapes the character after it. */
+const stringEnd = (text: string, i: number): number => {
+    let j = i + 1;
+    while (j < text.length && text[j] !== text[i]) j += text[j] === "\\" ? 2 : 1;
+    return j + 1;
+};
+
+/** A word as a keyword, a call, a type name (capitalised, but not in SQL) or plain text; `after` is what follows it. */
+const wordHtml = (word: string, after: string, lang: Language): string => {
+    if (KEYWORDS[lang]?.has(word)) return span("k", word);
+    if (after.startsWith("(") || (after.startsWith("<") && /^<[\w\s,.]*>\s*\(/.test(after))) return span("f", word);
+    if (/^[A-Z][a-z0-9]/.test(word) && lang !== "sql") return span("t", word);
+    return escapeHtml(word);
+};
+
 /**
  * One line as HTML with `<span class>` marks: c comment, s string, n number,
  * k keyword, f call, t type. Updates `state` for the next line.
  */
 export const highlightLine = (text: string, lang: Language, state: HighlightState): string => {
-    const keywords = KEYWORDS[lang];
     const lineComment = LINE_COMMENT[lang];
     const blocks = BLOCK_COMMENTS.has(lang);
     if (lang === "md" || lang === "text") return escapeHtml(text);
@@ -94,10 +108,9 @@ export const highlightLine = (text: string, lang: Language, state: HighlightStat
         }
         const ch = text[i];
         if (ch === '"' || ch === "'" || ch === "`") {
-            let j = i + 1;
-            while (j < text.length && text[j] !== ch) j += text[j] === "\\" ? 2 : 1;
-            out += span("s", text.slice(i, j + 1));
-            i = j + 1;
+            const end = stringEnd(text, i);
+            out += span("s", text.slice(i, end));
+            i = end;
             continue;
         }
         const num = /^\d[\d_]*(\.\d+)?([eE][+-]?\d+)?[a-zA-Z]*/.exec(rest);
@@ -106,14 +119,9 @@ export const highlightLine = (text: string, lang: Language, state: HighlightStat
             i += num[0].length;
             continue;
         }
-        const ident = /^[#@]?[A-Za-z_$][\w$]*/.exec(rest);
-        if (ident) {
-            const word = ident[0];
-            const after = text.slice(i + word.length).trimStart();
-            if (keywords?.has(word)) out += span("k", word);
-            else if (after.startsWith("(") || (after.startsWith("<") && /^<[\w\s,.]*>\s*\(/.test(after))) out += span("f", word);
-            else if (/^[A-Z][a-z0-9]/.test(word) && lang !== "sql") out += span("t", word);
-            else out += escapeHtml(word);
+        const word = /^[#@]?[A-Za-z_$][\w$]*/.exec(rest)?.[0];
+        if (word) {
+            out += wordHtml(word, text.slice(i + word.length).trimStart(), lang);
             i += word.length;
             continue;
         }

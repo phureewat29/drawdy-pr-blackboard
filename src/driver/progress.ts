@@ -1,21 +1,21 @@
 /**
- * An open's loading steps, as the panel lists them, in the manner of a CI
- * job: each step's state, when it started and ended, its rows while it runs,
- * and the warnings found on the way. The runtime keeps one job for the open
- * on the loading view and one for a rebuild; `loadReview` and the parser
- * report into it (`Progress`).
+ * An open's loading steps, as the panel lists them, in the manner of a CI job: each step's state, when it started
+ * and ended, its rows while it runs, and the warnings found on the way. `loadReview` and the parser report into it.
  */
 
 import { count, plural } from "../lib/fp.ts";
 import type { Annotation, LoadStep, StepRow, StepState } from "../shared/protocol.ts";
 import { notFound, notRead, tooLong } from "./warnings.ts";
 
-/** The loading view's steps, in the order they show; the parser's shows only while a parser downloads, beside the reads. */
+/** The loading view's steps; the parser's shows only while a parser downloads, beside the reads. */
 export type StepKey = "pr" | "parser" | "files" | "link" | "pin";
+
+/** How far a parser's download has got. */
+export type Download = "active" | "done" | "failed";
 
 /** What an open tells the loading view as it goes. */
 export type Progress = {
-    /** A step under way or done, renamed to `label` and given a muted `note` when they are known, and how far it has got of how many (`[8, 23]`). */
+    /** A step under way or done, renamed to `label`, given a muted `note`, and how far it has got of how many (`[8, 23]`). */
     step: (step: StepKey, state: "active" | "done", words?: { label?: string; note?: string; count?: [number, number] }) => void;
     /** The changed files read whole, in reading order, and how many more the read limits leave out. */
     reading: (paths: readonly string[], left: number) => void;
@@ -23,14 +23,13 @@ export type Progress = {
     read: (path: string, state: "done" | "long" | "missing") => void;
     /** How many files have been read so far to follow imports. */
     followed: (files: number) => void;
-    /** A language's parser downloading, downloaded, or failed. */
-    parser: (language: string, state: "active" | "done" | "failed") => void;
+    parser: (language: string, state: Download) => void;
 };
 
 /** Progress nobody shows: a teammate's Read all that builds the review. */
 export const quiet: Progress = { step: () => undefined, reading: () => undefined, read: () => undefined, followed: () => undefined, parser: () => undefined };
 
-/** What reading left out: how many changed files the read limits left unread, and those read too long to use or not found. */
+/** What reading left out: how many changed files the read limits left unread, and those too long to use or not found. */
 export type Unread = { left: number; long: string[]; missing: string[] };
 
 export type Job = Progress & {
@@ -40,7 +39,6 @@ export type Job = Progress & {
     at: () => StepKey | undefined;
     /** The open failed: the step it is at shows so, and `why` goes under the steps. */
     fail: (why: Annotation) => void;
-    /** The steps as the panel shows them now. */
     steps: () => LoadStep[];
     annotations: () => Annotation[];
     /** The words of the step under way, else of the last one done: a rebuild's line. */
@@ -73,45 +71,46 @@ export const createJob = (now: () => number = Date.now): Job => {
     let left = 0;
     const outcomes = new Map<string, "done" | "long" | "missing">();
     let followed = 0;
-    const languages = new Map<string, "active" | "done" | "failed">();
+    const languages = new Map<string, Download>();
 
     const find = (key: StepKey) => steps.find((s) => s.key === key);
-    const at = () => steps.find((s) => s.state === "failed") ?? [...steps].reverse().find((s) => s.state === "active");
+    const at = () => steps.find((s) => s.state === "failed") ?? steps.findLast((s) => s.state === "active");
     const warned = (key: StepKey) => warnings.some((w) => w.step === key);
     const end = (s: Step, state: StepState = warned(s.key) ? "warning" : "done") => {
         if (s.state === "done" || s.state === "warning" || s.state === "failed") return;
         s.state = state;
         s.ended = now();
     };
+    const filesWith = (outcome: "long" | "missing") => files.filter((p) => outcomes.get(p) === outcome);
+
+    /** A step that isn't listed yet, in its place. */
+    const added = (key: StepKey, label: string): Step => {
+        const s: Step = { key, label, state: "todo" };
+        steps = [...steps, s].sort((a, b) => ORDER.indexOf(a.key) - ORDER.indexOf(b.key));
+        return s;
+    };
 
     /**
-     * Starting a step ends the ones before it, but the parser's, which runs
-     * beside the reads and ends on its own; a step before it that never ran
-     * is dropped: a stored review is pinned without reading or linking.
+     * Starting a step ends the ones before it, but the parser's, which runs beside the reads and ends on its own; a
+     * step before it that never ran is dropped: a stored review is pinned without reading or linking.
      */
     const step: Progress["step"] = (key, state, words = {}) => {
-        let s = find(key);
-        if (!s) {
-            s = { key, label: words.label ?? "", state: "todo" };
-            steps = [...steps, s].sort((a, b) => ORDER.indexOf(a.key) - ORDER.indexOf(b.key));
-        }
+        const s = find(key) ?? added(key, words.label ?? "");
         Object.assign(s, words);
         if (s.state === "todo") {
             s.state = "active";
             s.started = now();
         }
-        const place = ORDER.indexOf(key);
-        steps = steps.filter((o) => o === s || o.key === "parser" || ORDER.indexOf(o.key) > place || o.state !== "todo");
-        for (const o of steps) if (o !== s && o.key !== "parser" && key !== "parser" && ORDER.indexOf(o.key) < place && o.state === "active") end(o);
+        const before = (o: Step) => o !== s && o.key !== "parser" && ORDER.indexOf(o.key) < ORDER.indexOf(key);
+        steps = steps.filter((o) => !(before(o) && o.state === "todo"));
+        if (key !== "parser") for (const o of steps) if (before(o) && o.state === "active") end(o);
         if (state === "done") end(s);
     };
 
     /** The files step ends once every changed file is read, with what reading left out, and finding the lines starts. */
-    const readAll = () => {
+    const endFilesOnceRead = () => {
         if (outcomes.size < files.length) return;
-        const long = files.filter((p) => outcomes.get(p) === "long");
-        const missing = files.filter((p) => outcomes.get(p) === "missing");
-        for (const w of [notRead(left), tooLong(long), notFound(missing)]) if (w) warnings.push({ step: "files", note: w });
+        for (const w of [notRead(left), tooLong(filesWith("long")), notFound(filesWith("missing"))]) if (w) warnings.push({ step: "files", note: w });
         step("link", "active");
     };
 
@@ -162,7 +161,7 @@ export const createJob = (now: () => number = Date.now): Job => {
             left = unread;
             if (files.length === 0) {
                 steps = steps.filter((s) => s.key !== "files");
-                readAll();
+                endFilesOnceRead();
                 return;
             }
             step("files", "active", { label: `Reading ${plural(files.length, "changed file")}` });
@@ -170,7 +169,7 @@ export const createJob = (now: () => number = Date.now): Job => {
         read: (path, state) => {
             if (!files.includes(path) || outcomes.has(path)) return;
             outcomes.set(path, state);
-            readAll();
+            endFilesOnceRead();
         },
         followed: (n) => {
             followed = n;
@@ -201,7 +200,7 @@ export const createJob = (now: () => number = Date.now): Job => {
                 return { key: s.key, label: s.label, ...(s.note ? { note: s.note } : {}), state: s.state, ...(meta ? { meta } : {}), ...rowsOf(s) };
             }),
         annotations: () => [...[...warnings].sort((a, b) => WARNING_ORDER.indexOf(a.step) - WARNING_ORDER.indexOf(b.step)).map((w) => w.note), ...(failure ? [failure] : [])],
-        current: () => (steps.find((s) => s.state === "active") ?? [...steps].reverse().find((s) => s.state !== "todo") ?? steps[0]).label,
-        unread: () => ({ left, long: files.filter((p) => outcomes.get(p) === "long"), missing: files.filter((p) => outcomes.get(p) === "missing") }),
+        current: () => (steps.find((s) => s.state === "active") ?? steps.findLast((s) => s.state !== "todo") ?? steps[0]).label,
+        unread: () => ({ left, long: filesWith("long"), missing: filesWith("missing") }),
     };
 };
