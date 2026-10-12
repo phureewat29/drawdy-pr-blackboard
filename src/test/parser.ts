@@ -15,6 +15,7 @@ export const WASM: Record<Grammar | "runtime", string> = {
     python: "tree-sitter-python/tree-sitter-python.wasm",
     go: "tree-sitter-go/tree-sitter-go.wasm",
     rust: "tree-sitter-rust/tree-sitter-rust.wasm",
+    java: "tree-sitter-java/tree-sitter-java.wasm",
 };
 
 export const wasmBytes = (name: Grammar | "runtime"): Uint8Array => new Uint8Array(readFileSync(join(import.meta.dirname, "../../node_modules", WASM[name])));
@@ -25,7 +26,7 @@ let syntax: Promise<Syntax> | null = null;
 export const testSyntax = (): Promise<Syntax> =>
     (syntax ??= (async () => {
         const s = await createSyntax(wasmBytes("runtime"));
-        for (const g of ["typescript", "tsx", "javascript", "python", "go", "rust"] as const) await s.add(g, wasmBytes(g));
+        for (const g of ["typescript", "tsx", "javascript", "python", "go", "rust", "java"] as const) await s.add(g, wasmBytes(g));
         return s;
     })());
 

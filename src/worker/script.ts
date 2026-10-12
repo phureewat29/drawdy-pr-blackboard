@@ -1906,10 +1906,10 @@ export const WORKER_SCRIPT = `"use strict";
       return getBinarySync(binaryFile);
     }
     __name(getWasmBinary, "getWasmBinary");
-    async function instantiateArrayBuffer(binaryFile, imports4) {
+    async function instantiateArrayBuffer(binaryFile, imports5) {
       try {
         var binary2 = await getWasmBinary(binaryFile);
-        var instance2 = await WebAssembly.instantiate(binary2, imports4);
+        var instance2 = await WebAssembly.instantiate(binary2, imports5);
         return instance2;
       } catch (reason) {
         err(\`failed to asynchronously prepare wasm: \${reason}\`);
@@ -1917,20 +1917,20 @@ export const WORKER_SCRIPT = `"use strict";
       }
     }
     __name(instantiateArrayBuffer, "instantiateArrayBuffer");
-    async function instantiateAsync(binary2, binaryFile, imports4) {
+    async function instantiateAsync(binary2, binaryFile, imports5) {
       if (!binary2 && !isFileURI(binaryFile) && !ENVIRONMENT_IS_NODE) {
         try {
           var response = fetch(binaryFile, {
             credentials: "same-origin"
           });
-          var instantiationResult = await WebAssembly.instantiateStreaming(response, imports4);
+          var instantiationResult = await WebAssembly.instantiateStreaming(response, imports5);
           return instantiationResult;
         } catch (reason) {
           err(\`wasm streaming compile failed: \${reason}\`);
           err("falling back to ArrayBuffer instantiation");
         }
       }
-      return instantiateArrayBuffer(binaryFile, imports4);
+      return instantiateArrayBuffer(binaryFile, imports5);
     }
     __name(instantiateAsync, "instantiateAsync");
     function getWasmImports() {
@@ -2241,8 +2241,8 @@ export const WORKER_SCRIPT = `"use strict";
       "e": 111
     };
     var generateTypePack = /* @__PURE__ */ __name((types) => uleb128EncodeWithLen(Array.from(types, (type) => {
-      var code = wasmTypeCodes[type];
-      return code;
+      var code2 = wasmTypeCodes[type];
+      return code2;
     })), "generateTypePack");
     var convertJsFunctionToWasm = /* @__PURE__ */ __name((func2, sig) => {
       var bytes = Uint8Array.of(
@@ -2901,13 +2901,13 @@ export const WORKER_SCRIPT = `"use strict";
     __name(_tree_sitter_query_progress_callback, "_tree_sitter_query_progress_callback");
     var runtimeKeepaliveCounter = 0;
     var keepRuntimeAlive = /* @__PURE__ */ __name(() => noExitRuntime || runtimeKeepaliveCounter > 0, "keepRuntimeAlive");
-    var _proc_exit = /* @__PURE__ */ __name((code) => {
-      EXITSTATUS = code;
+    var _proc_exit = /* @__PURE__ */ __name((code2) => {
+      EXITSTATUS = code2;
       if (!keepRuntimeAlive()) {
-        Module["onExit"]?.(code);
+        Module["onExit"]?.(code2);
         ABORT = true;
       }
-      quit_(code, new ExitStatus(code));
+      quit_(code2, new ExitStatus(code2));
     }, "_proc_exit");
     _proc_exit.sig = "vi";
     var exitJS = /* @__PURE__ */ __name((status, implicit) => {
@@ -4292,6 +4292,28 @@ export const WORKER_SCRIPT = `"use strict";
 (impl_item
     type: (type_identifier) @name
     !trait) @reference.implementation
+\`,
+    // tree-sitter-java 0.23.5, queries/tags.scm
+    java: String.raw\`(class_declaration
+  name: (identifier) @name) @definition.class
+
+(method_declaration
+  name: (identifier) @name) @definition.method
+
+(method_invocation
+  name: (identifier) @name
+  arguments: (argument_list) @reference.call)
+
+(interface_declaration
+  name: (identifier) @name) @definition.interface
+
+(type_list
+  (type_identifier) @name) @reference.implementation
+
+(object_creation_expression
+  type: (type_identifier) @name) @reference.class
+
+(superclass (type_identifier) @name) @reference.class
 \`
   };
 
@@ -4304,6 +4326,7 @@ export const WORKER_SCRIPT = `"use strict";
     if (ext === "py") return "python";
     if (ext === "go") return "go";
     if (ext === "rs") return "rust";
+    if (ext === "java") return "java";
     return null;
   };
   var MAX_ERROR_SHARE = 0.02;
@@ -4369,8 +4392,8 @@ export const WORKER_SCRIPT = `"use strict";
   var flatten = (tree, text, lang, captures) => {
     const wanted = /* @__PURE__ */ new Map();
     for (const c2 of captures ?? []) {
-      const at2 = c2.node.startIndex;
-      wanted.set(at2, [...wanted.get(at2) ?? [], { id: c2.node.id, capture: c2.name }]);
+      const at3 = c2.node.startIndex;
+      wanted.set(at3, [...wanted.get(at3) ?? [], { id: c2.node.id, capture: c2.name }]);
     }
     const tags = [];
     const fieldNames = lang.fields;
@@ -4637,13 +4660,13 @@ export const WORKER_SCRIPT = `"use strict";
         if (opts.to === "function") scope = functionScopeOf(scope);
         if (opts.to === "module") scope = module2;
         if (kind !== "global" && scope !== module2 && functionScopeOf(scope).names.get(name2)?.some((b3) => b3.kind === "global")) scope = module2;
-        const unit4 = opts.unitNode !== void 0 ? unitByNode.get(opts.unitNode) : void 0;
+        const unit5 = opts.unitNode !== void 0 ? unitByNode.get(opts.unitNode) : void 0;
         const b2 = {
           name: name2,
           node: nameNode,
           kind,
           scope,
-          ...unit4 ? { unit: unit4 } : {},
+          ...unit5 ? { unit: unit5 } : {},
           ...opts.import ? { import: opts.import } : {},
           ...opts.typeNode !== void 0 && opts.typeNode >= 0 ? { typeNode: opts.typeNode } : {},
           ...opts.init !== void 0 && opts.init >= 0 ? { init: opts.init } : {},
@@ -4688,30 +4711,30 @@ export const WORKER_SCRIPT = `"use strict";
       if (named) named.push(u);
       else m2.set(u.name, [u]);
     }
-    const imports4 = rules.imports(t);
-    const importNodes = new Set(imports4.map((i2) => i2.node));
+    const imports5 = rules.imports(t);
+    const importNodes = new Set(imports5.map((i2) => i2.node));
     const sites = [];
     for (let n = 0; n < t.count; n++) {
       if (!rules.identifiers.has(t.type[n]) || bindingNodes.has(n) || importNodes.has(n)) continue;
-      const role4 = rules.role(t, n);
-      if (role4.kind === "decl" || role4.kind === "skip") continue;
+      const role5 = rules.role(t, n);
+      if (role5.kind === "decl" || role5.kind === "skip") continue;
       sites.push({
         node: n,
         start: t.start[n],
         line: lineOf(t, t.start[n]),
         name: textOf(t, n),
-        shape: role4.kind,
-        receiver: role4.kind === "bare" ? -1 : role4.receiver,
-        ref: rules.isCallee(t, role4.expr) ? "call" : rules.isType(t, n) ? "type" : "value",
+        shape: role5.kind,
+        receiver: role5.kind === "bare" ? -1 : role5.receiver,
+        ref: rules.isCallee(t, role5.expr) ? "call" : rules.isType(t, n) ? "type" : "value",
         scope: scopeAt(n)
       });
     }
-    for (const i2 of imports4) {
+    for (const i2 of imports5) {
       if (i2.name === null || i2.name === "*" || i2.node < 0) continue;
       sites.push({ node: i2.node, start: t.start[i2.node], line: lineOf(t, t.start[i2.node]), name: i2.name, shape: "bare", receiver: -1, ref: "import", scope: scopeAt(i2.node) });
     }
-    const importScope = new Map(imports4.map((i2) => [i2, scopeAt(i2.stmt)]));
-    return { path, rules, flat: t, units, labels, module: module2, scopes, scopeOfNode, enclosing, sites, imports: imports4, importScope, members, bases, unitByNode };
+    const importScope = new Map(imports5.map((i2) => [i2, scopeAt(i2.stmt)]));
+    return { path, rules, flat: t, units, labels, module: module2, scopes, scopeOfNode, enclosing, sites, imports: imports5, importScope, members, bases, unitByNode };
   };
 
   // src/lib/facts.ts
@@ -5215,7 +5238,7 @@ export const WORKER_SCRIPT = `"use strict";
     return first === void 0 ? null : stringValue(t, first);
   };
   var modulesOf = (t) => {
-    const imports4 = [];
+    const imports5 = [];
     const exports = [];
     const specifiers = [];
     let moduleExports2 = -1;
@@ -5231,7 +5254,7 @@ export const WORKER_SCRIPT = `"use strict";
           const id = childOfType(t, req, "identifier");
           if (rs !== null) {
             specifiers.push({ spec: rs, node: req, reexport: false });
-            if (id >= 0) imports4.push({ local: textOf(t, id), spec: rs, imported: "=", node: id, typeOnly, kind: "import-equals" });
+            if (id >= 0) imports5.push({ local: textOf(t, id), spec: rs, imported: "=", node: id, typeOnly, kind: "import-equals" });
           }
           continue;
         }
@@ -5240,17 +5263,17 @@ export const WORKER_SCRIPT = `"use strict";
         const clause = childOfType(t, s, "import_clause");
         if (clause < 0) continue;
         for (const k2 of namedChildren(t, clause)) {
-          if (t.type[k2] === "identifier") imports4.push({ local: textOf(t, k2), spec, imported: "default", node: k2, typeOnly, kind: "esm" });
+          if (t.type[k2] === "identifier") imports5.push({ local: textOf(t, k2), spec, imported: "default", node: k2, typeOnly, kind: "esm" });
           else if (t.type[k2] === "namespace_import") {
             const id = childOfType(t, k2, "identifier");
-            if (id >= 0) imports4.push({ local: textOf(t, id), spec, imported: "*", node: id, typeOnly, kind: "esm" });
+            if (id >= 0) imports5.push({ local: textOf(t, id), spec, imported: "*", node: id, typeOnly, kind: "esm" });
           } else if (t.type[k2] === "named_imports") {
             for (const sp of namedChildren(t, k2)) {
               if (t.type[sp] !== "import_specifier") continue;
               const nm = child(t, sp, "name");
               const alias = child(t, sp, "alias");
               const specTypeOnly = typeOnly || children(t, sp).some((c) => !t.named[c] && t.type[c] === "type");
-              imports4.push({ local: textOf(t, alias >= 0 ? alias : nm), spec, imported: propName(t, nm), node: nm, typeOnly: specTypeOnly, kind: "esm" });
+              imports5.push({ local: textOf(t, alias >= 0 ? alias : nm), spec, imported: propName(t, nm), node: nm, typeOnly: specTypeOnly, kind: "esm" });
             }
           }
         }
@@ -5329,7 +5352,7 @@ export const WORKER_SCRIPT = `"use strict";
       const spec = first === void 0 ? null : stringValue(t, first);
       if (spec !== null) specifiers.push({ spec, node: n, reexport: false });
     }
-    return { imports: imports4, exports, specifiers, moduleExports: moduleExports2 };
+    return { imports: imports5, exports, specifiers, moduleExports: moduleExports2 };
   };
   var TYPE_CONTEXT = /* @__PURE__ */ new Set(["type_query", "nested_type_identifier", "type_annotation", "type_arguments", "implements_clause", "extends_type_clause", "type_predicate", "asserts"]);
   var ASSIGN = /* @__PURE__ */ new Set(["assignment_expression", "augmented_assignment_expression"]);
@@ -5362,9 +5385,9 @@ export const WORKER_SCRIPT = `"use strict";
     };
     const contextKind = (id) => {
       for (let a = t.parent[id]; a >= 0; a = t.parent[a]) {
-        const at2 = t.type[a];
-        if (at2 === "import_statement") return "import";
-        if (at2 === "export_statement") {
+        const at3 = t.type[a];
+        if (at3 === "import_statement") return "import";
+        if (at3 === "export_statement") {
           if (child(t, a, "declaration") >= 0) break;
           const v2 = child(t, a, "value");
           if (v2 >= 0) {
@@ -5373,19 +5396,19 @@ export const WORKER_SCRIPT = `"use strict";
           }
           return child(t, a, "source") >= 0 ? "import" : "export";
         }
-        if (at2 === "variable_declarator") {
+        if (at3 === "variable_declarator") {
           const nm = child(t, a, "name");
           if (requireSpec(t, child(t, a, "value"), null) !== null && nm >= 0 && t.type[nm] !== "identifier") return "import";
           break;
         }
-        if (at2 === "statement_block" || at2 === "program") break;
+        if (at3 === "statement_block" || at3 === "program") break;
       }
       for (let a = t.parent[id]; a > 0; a = t.parent[a]) {
-        const at2 = t.type[a];
-        if (at2 === "extends_clause") return t.field[id] === "value" || t.parent[id] === a ? "extends" : "type";
-        if (at2 === "class_heritage") return "extends";
-        if (TYPE_CONTEXT.has(at2)) return "type";
-        if (at2.endsWith("_statement") || at2 === "statement_block" || at2 === "arguments" || at2 === "call_expression" || at2 === "new_expression" || at2 === "arrow_function" || at2 === "pair" || at2 === "variable_declarator" || at2 === "assignment_expression" || at2 === "class_body" || at2 === "formal_parameters" || at2 === "binary_expression" || at2 === "ternary_expression" || at2 === "member_expression" && TYPE_CONTEXT.has(t.type[t.parent[a]] ?? "") === false) break;
+        const at3 = t.type[a];
+        if (at3 === "extends_clause") return t.field[id] === "value" || t.parent[id] === a ? "extends" : "type";
+        if (at3 === "class_heritage") return "extends";
+        if (TYPE_CONTEXT.has(at3)) return "type";
+        if (at3.endsWith("_statement") || at3 === "statement_block" || at3 === "arguments" || at3 === "call_expression" || at3 === "new_expression" || at3 === "arrow_function" || at3 === "pair" || at3 === "variable_declarator" || at3 === "assignment_expression" || at3 === "class_body" || at3 === "formal_parameters" || at3 === "binary_expression" || at3 === "ternary_expression" || at3 === "member_expression" && TYPE_CONTEXT.has(t.type[t.parent[a]] ?? "") === false) break;
       }
       return null;
     };
@@ -5470,9 +5493,9 @@ export const WORKER_SCRIPT = `"use strict";
   };
   var enclosingDeclarator = (t, n) => {
     for (let a = t.parent[n]; a >= 0; a = t.parent[a]) {
-      const at2 = t.type[a];
-      if (at2 === "variable_declarator") return a;
-      if (at2 !== "object_pattern" && at2 !== "pair_pattern" && at2 !== "array_pattern" && at2 !== "shorthand_property_identifier_pattern" && at2 !== "object_assignment_pattern" && at2 !== "assignment_pattern" && at2 !== "rest_pattern") return -1;
+      const at3 = t.type[a];
+      if (at3 === "variable_declarator") return a;
+      if (at3 !== "object_pattern" && at3 !== "pair_pattern" && at3 !== "array_pattern" && at3 !== "shorthand_property_identifier_pattern" && at3 !== "object_assignment_pattern" && at3 !== "assignment_pattern" && at3 !== "rest_pattern") return -1;
     }
     return -1;
   };
@@ -5670,12 +5693,12 @@ export const WORKER_SCRIPT = `"use strict";
           let isStatic = false;
           let conditional = false;
           for (let a = t.parent[n]; a >= 0 && a !== root; a = t.parent[a]) {
-            const at2 = t.type[a];
-            if (at2 === "method_definition") {
+            const at3 = t.type[a];
+            if (at3 === "method_definition") {
               isStatic = hasToken(t, a, "static");
               break;
             }
-            if (CONDITIONAL.has(at2) || at2 === "binary_expression" && /^(&&|\\|\\||\\?\\?)$/.test(tokensOf(t, a)[0] ?? "")) conditional = true;
+            if (CONDITIONAL.has(at3) || at3 === "binary_expression" && /^(&&|\\|\\||\\?\\?)$/.test(tokensOf(t, a)[0] ?? "")) conditional = true;
           }
           if (!shape.members.some((m2) => m2.name === name2 && m2.kind === "this" && m2.value === child(t, n, "right"))) shape.members.push({ name: name2, static: isStatic, kind: "this", node: n, nameStart: t.start[prop], value: child(t, n, "right"), typeNode: -1, ...conditional ? { conditional } : {} });
         }
@@ -6234,11 +6257,11 @@ export const WORKER_SCRIPT = `"use strict";
   var UNIX = new Set("aix android darwin dragonfly freebsd hurd illumos ios linux netbsd openbsd solaris".split(" "));
   var parseExpr = (src) => {
     const tokens = src.match(/!|&&|\\|\\||\\(|\\)|[\\w.]+/g) ?? [];
-    let at2 = 0;
+    let at3 = 0;
     const or = () => {
       let a = and();
-      while (a && tokens[at2] === "||") {
-        at2++;
+      while (a && tokens[at3] === "||") {
+        at3++;
         const b2 = and();
         a = b2 ? { op: "or", a, b: b2 } : null;
       }
@@ -6246,29 +6269,29 @@ export const WORKER_SCRIPT = `"use strict";
     };
     const and = () => {
       let a = not();
-      while (a && tokens[at2] === "&&") {
-        at2++;
+      while (a && tokens[at3] === "&&") {
+        at3++;
         const b2 = not();
         a = b2 ? { op: "and", a, b: b2 } : null;
       }
       return a;
     };
     const not = () => {
-      if (tokens[at2] === "!") {
-        at2++;
+      if (tokens[at3] === "!") {
+        at3++;
         const x2 = not();
         return x2 ? { op: "not", x: x2 } : null;
       }
-      if (tokens[at2] === "(") {
-        at2++;
+      if (tokens[at3] === "(") {
+        at3++;
         const x2 = or();
-        return tokens[at2++] === ")" ? x2 : null;
+        return tokens[at3++] === ")" ? x2 : null;
       }
-      const tag = tokens[at2++];
+      const tag = tokens[at3++];
       return tag && /^[\\w.]+$/.test(tag) ? { op: "tag", tag } : null;
     };
     const e = or();
-    return e && at2 === tokens.length ? e : null;
+    return e && at3 === tokens.length ? e : null;
   };
   var all = (xs) => xs.reduce((a, b2) => a ? { op: "and", a, b: b2 } : b2, null);
   var constraintOf = (path, text) => {
@@ -6410,6 +6433,2174 @@ export const WORKER_SCRIPT = `"use strict";
   };
   var GO_RESOLVER = { typing: GO_TYPING, moduleFiles: goModuleFiles };
 
+  // src/lib/langs/jdk.ts
+  var JDK_PACKAGES = ["java.lang", "java.util.function", "java.util", "java.io", "java.util.concurrent", "java.net", "javax.lang.model.util", "javax.net.ssl", "javax.tools", "java.lang.reflect", "java.time.temporal", "java.security", "javax.lang.model.element", "java.nio", "java.util.concurrent.locks", "java.lang.constant", "javax.lang.model.type", "java.nio.channels", "java.util.logging", "java.security.cert", "java.lang.ref", "java.nio.file", "java.lang.invoke", "javax.annotation.processing", "java.util.concurrent.atomic", "javax.security.auth", "java.util.random", "java.util.stream", "javax.management", "java.beans", "java.nio.charset", "java.time", "java.math", "java.nio.file.attribute", "java.lang.annotation", "java.lang.instrument", "java.time.format", "java.util.zip"];
+  var JDK_ALIASES = ["@0.String", "@0.Object", "@3.Serializable", "@8.JavaFileManager.Location", "@0.RuntimeException", "@1.Function", "@4.CompletionStage", "@0.Runnable", "@1.BiFunction", "@4.TimeUnit", "@d.ByteBuffer", "@2.Collection", "@0.Comparable", "@4.Executor", "@0.ReflectiveOperationException", "@1.Consumer", "@0.Cloneable", "@3.IOException", "@0.CharSequence", "@0.Throwable", "@e.AbstractQueuedSynchronizer.ConditionObject", "@3.OutputStream", "@1.BiConsumer", "@0.IncompatibleClassChangeError", "@1.LongBinaryOperator", "@0.Exception", "@0.Class", "@f.Constable", "@2.Comparator", "@1.IntBinaryOperator", "@j.X509Certificate", "@2.AbstractCollection", "@0.LinkageError", "@8.FileObject", "@1.DoubleBinaryOperator", "@a.TemporalAccessor", "@1.ToDoubleFunction", "@2.AbstractMap", "@0.VirtualMachineError", "@5.URL", "@7.ManagerFactoryParameters", "@4.ForkJoinTask", "@0.Thread.UncaughtExceptionHandler", "@1.ToLongFunction", "@1.LongUnaryOperator", "@0.Number", "@0.ClassLoader", "@3.Closeable", "@a.TemporalField", "@2.AbstractQueue", "@1.ToIntFunction", "@9.AnnotatedElement", "@1.IntUnaryOperator", "@2.Locale", "@f.ConstantDesc", "@5.Authenticator.RequestorType", "@a.TemporalUnit", "@1.Supplier", "@a.Temporal", "@2.SequencedCollection", "@8.JavaFileObject.Kind", "@1.BinaryOperator", "@3.InputStream", "@0.IndexOutOfBoundsException", "@b.Principal", "@e.Condition", "@0.IllegalArgumentException", "@0.AutoCloseable", "@4.BlockingQueue", "@0.Appendable", "@4.RunnableScheduledFuture", "@6.AbstractElementVisitor6", "@4.Callable", "@b.ProtectionDomain", "@9.AccessibleObject", "@2.ResourceBundle.Control", "@3.Writer", "@3.ObjectStreamConstants", "@0.AbstractStringBuilder", "@0.Thread", "@2.Map.Entry", "@5.InetAddress", "@2.AbstractSet", "@c.Element", "@6.AbstractAnnotationValueVisitor6", "@8.JavaFileObject", "@h.ReadableByteChannel", "@h.WritableByteChannel", "@2.Map", "@1.DoubleUnaryOperator", "@g.TypeMirror", "@1.UnaryOperator", "@6.SimpleAnnotationValueVisitor9", "@6.SimpleAnnotationValueVisitor6", "@6.SimpleAnnotationValueVisitor7", "@6.SimpleAnnotationValueVisitor8", "@3.FilterOutputStream", "@9.GenericDeclaration", "@4.ThreadPoolExecutor", "@2.AbstractList", "@2.RandomAccess", "@1.Predicate", "@4.CompletableFuture", "@e.AbstractOwnableSynchronizer", "@i.LogRecord", "@7.SSLEngine", "@4.CountedCompleter", "@r.Collector.Characteristics", "@3.Reader", "@5.SocketException", "@b.GeneralSecurityException", "@q.RandomGenerator", "@4.ExecutorService", "@4.Flow.Subscriber", "@4.RejectedExecutionHandler", "@4.ScheduledExecutorService", "@1.DoublePredicate", "@c.AnnotationValue", "@4.AbstractExecutorService", "@3.FilenameFilter", "@a.TemporalAmount", "@2.ResourceBundle", "@4.RunnableFuture", "@3.InterruptedIOException", "@m.TypeDescriptor.OfField", "@2.AbstractSequentialList", "@4.ConcurrentNavigableMap", "@c.AnnotationValueVisitor", "@7.SSLSessionBindingEvent", "@2.List", "@2.EventListener", "@3.Flushable", "@0.IllegalStateException", "@k.Reference", "@5.Authenticator", "@b.PublicKey", "@4.ConcurrentMap", "@1.LongPredicate", "@6.SimpleElementVisitor9", "@6.SimpleElementVisitor6", "@6.SimpleElementVisitor7", "@6.SimpleElementVisitor8", "@6.AbstractTypeVisitor6", "@3.ObjectOutput", "@2.SequencedMap", "@2.SequencedSet", "@2.NavigableMap", "@2.NavigableSet", "@4.Future", "@1.IntPredicate", "@7.TrustManager", "@x.BasicFileAttributes", "@b.KeyStore", "@3.ObjectInput", "@3.File", "@3.PrintStream", "@3.PrintWriter", "@9.Type", "@2.Set", "@1.BiPredicate", "@6.SimpleTypeVisitor9", "@6.SimpleTypeVisitor6", "@6.SimpleTypeVisitor7", "@6.SimpleTypeVisitor8", "@3.FilterInputStream", "@3.ObjectStreamClass", "@h.Channel", "@2.Queue", "@2.Deque", "@4.Flow.Subscription", "@c.ExecutableElement", "@9.Executable", "@7.SSLSession", "@7.KeyManager", "@0.ClassFormatError", "@a.TemporalAdjuster", "@c.AnnotationMirror", "@7.X509TrustManager", "@1.ToIntBiFunction", "@4.ScheduledFuture", "@c.VariableElement", "@6.ElementScanner9", "@6.ElementScanner6", "@6.ElementScanner7", "@6.ElementScanner8", "@5.Socket", "@8.JavaFileManager", "@m.TypeDescriptor", "@4.Flow.Publisher", "@1.DoubleConsumer", "@c.ElementVisitor", "@7.X509KeyManager", "@0.Iterable", "@b.Provider", "@2.Iterator", "@0.Error", "@5.URLConnection", "@5.ProxySelector", "@5.SocketAddress", "@j.X509Extension", "@4.BlockingDeque", "@4.ThreadFactory", "@e.ReadWriteLock", "@8.OptionChecker", "@0.StringBuffer", "@1.LongConsumer", "@i.Handler", "@7.SSLException", "@0.ThreadLocal", "@h.ByteChannel", "@l.FileVisitor", "@p.Destroyable", "@j.Certificate", "@1.IntFunction", "@2.Spliterator", "@1.IntConsumer", "@g.TypeVisitor", "@0.Module", "@9.Member", "@9.Method", "@3.DataOutput", "@3.FileFilter", "@2.Dictionary", "@3.DataInput", "@2.Hashtable", "@2.SortedMap", "@2.SortedSet", "@i.Formatter", "@n.Processor", "@0.Readable", "@v.Duration", "@u.Charset", "@2.HashMap", "@2.HashSet", "@4.Delayed"];
+  var JDK_TYPES = String.raw\`@t.PropertyChangeListener|i|!3m|a:propertyChange(@t.PropertyChangeEvent)||
+@3.BufferedInputStream|c|!4k||buf count marklimit markpos pos|
+@3.BufferedOutputStream|c|!2o||buf count|
+@3.BufferedReader|c|!30|lines() readLine()||
+@3.BufferedWriter|c|!24|newLine()||
+@3.ByteArrayInputStream|c|!1q||buf count mark pos|
+@3.ByteArrayOutputStream|c|!l|reset() size() toByteArray() toString(int) toString(!0) toString(!6f) writeBytes(byte[]) writeTo(!l)|buf count|
+!1b|i|!1v|||
+!67|i||a:readBoolean() a:readByte() a:readChar() a:readDouble() a:readFloat() a:readFully(byte[]) a:readFully(byte[],int,int) a:readInt() a:readLine() a:readLong() a:readShort() a:readUTF() a:readUnsignedByte() a:readUnsignedShort() a:skipBytes(int)||
+!64|i||a:write(byte[]) a:write(byte[],int,int) a:write(int) a:writeBoolean(boolean) a:writeByte(int) a:writeBytes(!0) a:writeChar(int) a:writeChars(!0) a:writeDouble(double) a:writeFloat(float) a:writeInt(int) a:writeLong(long) a:writeShort(int) a:writeUTF(!0)||
+@3.EOFException|c|!h|||
+@3.Externalizable|i|!2|a:readExternal(!49) a:writeExternal(!3z)||
+!65|i||a:accept(!4a)||
+@3.FileNotFoundException|c|!h|||
+!3b|i||a:accept(!4a,!0)||
+!4a|c|!1,!2,!c|canExecute() canRead() canWrite() compareTo(!4a) createNewFile() delete() deleteOnExit() exists() getAbsoluteFile() getAbsolutePath() getCanonicalFile() getCanonicalPath() getFreeSpace() getName() getParent() getParentFile() getPath() getTotalSpace() getUsableSpace() isAbsolute() isDirectory() isFile() isHidden() lastModified() length() list() list(!3b) listFiles() listFiles(!65) listFiles(!3b) mkdir() mkdirs() renameTo(!4a) s:createTempFile(!0,!0) s:createTempFile(!0,!0,!4a) s:listRoots() setExecutable(boolean) setExecutable(boolean,boolean) setLastModified(long) setReadOnly() setReadable(boolean) setReadable(boolean,boolean) setWritable(boolean) setWritable(boolean,boolean) toPath() toURI() toURL()|pathSeparator pathSeparatorChar separator separatorChar|
+!4k|c|!1q||in|
+!2o|c|!l||out|
+@3.FilterReader|c|!30||in|
+@3.FilterWriter|c|!24||out|
+!3n|i||a:flush()||
+!h|c|!p|||
+@3.InputStreamReader|c|!30|getEncoding()||
+!1q|c|!1,!1b|a:read() available() mark(int) markSupported() read(byte[]) read(byte[],int,int) readAllBytes() readNBytes(byte[],int,int) readNBytes(int) reset() s:nullInputStream() skip(long) skipNBytes(long) transferTo(!l)||
+!3f|c|!h||bytesTransferred|
+@3.ObjectInputStream|c|!1q,!49,!25|defaultReadObject() getObjectInputFilter() p:enableResolveObject(boolean) p:readClassDescriptor() p:readObjectOverride() p:readStreamHeader() p:resolveClass(!4l) p:resolveObject(!1) p:resolveProxyClass(!0[]) readFields() readUnshared() registerValidation(@3.ObjectInputValidation,int) setObjectInputFilter(@3.ObjectInputFilter)||GetField
+!49|i|!67,!1v|a:available() a:read() a:read(byte[]) a:read(byte[],int,int) a:readObject() a:skip(long)||
+@3.ObjectOutputStream|c|!l,!3z,!25|defaultWriteObject() p:annotateClass(!q) p:annotateProxyClass(!q) p:drain() p:enableReplaceObject(boolean) p:replaceObject(!1) p:writeClassDescriptor(!4l) p:writeObjectOverride(!1) p:writeStreamHeader() putFields() reset() useProtocolVersion(int) writeFields() writeUnshared(!1)||PutField
+!3z|i|!64,!1v|a:flush() a:writeObject(!1)||
+!25|i|||PROTOCOL_VERSION_1 PROTOCOL_VERSION_2 SC_BLOCK_DATA SC_ENUM SC_EXTERNALIZABLE SC_SERIALIZABLE SC_WRITE_METHOD SERIAL_FILTER_PERMISSION STREAM_MAGIC STREAM_VERSION SUBCLASS_IMPLEMENTATION_PERMISSION SUBSTITUTION_PERMISSION TC_ARRAY TC_BASE TC_BLOCKDATA TC_BLOCKDATALONG TC_CLASS TC_CLASSDESC TC_ENDBLOCKDATA TC_ENUM TC_EXCEPTION TC_LONGSTRING TC_MAX TC_NULL TC_OBJECT TC_PROXYCLASSDESC TC_REFERENCE TC_RESET TC_STRING baseWireHandle|
+@3.OutputStreamWriter|c|!24|getEncoding()||
+!l|c|!1,!1b,!3n|a:write(int) s:nullOutputStream() write(byte[]) write(byte[],int,int)||
+!4b|c|!2o,!1x,!1b|charset() checkError() format(!0,!1[]...) format(!1h,!0,!1[]...) p:clearError() p:setError() print(boolean) print(char) print(char[]) print(double) print(float) print(int) print(!1) print(!0) print(long) printf(!0,!1[]...) printf(!1h,!0,!1[]...) println() println(boolean) println(char) println(char[]) println(double) println(float) println(int) println(!1) println(!0) println(long) writeBytes(byte[])||
+!4c|c|!24|checkError() format(!0,!1[]...) format(!1h,!0,!1[]...) p:clearError() p:setError() print(boolean) print(char) print(char[]) print(double) print(float) print(int) print(!1) print(!0) print(long) printf(!0,!1[]...) printf(!1h,!0,!1[]...) println() println(boolean) println(char) println(char[]) println(double) println(float) println(int) println(!1) println(!0) println(long)|out|
+!30|c|!1,!6d,!1b|a:read(char[],int,int) mark(int) markSupported() read() read(char[]) ready() reset() s:nullReader() skip(long) transferTo(!24)|lock|
+!2|i||||
+@3.StringReader|c|!30|||
+@3.StringWriter|c|!24|getBuffer()||
+@3.UncheckedIOException|c|!4|||
+@3.UnsupportedEncodingException|c|!h|||
+!24|c|!1,!1x,!1b,!3n|a:write(char[],int,int) s:nullWriter() write(char[]) write(int) write(!0) write(!0,int,int)|lock|
+@0.AbstractMethodError|c|!n|||
+!26|c|!1,!1x,!i|append(boolean) append(char[]) append(char[],int,int) append(double) append(float) append(int) append(!1) append(!0) append(!5o) append(long) appendCodePoint(int) capacity() codePointAt(int) codePointBefore(int) codePointCount(int,int) delete(int,int) deleteCharAt(int) ensureCapacity(int) getChars(int,int,char[],int) indexOf(!0) indexOf(!0,int) insert(int,boolean) insert(int,char) insert(int,char[]) insert(int,char[],int,int) insert(int,double) insert(int,float) insert(int,int) insert(int,!i) insert(int,!i,int,int) insert(int,!1) insert(int,!0) insert(int,long) lastIndexOf(!0) lastIndexOf(!0,int) offsetByCodePoints(int,int) repeat(int,int) repeat(!i,int) replace(int,int,!0) reverse() setCharAt(int,char) setLength(int) substring(int) substring(int,int) trimToSize()||
+!1x|i||a:append(char) a:append(!i) a:append(!i,int,int)||
+@0.ArithmeticException|c|!4|||
+@0.ArrayIndexOutOfBoundsException|c|!1r|||
+@0.ArrayStoreException|c|!4|||
+@0.AssertionError|c|!5f|||
+!1v|i||a:close()||
+@0.Boolean|C|!1,!2,!c,!r|||
+@0.BootstrapMethodError|c|!w|||
+@0.Byte|C|!19,!c,!r|||
+!i|i||a:charAt(int) a:length() a:subSequence(int,int) a:toString() chars() codePoints() isEmpty() s:compare(!i,!i)||
+@0.Character|C|!1,!2,!c,!r|||
+@0.ClassCastException|c|!4|||
+!4u|c|!w|||
+!1a|c|!1|clearAssertionStatus() getDefinedPackage(!0) getDefinedPackages() getName() getParent() getResource(!0) getResourceAsStream(!0) getResources(!0) getUnnamedModule() isRegisteredAsParallelCapable() loadClass(!0) p:defineClass(byte[],int,int) p:defineClass(!0,byte[],int,int) p:defineClass(!0,byte[],int,int,!21) p:defineClass(!0,!a,!21) p:definePackage(!0,!0,!0,!0,!0,!0,!0,!13) p:findClass(!0) p:findClass(!0,!0) p:findLibrary(!0) p:findLoadedClass(!0) p:findResource(!0) p:findResource(!0,!0) p:findResources(!0) p:findSystemClass(!0) p:getClassLoadingLock(!0) p:getPackage(!0) p:getPackages() p:loadClass(!0,boolean) p:resolveClass(!q) p:setSigners(!q,!1[]) resources(!0) s:getPlatformClassLoader() s:getSystemClassLoader() s:getSystemResource(!0) s:getSystemResourceAsStream(!0) s:getSystemResources(!0) s:p:registerAsParallelCapable() setClassAssertionStatus(!0,boolean) setDefaultAssertionStatus(boolean) setPackageAssertionStatus(!0,boolean)||
+@0.ClassNotFoundException|c|!e|getException()||
+@0.ClassValue|c|!1|get(!q) p:a:computeValue(!q) remove(!q)||
+!q|C|!1,!2,!2p,!4d,!1f,!3g,!r|||
+@0.CloneNotSupportedException|c|!p|||
+!g|i||||
+!c|i||a:compareTo(?)||
+@0.Double|C|!19,!c,!r,!1i|||
+@0.EnumConstantNotPresentException|c|!4|constantName() enumType()||
+@0.Enum|c|!1,!r,!c,!2|getDeclaringClass() name() ordinal() s:valueOf(!q,!0)||EnumDesc
+!5f|c|!j|||
+@0.ExceptionInInitializerError|c|!w|getException()||
+!p|c|!j|||
+@0.Float|C|!19,!c,!r,!1i|||
+@0.IllegalAccessError|c|!n|||
+@0.IllegalAccessException|c|!e|||
+!1u|c|!4|||
+@0.IllegalCallerException|c|!4|||
+@0.IllegalMonitorStateException|c|!4|||
+!3o|c|!4|||
+@0.IllegalThreadStateException|c|!1u|||
+!n|c|!w|||
+!1r|c|!4|||
+@0.InheritableThreadLocal|c|!5s|p:childValue(?)||
+@0.InstantiationException|c|!e|||
+@0.Integer|C|!19,!c,!r,!1i|||
+@0.InternalError|c|!12|||
+@0.InterruptedException|c|!p|||
+!5c|i||a:iterator() forEach(!f) spliterator()||
+!w|c|!5f|||
+@0.Long|C|!19,!c,!r,!1i|||
+@0.NegativeArraySizeException|c|!4|||
+@0.NoClassDefFoundError|c|!w|||
+@0.NoSuchFieldError|c|!n|||
+@0.NoSuchFieldException|c|!e|||
+@0.NoSuchMethodError|c|!n|||
+@0.NoSuchMethodException|c|!e|||
+@0.NullPointerException|c|!4|||
+@0.NumberFormatException|c|!1u|||
+!19|c|!1,!2|a:doubleValue() a:floatValue() a:intValue() a:longValue() byteValue() shortValue()||
+!1|c||equals(!1) getClass() hashCode() notify() notifyAll() p:clone() p:finalize() toString() wait() wait(long) wait(long,int)||
+@0.OutOfMemoryError|c|!12|||
+!6d|i||a:read(@d.CharBuffer)||
+@0.Record|c|!1|||
+!e|c|!p|||
+!7|i||a:run()||
+!4|c|!p|||
+@0.SecurityException|c|!4|||
+@0.Short|C|!19,!c,!r|||
+@0.StackOverflowError|c|!12|||
+!5o|C|!26,!1x,!2,!c,!i|||
+@0.StringBuilder|C|!26,!1x,!2,!c,!i|||
+@0.StringIndexOutOfBoundsException|c|!1r|||
+!0|C|!1,!2,!c,!i,!r,!1i|||
+!16|i||a:uncaughtException(!27,!j)||
+!5s|c|!1|get() p:initialValue() remove() s:withInitial(!1l) set(?)||
+!27|c|!1,!7|checkAccess() countStackFrames() getContextClassLoader() getId() getName() getPriority() getStackTrace() getState() getThreadGroup() getUncaughtExceptionHandler() interrupt() isAlive() isDaemon() isInterrupted() isVirtual() join() join(!6e) join(long) join(long,int) resume() s:activeCount() s:currentThread() s:dumpStack() s:enumerate(!27[]) s:getAllStackTraces() s:getDefaultUncaughtExceptionHandler() s:holdsLock(!1) s:interrupted() s:ofPlatform() s:ofVirtual() s:onSpinWait() s:setDefaultUncaughtExceptionHandler(!16) s:sleep(!6e) s:sleep(long) s:sleep(long,int) s:startVirtualThread(!7) s:yield() setContextClassLoader(!1a) setDaemon(boolean) setName(!0) setPriority(int) setUncaughtExceptionHandler(!16) start() stop() suspend() threadId()|MAX_PRIORITY MIN_PRIORITY NORM_PRIORITY|Builder State UncaughtExceptionHandler
+!j|c|!1,!2|addSuppressed(!j) fillInStackTrace() getCause() getLocalizedMessage() getMessage() getStackTrace() getSuppressed() initCause(!j) printStackTrace() printStackTrace(!4b) printStackTrace(!4c) setStackTrace(@0.StackTraceElement[])||
+@0.TypeNotPresentException|c|!4|typeName()||
+@0.UnknownError|c|!12|||
+@0.UnsatisfiedLinkError|c|!w|||
+@0.UnsupportedClassVersionError|c|!4u|||
+@0.UnsupportedOperationException|c|!4|||
+@0.VerifyError|c|!w|||
+!12|c|!5f|||
+@y.Annotation|i||a:annotationType() a:equals(!1) a:hashCode() a:toString()||
+!r|i||a:describeConstable()||
+!1i|i||a:resolveConstantDesc(@m.MethodHandles.Lookup)||
+@z.ClassFileTransformer|i||transform(!1a,!0,!q,!21,byte[]) transform(!61,!1a,!0,!q,!21,byte[])||
+!3g|i|!57|a:arrayType() a:componentType() a:isArray() a:isPrimitive()||
+!57|i||a:descriptorString()||OfField OfMethod
+@k.PhantomReference|c|!3p|||
+@k.ReferenceQueue|c|!1|poll() remove() remove(long)||
+!3p|c|!1|clear() enqueue() get() isEnqueued() refersTo(?) s:reachabilityFence(!1)||
+@k.SoftReference|c|!3p|||
+@k.WeakReference|c|!3p|||
+!22|c|!1,!1f|canAccess(!1) isAccessible() s:setAccessible(!22[],boolean) setAccessible(boolean) trySetAccessible()||
+!1f|i||a:getAnnotation(!q) a:getAnnotations() a:getDeclaredAnnotations() getAnnotationsByType(!q) getDeclaredAnnotation(!q) getDeclaredAnnotationsByType(!q) isAnnotationPresent(!q)||
+@9.Constructor|C|!4r|||
+!4r|c|!22,!62,!2p|a:getAnnotatedReturnType() a:getExceptionTypes() a:getParameterAnnotations() a:getParameterCount() a:getParameterTypes() a:toGenericString() getAnnotatedExceptionTypes() getAnnotatedParameterTypes() getAnnotatedReceiverType() getGenericExceptionTypes() getGenericParameterTypes() getParameters() isVarArgs()||
+@9.Field|C|!22,!62|||
+@9.GenericArrayType|i|!4d|a:getGenericComponentType()||
+!2p|i|!1f|a:getTypeParameters()||
+@9.InvocationHandler|i||a:invoke(!1,!63,!1[]) s:invokeDefault(!1,!63,!1[]...)||
+@9.InvocationTargetException|c|!e|getTargetException()||
+!62|i||a:getDeclaringClass() a:getModifiers() a:getName() a:isSynthetic() accessFlags()|DECLARED PUBLIC|
+!63|C|!4r|||
+@9.ParameterizedType|i|!4d|a:getActualTypeArguments() a:getOwnerType() a:getRawType()||
+@9.TypeVariable|i|!4d,!1f|a:getAnnotatedBounds() a:getBounds() a:getGenericDeclaration() a:getName()||
+!4d|i||getTypeName()||
+@9.UndeclaredThrowableException|c|!4|getUndeclaredThrowable()||
+@9.WildcardType|i|!4d|a:getLowerBounds() a:getUpperBounds()||
+@w.BigDecimal|C|!19,!c|||
+@w.BigInteger|C|!19,!c|||
+!3q|c|!1|p:getPasswordAuthentication() p:getRequestingHost() p:getRequestingPort() p:getRequestingPrompt() p:getRequestingProtocol() p:getRequestingScheme() p:getRequestingSite() p:getRequestingURL() p:getRequestorType() requestPasswordAuthenticationInstance(!0,!29,int,!0,!0,!0,!13,!1j) s:getDefault() s:requestPasswordAuthentication(!0,!29,int,!0,!0,!0) s:requestPasswordAuthentication(!0,!29,int,!0,!0,!0,!13,!1j) s:requestPasswordAuthentication(!3q,!0,!29,int,!0,!0,!0,!13,!1j) s:requestPasswordAuthentication(!29,int,!0,!0,!0) s:setDefault(!3q)||RequestorType
+@5.ConnectException|c|!31|||
+@5.ContentHandler|c|!1|a:getContent(!5g) getContent(!5g,!q[])||
+@5.MalformedURLException|c|!h|||
+@5.NoRouteToHostException|c|!31|||
+@5.ProtocolException|c|!h|||
+!5h|c|!1|a:connectFailed(@5.URI,!5i,!h) a:select(@5.URI) s:getDefault() s:of(@5.InetSocketAddress) s:setDefault(!5h)||
+!5i|c|!1,!2|||
+!31|c|!h|||
+@5.SocketTimeoutException|c|!3f|||
+@5.URISyntaxException|c|!p|getIndex() getInput() getReason()||
+@5.URLStreamHandler|c|!1|p:a:openConnection(!13) p:equals(!13,!13) p:getDefaultPort() p:getHostAddress(!13) p:hashCode(!13) p:hostsEqual(!13,!13) p:openConnection(!13,@5.Proxy) p:parseURL(!13,!0,int,int) p:sameFile(!13,!13) p:setURL(!13,!0,!0,int,!0,!0) p:setURL(!13,!0,!0,int,!0,!0,!0,!0,!0) p:toExternalForm(!13)||
+@5.UnknownHostException|c|!h|||
+!5t|i|!2e,!2f|||
+!4m|i|!1b|a:isOpen()||
+@h.GatheringByteChannel|i|!2f|a:write(!a[]) a:write(!a[],int,int)||
+@h.InterruptibleChannel|i|!4m|||
+!2e|i|!4m|a:read(!a)||
+@h.ScatteringByteChannel|i|!2e|a:read(!a[]) a:read(!a[],int,int)||
+@h.SeekableByteChannel|i|!5t|a:position() a:position(long) a:size() a:truncate(long)||
+!2f|i|!4m|a:write(!a)||
+@l.DirectoryStream.Filter|i||a:accept(?)||
+!5u|i||a:postVisitDirectory(?,!h) a:preVisitDirectory(?,!47) a:visitFile(?,!47) a:visitFileFailed(?,!h)||
+@l.PathMatcher|i||a:matches(@l.Path)||
+@l.SimpleFileVisitor|c|!1,!5u|||
+!32|c|!p|||
+@b.Key|i|!2|a:getAlgorithm() a:getEncoded() a:getFormat()|serialVersionUID|
+!1s|i||a:equals(!1) a:getName() a:hashCode() a:toString() implies(@p.Subject)||
+@b.PrivateKey|i|@b.Key,!5v||serialVersionUID|
+@b.PrivilegedAction|i||a:run()||
+@b.PrivilegedExceptionAction|i||a:run()||
+!3r|i|@b.Key||serialVersionUID|
+@j.CertificateException|c|!32|||
+!5w|c|!1,!2|a:getEncoded() a:getPublicKey() a:verify(!3r) a:verify(!3r,!0) getType() p:writeReplace() verify(!3r,!5d)||CertificateRep
+!u|c|!5w,!5j|a:checkValidity() a:checkValidity(@2.Date) a:getBasicConstraints() a:getIssuerDN() a:getIssuerUniqueID() a:getKeyUsage() a:getNotAfter() a:getNotBefore() a:getSerialNumber() a:getSigAlgName() a:getSigAlgOID() a:getSigAlgParams() a:getSignature() a:getSubjectDN() a:getSubjectUniqueID() a:getTBSCertificate() a:getVersion() getExtendedKeyUsage() getIssuerAlternativeNames() getIssuerX500Principal() getSubjectAlternativeNames() getSubjectX500Principal()||
+!5j|i||a:getCriticalExtensionOIDs() a:getExtensionValue(!0) a:getNonCriticalExtensionOIDs() a:hasUnsupportedCriticalExtension()||
+!z|i||a:getLong(!1c) a:isSupported(!1c) get(!1c) query(@a.TemporalQuery) range(!1c)||
+!4v|i||a:adjustInto(!1m)||
+!3c|i||a:addTo(!1m) a:get(!1k) a:getUnits() a:subtractFrom(!1m)||
+!1c|i||a:adjustInto(?,long) a:getBaseUnit() a:getFrom(!z) a:getRangeUnit() a:isDateBased() a:isSupportedBy(!z) a:isTimeBased() a:range() a:rangeRefinedBy(!z) a:toString() getDisplayName(!1h) resolve(!2g,!z,@10.ResolverStyle)||
+!1k|i||a:addTo(?,long) a:between(!1m,!1m) a:getDuration() a:isDateBased() a:isDurationEstimated() a:isTimeBased() a:toString() isSupportedBy(!1m)||
+!1m|i|!z|a:isSupported(!1k) a:plus(long,!1k) a:until(!1m,!1k) a:with(!1c,long) minus(!3c) minus(long,!1k) plus(!3c) with(!4v)||
+!v|c|!1,!b|||
+!2r|c|!v,!3l|p:removeRange(int,int)|modCount|
+@2.AbstractMap.SimpleEntry|c|!1,!28,!2|||
+@2.AbstractMap.SimpleImmutableEntry|c|!1,!28,!2|||
+!11|c|!1,!2g|||SimpleEntry SimpleImmutableEntry
+!1d|c|!v,!4n|||
+!3h|c|!2r|||
+!2a|c|!v,!4e|||
+@2.ArrayDeque|c|!v,!4o,!g,!2|||
+@2.ArrayList|c|!2r,!3l,!2s,!g,!2|ensureCapacity(int) trimToSize()||
+!b|i|!5c|a:add(?) a:addAll(!b) a:clear() a:contains(!1) a:containsAll(!b) a:equals(!1) a:hashCode() a:isEmpty() a:remove(!1) a:removeAll(!b) a:retainAll(!b) a:size() a:toArray() a:toArray(?) parallelStream() removeIf(!2t) stream() toArray(!5x)||
+!s|i||a:compare(?,?) a:equals(!1) reversed() s:comparing(!5) s:comparing(!5,!s) s:comparingDouble(!10) s:comparingInt(!1e) s:comparingLong(!17) s:naturalOrder() s:nullsFirst(!s) s:nullsLast(!s) s:reverseOrder() thenComparing(!s) thenComparing(!5) thenComparing(!5,!s) thenComparingDouble(!10) thenComparingInt(!1e) thenComparingLong(!17)||
+@2.ConcurrentModificationException|c|!4|||
+!4o|i|!4n,!1n|a:descendingIterator() a:offerFirst(?) a:offerLast(?) a:peekFirst() a:peekLast() a:pollFirst() a:pollLast() a:pop() a:push(?) a:removeFirstOccurrence(!1) a:removeLastOccurrence(!1)||
+!66|c|!1|a:elements() a:get(!1) a:isEmpty() a:keys() a:put(?,?) a:remove(!1) a:size()||
+@2.EnumMap|c|!11,!2,!g|||
+@2.Enumeration|i||a:hasMoreElements() a:nextElement() asIterator()||
+!3m|i||||
+@2.EventObject|c|!1,!2|getSource()|source|
+@2.Formattable|i||a:formatTo(@2.Formatter,int,int,int)||
+!6g|c|!11,!2g,!g,!2|s:newHashMap(int)||
+!6h|c|!2a,!4e,!g,!2|s:newHashSet(int)||
+!68|c|!66,!2g,!g,!2|contains(!1) p:rehash()||
+@2.IdentityHashMap|c|!11,!2g,!2,!g|||
+!5e|i||a:hasNext() a:next() forEachRemaining(!f) remove()||
+@2.LinkedHashMap|c|!6g,!40|p:removeEldestEntry(!28) s:newLinkedHashMap(int)||
+@2.LinkedHashSet|c|!6h,!41,!g,!2|s:newLinkedHashSet(int)||
+@2.LinkedList|c|!3h,!3l,!4o,!g,!2|||
+@2.ListIterator|i|!5e|a:add(?) a:hasPrevious() a:nextIndex() a:previous() a:previousIndex() a:set(?)||
+@2.ListResourceBundle|c|!3d|p:a:getContents()||
+!3l|i|!1n|a:add(int,?) a:addAll(int,!b) a:get(int) a:indexOf(!1) a:lastIndexOf(!1) a:listIterator() a:listIterator(int) a:remove(int) a:set(int,?) a:subList(int,int) replaceAll(!2j) s:copyOf(!b) s:of() s:of(?) s:of(?,?) s:of(?,?,?) s:of(?,?,?,?) s:of(?,?,?,?,?) s:of(?,?,?,?,?,?) s:of(?,?,?,?,?,?,?) s:of(?,?,?,?,?,?,?,?) s:of(?,?,?,?,?,?,?,?,?) s:of(?,?,?,?,?,?,?,?,?,?) s:of(?...) sort(!s)||
+!28|i||a:equals(!1) a:getKey() a:getValue() a:hashCode() a:setValue(?) s:comparingByKey() s:comparingByKey(!s) s:comparingByValue() s:comparingByValue(!s) s:copyOf(!28)||
+!2g|i||a:clear() a:containsKey(!1) a:containsValue(!1) a:entrySet() a:equals(!1) a:get(!1) a:hashCode() a:isEmpty() a:keySet() a:put(?,?) a:putAll(!2g) a:remove(!1) a:size() a:values() compute(?,!8) computeIfAbsent(?,!5) computeIfPresent(?,!8) forEach(!m) getOrDefault(!1,?) merge(?,?,!8) putIfAbsent(?,?) remove(!1,!1) replace(?,?) replace(?,?,?) replaceAll(!8) s:copyOf(!2g) s:entry(?,?) s:of() s:of(?,?) s:of(?,?,?,?) s:of(?,?,?,?,?,?) s:of(?,?,?,?,?,?,?,?) s:of(?,?,?,?,?,?,?,?,?,?) s:of(?,?,?,?,?,?,?,?,?,?,?,?) s:of(?,?,?,?,?,?,?,?,?,?,?,?,?,?) s:of(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) s:of(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) s:of(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) s:ofEntries(!28[]...)||Entry
+@2.MissingResourceException|c|!4|getClassName() getKey()||
+!42|i|!69|a:ceilingEntry(?) a:ceilingKey(?) a:descendingKeySet() a:descendingMap() a:floorEntry(?) a:floorKey(?) a:headMap(?,boolean) a:higherEntry(?) a:higherKey(?) a:lowerEntry(?) a:lowerKey(?) a:navigableKeySet() a:subMap(?,boolean,?,boolean) a:tailMap(?,boolean)||
+!43|i|!6a|a:ceiling(?) a:descendingIterator() a:descendingSet() a:floor(?) a:headSet(?,boolean) a:higher(?) a:lower(?) a:pollFirst() a:pollLast() a:subSet(?,boolean,?,boolean) a:tailSet(?,boolean)||
+@2.NoSuchElementException|c|!4|||
+@2.Optional|C|!1|||
+@2.PriorityQueue|c|!1d,!2|comparator()||
+@2.Properties|c|!68|compute(!1,!8) computeIfAbsent(!1,!5) computeIfPresent(!1,!8) getOrDefault(!1,!1) getProperty(!0) getProperty(!0,!0) list(!4b) list(!4c) load(!1q) load(!30) loadFromXML(!1q) merge(!1,!1,!8) propertyNames() put(!1,!1) putIfAbsent(!1,!1) replace(!1,!1) replace(!1,!1,!1) save(!l,!0) setProperty(!0,!0) store(!l,!0) store(!24,!0) storeToXML(!l,!0) storeToXML(!l,!0,!0) storeToXML(!l,!0,!6f) stringPropertyNames()|defaults|
+!4n|i|!b|a:element() a:offer(?) a:peek() a:poll() a:remove()||
+!2s|i||||
+@2.Random|c|!1,!33,!2|p:next(int) s:from(!33) setSeed(long)||
+!3d|c|!1|a:getKeys() containsKey(!0) getBaseBundleName() getLocale() getObject(!0) getString(!0) getStringArray(!0) keySet() p:a:handleGetObject(!0) p:handleKeySet() p:setParent(!3d) s:clearCache() s:clearCache(!1a) s:getBundle(!0) s:getBundle(!0,!61) s:getBundle(!0,!1h) s:getBundle(!0,!1h,!1a) s:getBundle(!0,!1h,!1a,!23) s:getBundle(!0,!1h,!61) s:getBundle(!0,!1h,!23) s:getBundle(!0,!23)|parent|Control
+!1n|i|!b|a:reversed() addFirst(?) addLast(?) getFirst() getLast() removeFirst() removeLast()||
+!40|i|!2g|a:reversed() firstEntry() lastEntry() pollFirstEntry() pollLastEntry() putFirst(?,?) putLast(?,?) sequencedEntrySet() sequencedKeySet() sequencedValues()||
+!41|i|!1n,!4e|||
+!4e|i|!b|s:copyOf(!b) s:of() s:of(?) s:of(?,?) s:of(?,?,?) s:of(?,?,?,?) s:of(?,?,?,?,?) s:of(?,?,?,?,?,?) s:of(?,?,?,?,?,?,?) s:of(?,?,?,?,?,?,?,?) s:of(?,?,?,?,?,?,?,?,?) s:of(?,?,?,?,?,?,?,?,?,?) s:of(?...)||
+!69|i|!40|a:comparator() a:firstKey() a:headMap(?) a:lastKey() a:subMap(?,?) a:tailMap(?)||
+!6a|i|!4e,!41|a:comparator() a:first() a:headSet(?) a:last() a:subSet(?,?) a:tailSet(?)||
+@2.Spliterators.AbstractSpliterator|c|!1,!5y|||
+!5y|i||a:characteristics() a:estimateSize() a:tryAdvance(!f) a:trySplit() forEachRemaining(!f) getComparator() getExactSizeIfKnown() hasCharacteristics(int)|CONCURRENT DISTINCT IMMUTABLE NONNULL ORDERED SIZED SORTED SUBSIZED|OfDouble OfInt OfLong OfPrimitive
+@2.Stack|c|@2.Vector|empty() peek() pop() push(?) search(!1)||
+@2.TimerTask|c|!1,!7|cancel() scheduledExecutionTime()||
+@2.TreeMap|c|!11,!42,!g,!2|||
+@2.TreeSet|c|!2a,!43,!g,!2|||
+@2.Vector|c|!2r,!3l,!2s,!g,!2|addElement(?) capacity() copyInto(!1[]) elementAt(int) elements() ensureCapacity(int) firstElement() indexOf(!1,int) insertElementAt(?,int) lastElement() lastIndexOf(!1,int) removeAllElements() removeElement(!1) removeElementAt(int) setElementAt(?,int) setSize(int) trimToSize()|capacityIncrement elementCount elementData|
+@2.WeakHashMap|c|!11,!2g|s:newWeakHashMap(int)||
+!3a|c|!1,!34|p:newTaskFor(!7,?) p:newTaskFor(!20)||
+@4.ArrayBlockingQueue|c|!1d,!1w,!2|||
+!5k|i|!1w,!4o|a:offerFirst(?,long,!9) a:offerLast(?,long,!9) a:pollFirst(long,!9) a:pollLast(long,!9) a:putFirst(?) a:putLast(?) a:takeFirst() a:takeLast()||
+!1w|i|!4n|a:drainTo(!b) a:drainTo(!b,int) a:offer(?,long,!9) a:poll(long,!9) a:put(?) a:remainingCapacity() a:take()||
+@4.BrokenBarrierException|c|!p|||
+!20|i||a:call()||
+@4.CancellationException|c|!3o|||
+!2u|c|!1,!44,!6|complete(?) completeAsync(!1l) completeAsync(!1l,!d) completeExceptionally(!j) completeOnTimeout(?,long,!9) copy() defaultExecutor() getNow(?) getNumberOfDependents() isCompletedExceptionally() join() minimalCompletionStage() newIncompleteFuture() obtrudeException(!j) obtrudeValue(?) orTimeout(long,!9) s:allOf(!2u[]...) s:anyOf(!2u[]...) s:completedFuture(?) s:completedStage(?) s:delayedExecutor(long,!9) s:delayedExecutor(long,!9,!d) s:failedFuture(!j) s:failedStage(!j) s:runAsync(!7) s:runAsync(!7,!d) s:supplyAsync(!1l) s:supplyAsync(!1l,!d)||AsynchronousCompletionTask
+@4.CompletionException|c|!4|||
+!6|i||a:acceptEither(!6,!f) a:acceptEitherAsync(!6,!f) a:acceptEitherAsync(!6,!f,!d) a:applyToEither(!6,!5) a:applyToEitherAsync(!6,!5) a:applyToEitherAsync(!6,!5,!d) a:exceptionally(!5) a:handle(!8) a:handleAsync(!8) a:handleAsync(!8,!d) a:runAfterBoth(!6,!7) a:runAfterBothAsync(!6,!7) a:runAfterBothAsync(!6,!7,!d) a:runAfterEither(!6,!7) a:runAfterEitherAsync(!6,!7) a:runAfterEitherAsync(!6,!7,!d) a:thenAccept(!f) a:thenAcceptAsync(!f) a:thenAcceptAsync(!f,!d) a:thenAcceptBoth(!6,!m) a:thenAcceptBothAsync(!6,!m) a:thenAcceptBothAsync(!6,!m,!d) a:thenApply(!5) a:thenApplyAsync(!5) a:thenApplyAsync(!5,!d) a:thenCombine(!6,!8) a:thenCombineAsync(!6,!8) a:thenCombineAsync(!6,!8,!d) a:thenCompose(!5) a:thenComposeAsync(!5) a:thenComposeAsync(!5,!d) a:thenRun(!7) a:thenRunAsync(!7) a:thenRunAsync(!7,!d) a:toCompletableFuture() a:whenComplete(!m) a:whenCompleteAsync(!m) a:whenCompleteAsync(!m,!d) exceptionallyAsync(!5) exceptionallyAsync(!5,!d) exceptionallyCompose(!5) exceptionallyComposeAsync(!5) exceptionallyComposeAsync(!5,!d)||
+@4.ConcurrentHashMap|c|!11,!3s,!2|contains(!1) elements() forEach(long,!m) forEach(long,!8,!f) forEachEntry(long,!f) forEachEntry(long,!5,!f) forEachKey(long,!f) forEachKey(long,!5,!f) forEachValue(long,!f) forEachValue(long,!5,!f) keySet(?) keys() mappingCount() reduce(long,!8,!8) reduceEntries(long,!8) reduceEntries(long,!5,!8) reduceEntriesToDouble(long,!10,double,!y) reduceEntriesToInt(long,!1e,int,!t) reduceEntriesToLong(long,!17,long,!o) reduceKeys(long,!8) reduceKeys(long,!5,!8) reduceKeysToDouble(long,!10,double,!y) reduceKeysToInt(long,!1e,int,!t) reduceKeysToLong(long,!17,long,!o) reduceToDouble(long,@1.ToDoubleBiFunction,double,!y) reduceToInt(long,!4y,int,!t) reduceToLong(long,@1.ToLongBiFunction,long,!o) reduceValues(long,!8) reduceValues(long,!5,!8) reduceValuesToDouble(long,!10,double,!y) reduceValuesToInt(long,!1e,int,!t) reduceValuesToLong(long,!17,long,!o) s:newKeySet() s:newKeySet(int) search(long,!8) searchEntries(long,!5) searchKeys(long,!5) searchValues(long,!5)||KeySetView
+@4.ConcurrentLinkedDeque|c|!v,!4o,!2|||
+@4.ConcurrentLinkedQueue|c|!1d,!4n,!2|||
+!3s|i|!2g|||
+!3i|i|!3s,!42|||
+@4.ConcurrentSkipListMap|c|!11,!3i,!g,!2|||
+@4.ConcurrentSkipListSet|c|!2a,!43,!g,!2|||
+@4.CopyOnWriteArrayList|c|!1,!3l,!2s,!g,!2|addAllAbsent(!b) addIfAbsent(?) indexOf(?,int) lastIndexOf(?,int)||
+@4.CopyOnWriteArraySet|c|!2a,!2|||
+!2y|c|!15|a:compute() addToPendingCount(int) compareAndSetPendingCount(int,int) decrementPendingCountUnlessZero() firstComplete() getCompleter() getPendingCount() getRoot() helpComplete(int) nextComplete() onCompletion(!2y) onExceptionalCompletion(!j,!2y) propagateCompletion() quietlyCompleteRoot() setPendingCount(int) tryComplete()||
+!6i|i|!c|a:getDelay(!9)||
+@4.ExecutionException|c|!p|||
+!34|i|!d,!1v|a:awaitTermination(long,!9) a:invokeAll(!b) a:invokeAll(!b,long,!9) a:invokeAny(!b) a:invokeAny(!b,long,!9) a:isShutdown() a:isTerminated() a:shutdown() a:shutdownNow() a:submit(!7) a:submit(!7,?) a:submit(!20)||
+!d|i||a:execute(!7)||
+@4.Flow.Processor|i|!35,!58|||
+!58|i||a:subscribe(!35)||
+!35|i||a:onComplete() a:onError(!j) a:onNext(?) a:onSubscribe(!4p)||
+!4p|i||a:cancel() a:request(long)||
+@4.Flow|c|!1|s:defaultBufferSize()||Processor Publisher Subscriber Subscription
+!15|c|!1,!44,!2|a:getRawResult() compareAndSetForkJoinTaskTag(short,short) complete(?) completeExceptionally(!j) fork() getException() getForkJoinTaskTag() invoke() isCompletedAbnormally() isCompletedNormally() join() p:a:exec() p:a:setRawResult(?) quietlyComplete() quietlyInvoke() quietlyJoin() quietlyJoin(long,!9) quietlyJoinUninterruptibly(long,!9) reinitialize() s:adapt(!7) s:adapt(!7,?) s:adapt(!20) s:adaptInterruptible(!20) s:getPool() s:getQueuedTaskCount() s:getSurplusQueuedTaskCount() s:helpQuiesce() s:inForkJoinPool() s:invokeAll(!b) s:invokeAll(!15,!15) s:invokeAll(!15[]...) s:p:peekNextLocalTask() s:p:pollNextLocalTask() s:p:pollSubmission() s:p:pollTask() setForkJoinTaskTag(short) tryUnfork()||
+@4.FutureTask|c|!1,!3e|p:done() p:runAndReset() p:set(?) p:setException(!j)||
+!44|i||a:cancel(boolean) a:get() a:get(long,!9) a:isCancelled() a:isDone() exceptionNow() resultNow() state()||State
+@4.LinkedBlockingDeque|c|!1d,!5k,!2|||
+@4.LinkedBlockingQueue|c|!1d,!1w,!2|||
+@4.RecursiveAction|c|!15|p:a:compute() p:setRawResult(@0.Void)||
+@4.RecursiveTask|c|!15|p:a:compute()||
+@4.RejectedExecutionException|c|!4|||
+!36|i||a:rejectedExecution(!7,!2q)||
+!3e|i|!7,!44|||
+!1y|i|!3e,!4z|a:isPeriodic()||
+!37|i|!34|a:schedule(!7,long,!9) a:schedule(!20,long,!9) a:scheduleAtFixedRate(!7,long,long,!9) a:scheduleWithFixedDelay(!7,long,long,!9)||
+!4z|i|!6i,!44|||
+@4.ScheduledThreadPoolExecutor|c|!2q,!37|getContinueExistingPeriodicTasksAfterShutdownPolicy() getExecuteExistingDelayedTasksAfterShutdownPolicy() getRemoveOnCancelPolicy() p:decorateTask(!7,!1y) p:decorateTask(!20,!1y) setContinueExistingPeriodicTasksAfterShutdownPolicy(boolean) setExecuteExistingDelayedTasksAfterShutdownPolicy(boolean) setRemoveOnCancelPolicy(boolean)||
+!5l|i||a:newThread(!7)||
+!2q|c|!3a|allowCoreThreadTimeOut(boolean) allowsCoreThreadTimeOut() getActiveCount() getCompletedTaskCount() getCorePoolSize() getKeepAliveTime(!9) getLargestPoolSize() getMaximumPoolSize() getPoolSize() getQueue() getRejectedExecutionHandler() getTaskCount() getThreadFactory() isTerminating() p:afterExecute(!7,!j) p:beforeExecute(!27,!7) p:terminated() prestartAllCoreThreads() prestartCoreThread() purge() remove(!7) setCorePoolSize(int) setKeepAliveTime(long,!9) setMaximumPoolSize(int) setRejectedExecutionHandler(!36) setThreadFactory(!5l)||AbortPolicy CallerRunsPolicy DiscardOldestPolicy DiscardPolicy
+@4.TimeoutException|c|!p|||
+@4.TransferQueue|i|!1w|a:getWaitingConsumerCount() a:hasWaitingConsumer() a:transfer(?) a:tryTransfer(?) a:tryTransfer(?,long,!9)||
+@o.AtomicBoolean|c|!1,!2|compareAndExchange(boolean,boolean) compareAndExchangeAcquire(boolean,boolean) compareAndExchangeRelease(boolean,boolean) compareAndSet(boolean,boolean) get() getAcquire() getAndSet(boolean) getOpaque() getPlain() lazySet(boolean) set(boolean) setOpaque(boolean) setPlain(boolean) setRelease(boolean) weakCompareAndSet(boolean,boolean) weakCompareAndSetAcquire(boolean,boolean) weakCompareAndSetPlain(boolean,boolean) weakCompareAndSetRelease(boolean,boolean) weakCompareAndSetVolatile(boolean,boolean)||
+@o.AtomicInteger|c|!19,!2|accumulateAndGet(int,!t) addAndGet(int) compareAndExchange(int,int) compareAndExchangeAcquire(int,int) compareAndExchangeRelease(int,int) compareAndSet(int,int) decrementAndGet() get() getAcquire() getAndAccumulate(int,!t) getAndAdd(int) getAndDecrement() getAndIncrement() getAndSet(int) getAndUpdate(!1g) getOpaque() getPlain() incrementAndGet() lazySet(int) set(int) setOpaque(int) setPlain(int) setRelease(int) updateAndGet(!1g) weakCompareAndSet(int,int) weakCompareAndSetAcquire(int,int) weakCompareAndSetPlain(int,int) weakCompareAndSetRelease(int,int) weakCompareAndSetVolatile(int,int)||
+@o.AtomicLong|c|!19,!2|accumulateAndGet(long,!o) addAndGet(long) compareAndExchange(long,long) compareAndExchangeAcquire(long,long) compareAndExchangeRelease(long,long) compareAndSet(long,long) decrementAndGet() get() getAcquire() getAndAccumulate(long,!o) getAndAdd(long) getAndDecrement() getAndIncrement() getAndSet(long) getAndUpdate(!18) getOpaque() getPlain() incrementAndGet() lazySet(long) set(long) setOpaque(long) setPlain(long) setRelease(long) updateAndGet(!18) weakCompareAndSet(long,long) weakCompareAndSetAcquire(long,long) weakCompareAndSetPlain(long,long) weakCompareAndSetRelease(long,long) weakCompareAndSetVolatile(long,long)||
+@o.AtomicReference|c|!1,!2|accumulateAndGet(?,!1p) compareAndExchange(?,?) compareAndExchangeAcquire(?,?) compareAndExchangeRelease(?,?) compareAndSet(?,?) get() getAcquire() getAndAccumulate(?,!1p) getAndSet(?) getAndUpdate(!2j) getOpaque() getPlain() lazySet(?) set(?) setOpaque(?) setPlain(?) setRelease(?) updateAndGet(!2j) weakCompareAndSet(?,?) weakCompareAndSetAcquire(?,?) weakCompareAndSetPlain(?,?) weakCompareAndSetRelease(?,?) weakCompareAndSetVolatile(?,?)||
+!2v|c|!1,!2|p:getExclusiveOwnerThread() p:setExclusiveOwnerThread(!27)||
+@e.AbstractQueuedSynchronizer|c|!2v,!2|acquire(int) acquireInterruptibly(int) acquireShared(int) acquireSharedInterruptibly(int) getExclusiveQueuedThreads() getFirstQueuedThread() getQueueLength() getQueuedThreads() getSharedQueuedThreads() getWaitQueueLength(!k) getWaitingThreads(!k) hasContended() hasQueuedPredecessors() hasQueuedThreads() hasWaiters(!k) isQueued(!27) owns(!k) p:compareAndSetState(int,int) p:getState() p:isHeldExclusively() p:setState(int) p:tryAcquire(int) p:tryAcquireShared(int) p:tryRelease(int) p:tryReleaseShared(int) release(int) releaseShared(int) tryAcquireNanos(int,long) tryAcquireSharedNanos(int,long)||ConditionObject
+!1t|i||a:await() a:await(long,!9) a:awaitNanos(long) a:awaitUninterruptibly() a:awaitUntil(@2.Date) a:signal() a:signalAll()||
+@e.Lock|i||a:lock() a:lockInterruptibly() a:newCondition() a:tryLock() a:tryLock(long,!9) a:unlock()||
+!5m|i||a:readLock() a:writeLock()||
+@e.ReentrantLock|c|!1,@e.Lock,!2|getHoldCount() getQueueLength() getWaitQueueLength(!1t) hasQueuedThread(!27) hasQueuedThreads() hasWaiters(!1t) isFair() isHeldByCurrentThread() isLocked() p:getOwner() p:getQueuedThreads() p:getWaitingThreads(!1t)||
+@e.ReentrantReadWriteLock|c|!1,!5m,!2|getQueueLength() getReadHoldCount() getReadLockCount() getWaitQueueLength(!1t) getWriteHoldCount() hasQueuedThread(!27) hasQueuedThreads() hasWaiters(!1t) isFair() isWriteLocked() isWriteLockedByCurrentThread() p:getOwner() p:getQueuedReaderThreads() p:getQueuedThreads() p:getQueuedWriterThreads() p:getWaitingThreads(!1t)||ReadLock WriteLock
+!m|i||a:accept(?,?) andThen(!m)||
+!8|i||a:apply(?,?) andThen(!5)||
+!4f|i||a:test(?,?) and(!4f) negate() or(!4f)||
+!1p|i|!8|s:maxBy(!s) s:minBy(!s)||
+@1.BooleanSupplier|i||a:getAsBoolean()||
+!f|i||a:accept(?) andThen(!f)||
+!y|i||a:applyAsDouble(double,double)||
+!59|i||a:accept(double) andThen(!59)||
+@1.DoubleFunction|i||a:apply(double)||
+!38|i||a:test(double) and(!38) negate() or(!38)||
+@1.DoubleSupplier|i||a:getAsDouble()||
+@1.DoubleToIntFunction|i||a:applyAsInt(double)||
+!2h|i||a:applyAsDouble(double) andThen(!2h) compose(!2h) s:identity()||
+!5|i||a:apply(?) andThen(!5) compose(!5) s:identity()||
+!t|i||a:applyAsInt(int,int)||
+!5z|i||a:accept(int) andThen(!5z)||
+!5x|i||a:apply(int)||
+!45|i||a:test(int) and(!45) negate() or(!45)||
+@1.IntSupplier|i||a:getAsInt()||
+@1.IntToDoubleFunction|i||a:applyAsDouble(int)||
+@1.IntToLongFunction|i||a:applyAsLong(int)||
+!1g|i||a:applyAsInt(int) andThen(!1g) compose(!1g) s:identity()||
+!o|i||a:applyAsLong(long,long)||
+!5p|i||a:accept(long) andThen(!5p)||
+@1.LongFunction|i||a:apply(long)||
+!3t|i||a:test(long) and(!3t) negate() or(!3t)||
+@1.LongSupplier|i||a:getAsLong()||
+@1.LongToIntFunction|i||a:applyAsInt(long)||
+!18|i||a:applyAsLong(long) andThen(!18) compose(!18) s:identity()||
+@1.ObjDoubleConsumer|i||a:accept(?,double)||
+@1.ObjIntConsumer|i||a:accept(?,int)||
+@1.ObjLongConsumer|i||a:accept(?,long)||
+!2t|i||a:test(?) and(!2t) negate() or(!2t) s:isEqual(!1) s:not(!2t)||
+!1l|i||a:get()||
+!10|i||a:applyAsDouble(?)||
+!4y|i||a:applyAsInt(?,?)||
+!1e|i||a:applyAsInt(?)||
+!17|i||a:applyAsLong(?)||
+!2j|i|!5|s:identity()||
+@i.Filter|i||a:isLoggable(!2w)||
+!6b|c|!1|a:format(!2w) formatMessage(!2w) getHead(!5q) getTail(!5q)||
+!5q|c|!1|a:close() a:flush() a:publish(!2w) getEncoding() getErrorManager() getFilter() getFormatter() getLevel() isLoggable(!2w) p:reportError(!0,!p,int) setEncoding(!0) setErrorManager(@i.ErrorManager) setFilter(@i.Filter) setFormatter(!6b) setLevel(@i.Level)||
+!33|i||a:nextLong() doubles() doubles(double,double) doubles(long) doubles(long,double,double) ints() ints(int,int) ints(long) ints(long,int,int) isDeprecated() longs() longs(long) longs(long,long) longs(long,long,long) nextBoolean() nextBytes(byte[]) nextDouble() nextDouble(double) nextDouble(double,double) nextExponential() nextFloat() nextFloat(float) nextFloat(float,float) nextGaussian() nextGaussian(double,double) nextInt() nextInt(int) nextInt(int,int) nextLong(long) nextLong(long,long) s:getDefault() s:of(!0)||ArbitrarilyJumpableGenerator JumpableGenerator LeapableGenerator SplittableGenerator StreamableGenerator
+@r.Collector|i||a:accumulator() a:characteristics() a:combiner() a:finisher() a:supplier() s:of(!1l,!m,!1p,!5,!2z[]...) s:of(!1l,!m,!1p,!2z[]...)||Characteristics
+@11.Checksum|i||a:getValue() a:reset() a:update(byte[],int,int) a:update(int) update(byte[]) update(!a)||
+@n.AbstractProcessor|c|!1,!6c|p:isInitialized()|processingEnv|
+!6c|i||a:getCompletions(!2b,!4w,!4q,!0) a:getSupportedAnnotationTypes() a:getSupportedOptions() a:getSupportedSourceVersion() a:init(@n.ProcessingEnvironment) a:process(!4e,@n.RoundEnvironment)||
+!3j|i||a:visit(!39,?) a:visitAnnotation(!4w,?) a:visitArray(!3l,?) a:visitBoolean(boolean,?) a:visitByte(byte,?) a:visitChar(char,?) a:visitDouble(double,?) a:visitEnumConstant(!50,?) a:visitFloat(float,?) a:visitInt(int,?) a:visitLong(long,?) a:visitShort(short,?) a:visitString(!0,?) a:visitType(!2i,?) a:visitUnknown(!39,?) visit(!39)||
+!5a|i||a:visit(!2b,?) a:visitExecutable(!4q,?) a:visitPackage(@c.PackageElement,?) a:visitType(@c.TypeElement,?) a:visitTypeParameter(@c.TypeParameterElement,?) a:visitUnknown(!2b,?) a:visitVariable(!50,?) visit(!2b) visitModule(@c.ModuleElement,?) visitRecordComponent(@c.RecordComponentElement,?)||
+!60|i||a:visit(!2i,?) a:visitArray(@g.ArrayType,?) a:visitDeclared(@g.DeclaredType,?) a:visitError(@g.ErrorType,?) a:visitExecutable(@g.ExecutableType,?) a:visitIntersection(@g.IntersectionType,?) a:visitNoType(@g.NoType,?) a:visitNull(@g.NullType,?) a:visitPrimitive(@g.PrimitiveType,?) a:visitTypeVariable(@g.TypeVariable,?) a:visitUnion(@g.UnionType,?) a:visitUnknown(!2i,?) a:visitWildcard(@g.WildcardType,?) visit(!2i)||
+!2c|c|!1,!3j|||
+!1z|c|!1,!5a|||
+!3y|c|!1,!60|||
+@6.ElementScanner14|c|!51|||
+!52|c|!1z|scan(!5c,?) scan(!2b) scan(!2b,?)|DEFAULT_VALUE|
+!53|c|!52|||
+!54|c|!53|||
+!51|c|!54|||
+@6.SimpleAnnotationValueVisitor14|c|!2k|||
+!2l|c|!2c|p:defaultAction(!1,?)|DEFAULT_VALUE|
+!2m|c|!2l|||
+!2n|c|!2m|||
+!2k|c|!2n|||
+@6.SimpleElementVisitor14|c|!3u|||
+!3v|c|!1z|p:defaultAction(!2b,?)|DEFAULT_VALUE|
+!3w|c|!3v|||
+!3x|c|!3w|||
+!3u|c|!3x|||
+@6.SimpleTypeVisitor14|c|!4g|||
+!4h|c|!3y|p:defaultAction(!2i,?)|DEFAULT_VALUE|
+!4i|c|!4h|||
+!4j|c|!4i|||
+!4g|c|!4j|||
+@s.DynamicMBean|i||a:getAttribute(!0) a:getAttributes(!0[]) a:getMBeanInfo() a:invoke(!0,!1[],!0[]) a:setAttribute(@s.Attribute) a:setAttributes(@s.AttributeList)||
+@7.ExtendedSSLSession|c|!1,!4s|a:getLocalSupportedSignatureAlgorithms() a:getPeerSupportedSignatureAlgorithms() getRequestedServerNames() getStatusResponses()||
+@7.HostnameVerifier|i||a:verify(!0,!4s)||
+@7.KeyManagerFactorySpi|c|!1|p:a:engineGetKeyManagers() p:a:engineInit(!48,char[]) p:a:engineInit(!14)||
+@7.KeyManagerFactory|c|!1|getAlgorithm() getKeyManagers() getProvider() init(!48,char[]) init(!14) s:getDefaultAlgorithm() s:getInstance(!0) s:getInstance(!0,!0) s:getInstance(!0,!5d)||
+!4t|i||||
+@7.SSLContextSpi|c|!1|p:a:engineCreateSSLEngine() p:a:engineCreateSSLEngine(!0,int) p:a:engineGetClientSessionContext() p:a:engineGetServerSessionContext() p:a:engineGetServerSocketFactory() p:a:engineGetSocketFactory() p:a:engineInit(!4t[],!46[],@b.SecureRandom) p:engineGetDefaultSSLParameters() p:engineGetSupportedSSLParameters()||
+!2x|c|!1|a:beginHandshake() a:closeInbound() a:closeOutbound() a:getDelegatedTask() a:getEnableSessionCreation() a:getEnabledCipherSuites() a:getEnabledProtocols() a:getHandshakeStatus() a:getNeedClientAuth() a:getSession() a:getSupportedCipherSuites() a:getSupportedProtocols() a:getUseClientMode() a:getWantClientAuth() a:isInboundDone() a:isOutboundDone() a:setEnableSessionCreation(boolean) a:setEnabledCipherSuites(!0[]) a:setEnabledProtocols(!0[]) a:setNeedClientAuth(boolean) a:setUseClientMode(boolean) a:setWantClientAuth(boolean) a:unwrap(!a,!a[],int,int) a:wrap(!a[],int,int,!a) getApplicationProtocol() getHandshakeApplicationProtocol() getHandshakeApplicationProtocolSelector() getHandshakeSession() getPeerHost() getPeerPort() getSSLParameters() setHandshakeApplicationProtocolSelector(!8) setSSLParameters(@7.SSLParameters) unwrap(!a,!a) unwrap(!a,!a[]) wrap(!a,!a) wrap(!a[],!a)||
+!5r|c|!h|||
+@7.SSLHandshakeException|c|!5r|||
+@7.SSLSessionBindingListener|i|!3m|a:valueBound(!3k) a:valueUnbound(!3k)||
+@7.SSLSessionContext|i||a:getIds() a:getSession(byte[]) a:getSessionCacheSize() a:getSessionTimeout() a:setSessionCacheSize(int) a:setSessionTimeout(int)||
+!4s|i||a:getApplicationBufferSize() a:getCipherSuite() a:getCreationTime() a:getId() a:getLastAccessedTime() a:getLocalCertificates() a:getLocalPrincipal() a:getPacketBufferSize() a:getPeerCertificates() a:getPeerHost() a:getPeerPort() a:getPeerPrincipal() a:getProtocol() a:getSessionContext() a:getValue(!0) a:getValueNames() a:invalidate() a:isValid() a:putValue(!0,!1) a:removeValue(!0) getPeerCertificateChain()||
+@7.TrustManagerFactorySpi|c|!1|p:a:engineGetTrustManagers() p:a:engineInit(!48) p:a:engineInit(!14)||
+@7.TrustManagerFactory|c|!1|getAlgorithm() getProvider() getTrustManagers() init(!48) init(!14) s:getDefaultAlgorithm() s:getInstance(!0) s:getInstance(!0,!0) s:getInstance(!0,!5d)||
+!46|i||||
+@7.X509ExtendedKeyManager|c|!1,!5b|chooseEngineClientAlias(!0[],!1s[],!2x) chooseEngineServerAlias(!0,!1s[],!2x)||
+@7.X509ExtendedTrustManager|c|!1,!4x|a:checkClientTrusted(!u[],!0,!55) a:checkClientTrusted(!u[],!0,!2x) a:checkServerTrusted(!u[],!0,!55) a:checkServerTrusted(!u[],!0,!2x)||
+!5b|i|!4t|a:chooseClientAlias(!0[],!1s[],!55) a:chooseServerAlias(!0,!1s[],!55) a:getCertificateChain(!0) a:getClientAliases(!0,!1s[]) a:getPrivateKey(!0) a:getServerAliases(!0,!1s[])||
+!4x|i|!46|a:checkClientTrusted(!u[],!0) a:checkServerTrusted(!u[],!0) a:getAcceptedIssuers()||
+!5v|i||destroy() isDestroyed()||
+!x|i||a:delete() a:getCharContent(boolean) a:getLastModified() a:getName() a:openInputStream() a:openOutputStream() a:openReader(boolean) a:openWriter() a:toUri()||
+@8.ForwardingJavaFileManager|c|!1,!56||fileManager|
+!56|i|!1b,!3n,!5n|a:getClassLoader(!3) a:getFileForInput(!3,!0,!0) a:getFileForOutput(!3,!0,!0,!x) a:getJavaFileForInput(!3,!0,!1o) a:getJavaFileForOutput(!3,!0,!1o,!x) a:handleOption(!0,!5e) a:hasLocation(!3) a:inferBinaryName(!3,!2d) a:isSameFile(!x,!x) a:list(!3,!0,!4e,boolean) contains(!3,!x) getFileForOutputForOriginatingFiles(!3,!0,!0,!x[]...) getJavaFileForOutputForOriginatingFiles(!3,!0,!1o,!x[]...) getLocationForModule(!3,!0) getLocationForModule(!3,!2d) getServiceLoader(!3,!q) inferModuleName(!3) listLocationsForModules(!3)||Location
+!2d|i|!x|a:getAccessLevel() a:getKind() a:getNestingKind() a:isNameCompatible(!0,!1o)||Kind
+!5n|i||a:isSupportedOption(!0)||
+@8.SimpleJavaFileObject|c|!1,!2d||kind uri|\`;
+  var JDK_EXPORTS = String.raw\`com.sun.java.accessibility|util
+com.sun|jdi management
+com.sun.jdi|connect event request
+com.sun.jdi.connect|spi
+com.sun.net|httpserver
+com.sun.net.httpserver|spi
+com.sun.nio|file sctp
+com.sun.security|auth jgss
+com.sun.security.auth|callback login module
+com.sun.source|doctree tree util
+com.sun.tools|attach javac jconsole
+com.sun.tools.attach|spi
+javax|accessibility crypto imageio management naming net print script smartcardio sql swing tools xml
+javax.annotation|processing
+javax.crypto|interfaces spec
+javax.imageio|event metadata spi stream
+javax.imageio.plugins|bmp jpeg tiff
+javax.lang|model
+javax.lang.model|element type util
+javax.management|loading modelmbean monitor openmbean relation remote timer
+javax.management.remote|rmi
+javax.naming|directory event ldap spi
+javax.naming.ldap|spi
+javax.net|ssl
+javax.print|attribute event
+javax.print.attribute|standard
+javax.rmi|ssl
+javax.security|auth cert sasl
+javax.security.auth|callback kerberos login spi x500
+javax.sound|midi sampled
+javax.sound.midi|spi
+javax.sound.sampled|spi
+javax.sql|rowset
+javax.sql.rowset|serial spi
+javax.swing|border colorchooser event filechooser plaf table text tree undo
+javax.swing.plaf|basic metal multi nimbus synth
+javax.swing.text|html rtf
+javax.swing.text.html|parser
+javax.transaction|xa
+javax.xml|catalog crypto datatype namespace parsers stream transform validation xpath
+javax.xml.crypto|dom dsig
+javax.xml.crypto.dsig|dom keyinfo spec
+javax.xml.stream|events util
+javax.xml.transform|dom sax stax stream
+jdk|dynalink jfr jshell net nio
+jdk.dynalink|beans linker support
+jdk.dynalink.linker|support
+jdk.incubator|vector
+jdk.javadoc|doclet
+jdk.jfr|consumer
+jdk.jshell|execution spi tool
+jdk.management|jfr
+jdk.nio|mapmode
+jdk.security|jarsigner
+jdk.swing|interop
+netscape|javascript
+org.ietf|jgss
+org.w3c|dom
+org.w3c.dom|bootstrap css events html ls ranges stylesheets traversal views xpath
+org.xml|sax
+org.xml.sax|ext helpers
+sun|misc reflect\`;
+
+  // src/lib/langs/java.ts
+  var code = (t, n) => namedChildren(t, n).filter((c) => t.type[c] !== "line_comment" && t.type[c] !== "block_comment");
+  var gapCache = /* @__PURE__ */ new WeakMap();
+  var gapsOf = (t) => {
+    let hit = gapCache.get(t);
+    if (hit) return hit;
+    const last = new Int32Array(t.count);
+    for (let n = 0; n < t.count; n++) last[n] = n;
+    for (let n = t.count - 1; n > 0; n--) if (last[t.parent[n]] < last[n]) last[t.parent[n]] = last[n];
+    const before = new Int32Array(t.count + 1);
+    for (let n = 0; n < t.count; n++) before[n + 1] = before[n] + (t.type[n] === "ERROR" || n > 0 && t.start[n] === t.end[n] ? 1 : 0);
+    hit = { last, before, top: false };
+    gapCache.set(t, hit);
+    for (let c = t.first[0]; c >= 0; c = t.next[c]) if (t.type[c] === "ERROR" || t.start[c] === t.end[c] || (t.type[c] === "package_declaration" || t.type[c] === "import_declaration") && gapIn(t, c)) hit.top = true;
+    return hit;
+  };
+  var gapIn = (t, n) => {
+    if (n < 0) return false;
+    const g = gapsOf(t);
+    return g.before[g.last[n] + 1] - g.before[n] > 0;
+  };
+  var headerGap = (t, decl) => {
+    for (let c = t.first[decl]; c >= 0; c = t.next[c]) if (t.field[c] !== "body" && gapIn(t, c)) return true;
+    return false;
+  };
+  var CLASS_BODIES = /* @__PURE__ */ new Set(["class_body", "interface_body", "annotation_type_body", "enum_body", "enum_body_declarations"]);
+  var unsureAt = (t, n) => {
+    if (gapsOf(t).top) return true;
+    for (let x2 = n, p = t.parent[n]; p >= 0; x2 = p, p = t.parent[p]) {
+      if (CLASS_BODIES.has(t.type[p]) && (TYPES.has(t.type[x2]) ? headerGap(t, x2) : gapIn(t, x2))) return true;
+      if (TYPES.has(t.type[p]) && t.field[x2] !== "body" && headerGap(t, p)) return true;
+    }
+    return false;
+  };
+  var KINDS = { class_declaration: "class", interface_declaration: "interface", enum_declaration: "enum", record_declaration: "record", annotation_type_declaration: "annotation" };
+  var TYPES = new Set(Object.keys(KINDS));
+  var BODIES = /* @__PURE__ */ new Set(["class_body", "interface_body", "annotation_type_body", "enum_body_declarations"]);
+  var CONSTRUCTORS = /* @__PURE__ */ new Set(["constructor_declaration", "compact_constructor_declaration"]);
+  var ownerOfBody = (t, body2) => {
+    let p = t.parent[body2];
+    if (t.type[body2] === "enum_body_declarations" && p >= 0) p = t.parent[p];
+    return p >= 0 && TYPES.has(t.type[p]) ? p : -1;
+  };
+  var isMember = (t, n) => {
+    const p = t.parent[n];
+    if (p < 0) return false;
+    if (t.type[p] === "program") return true;
+    if (!BODIES.has(t.type[p])) return false;
+    const owner = ownerOfBody(t, p);
+    return owner >= 0 && isMember(t, owner);
+  };
+  var isAnonymousBody = (t, n) => t.type[n] === "class_body" && (t.type[t.parent[n]] === "object_creation_expression" || t.type[t.parent[n]] === "enum_constant");
+  var unit2 = (t, capture, node) => {
+    const ty = t.type[node];
+    const type = capture === "definition.class" && ty === "class_declaration" || capture === "definition.interface" && ty === "interface_declaration";
+    if (!(type || capture === "definition.method" && ty === "method_declaration") || !isMember(t, node)) return null;
+    return { kind: type ? "class" : "function", nameNode: child(t, node, "name"), outer: node };
+  };
+  var isVar = (t, type) => type >= 0 && t.type[type] === "type_identifier" && textOf(t, type) === "var";
+  var spreadType = (t, n) => namedChildren(t, n).find((c) => t.type[c] !== "modifiers" && t.type[c] !== "variable_declarator" && t.type[c] !== "annotation" && t.type[c] !== "marker_annotation") ?? -1;
+  var inArrowCase = (t, n) => {
+    for (let x2 = t.parent[n]; x2 >= 0; x2 = t.parent[x2]) {
+      if (t.type[x2] === "switch_label") return t.type[t.parent[x2]] === "switch_rule";
+      if (t.type[x2] !== "pattern" && t.type[x2] !== "type_pattern") return false;
+    }
+    return false;
+  };
+  var binds2 = (t, n, emit) => {
+    const ty = t.type[n];
+    if (TYPES.has(ty)) {
+      const p = t.type[t.parent[n]];
+      emit(child(t, n, "name"), "type", { unitNode: n, ...p === "program" || BODIES.has(p) ? {} : { from: t.start[n] } });
+      return;
+    }
+    switch (ty) {
+      case "type_parameter": {
+        const id = namedChildren(t, n).find((c) => t.type[c] === "type_identifier");
+        if (id !== void 0) emit(id, "type");
+        return;
+      }
+      // A variable's written type, its array dimensions read beside it (\`String... xs\`, \`int x[]\`).
+      case "formal_parameter": {
+        const name2 = child(t, n, "name");
+        const type = child(t, n, "type");
+        if (name2 >= 0 && t.type[name2] === "identifier") emit(name2, "param", isVar(t, type) ? {} : { typeNode: type });
+        return;
+      }
+      case "spread_parameter": {
+        const d = namedChildren(t, n).find((c) => t.type[c] === "variable_declarator");
+        const name2 = d !== void 0 ? child(t, d, "name") : -1;
+        const type = spreadType(t, n);
+        if (name2 >= 0 && t.type[name2] === "identifier") emit(name2, "param", type >= 0 ? { typeNode: type } : {});
+        return;
+      }
+      case "catch_formal_parameter": {
+        const name2 = child(t, n, "name");
+        const types = code(t, namedChildren(t, n).find((c) => t.type[c] === "catch_type") ?? -1);
+        if (name2 >= 0 && t.type[name2] === "identifier") emit(name2, "local", types.length === 1 ? { typeNode: types[0] } : {});
+        return;
+      }
+      case "local_variable_declaration": {
+        const type = child(t, n, "type");
+        for (let c = t.first[n]; c >= 0; c = t.next[c]) {
+          if (t.field[c] !== "declarator") continue;
+          const name2 = child(t, c, "name");
+          if (name2 < 0 || t.type[name2] !== "identifier") continue;
+          const value = child(t, c, "value");
+          const typed2 = isVar(t, type) ? value >= 0 ? { init: value } : {} : { typeNode: type };
+          emit(name2, "local", { from: t.start[c], ...typed2 });
+        }
+        return;
+      }
+      case "enhanced_for_statement": {
+        const name2 = child(t, n, "name");
+        const type = child(t, n, "type");
+        const body2 = child(t, n, "body");
+        if (name2 >= 0 && t.type[name2] === "identifier") emit(name2, "local", { from: body2 >= 0 ? t.start[body2] : t.end[n], ...isVar(t, type) ? {} : { typeNode: type } });
+        return;
+      }
+      case "resource": {
+        const name2 = child(t, n, "name");
+        if (name2 < 0 || t.type[name2] !== "identifier") return;
+        const type = child(t, n, "type");
+        emit(name2, "local", { from: t.end[n], ...isVar(t, type) ? { init: child(t, n, "value") } : { typeNode: type } });
+        return;
+      }
+      case "lambda_expression": {
+        const ps = child(t, n, "parameters");
+        if (ps >= 0 && t.type[ps] === "identifier") emit(ps, "param");
+        else if (ps >= 0 && t.type[ps] === "inferred_parameters") {
+          for (const c of namedChildren(t, ps)) if (t.type[c] === "identifier") emit(c, "param");
+        }
+        return;
+      }
+      // A pattern's variable is in scope as its condition flows: from the pattern to the end of its block, its name is a local of no known type.
+      case "instanceof_expression": {
+        const name2 = child(t, n, "name");
+        if (name2 >= 0 && t.type[name2] === "identifier") emit(name2, "local", { from: t.start[n] });
+        return;
+      }
+      case "type_pattern": {
+        const id = namedChildren(t, n).find((c) => t.type[c] === "identifier");
+        const type = code(t, n).find((c) => c !== id && t.type[c] !== "modifiers");
+        if (id !== void 0) emit(id, "local", inArrowCase(t, n) && type !== void 0 ? { typeNode: type } : { from: t.start[n] });
+        return;
+      }
+      case "record_pattern_component": {
+        const id = namedChildren(t, n).find((c) => t.type[c] === "identifier");
+        if (id !== void 0) emit(id, "local", { from: t.start[n] });
+        return;
+      }
+    }
+  };
+  var NAMED = /* @__PURE__ */ new Set([
+    ...TYPES,
+    "method_declaration",
+    "constructor_declaration",
+    "compact_constructor_declaration",
+    "annotation_type_element_declaration",
+    "variable_declarator",
+    "enum_constant",
+    "formal_parameter",
+    "catch_formal_parameter",
+    "enhanced_for_statement",
+    "resource",
+    "instanceof_expression"
+  ]);
+  var NO_CODE = /* @__PURE__ */ new Set(["package_declaration", "import_declaration", "module_declaration"]);
+  var topOf = (t, n) => {
+    let x2 = n;
+    while (t.parent[x2] > 0) x2 = t.parent[x2];
+    return x2;
+  };
+  var role2 = (t, n) => {
+    const p = t.parent[n];
+    if (p < 0) return { kind: "skip" };
+    const pt2 = t.type[p];
+    const f2 = t.field[n];
+    const ty = t.type[n];
+    if (ty === "this" || ty === "super") return pt2 === "explicit_constructor_invocation" && f2 === "constructor" ? { kind: "bare", expr: n } : { kind: "skip" };
+    if (f2 === "name" && NAMED.has(pt2)) return { kind: "decl" };
+    if (NO_CODE.has(t.type[topOf(t, n)]) || isVar(t, n)) return { kind: "skip" };
+    if (ty === "identifier" && (pt2 === "labeled_statement" || pt2 === "break_statement" || pt2 === "continue_statement")) return { kind: "skip" };
+    if (pt2 === "element_value_pair" && f2 === "key") return { kind: "skip" };
+    if (pt2 === "switch_label" && ty === "identifier") return { kind: "skip" };
+    if (pt2 === "method_invocation" && f2 === "name") {
+      const sup = namedChildren(t, p).find((c) => t.type[c] === "super" && t.field[c] !== "object");
+      const obj = child(t, p, "object");
+      return sup !== void 0 ? { kind: "member", receiver: sup, expr: n } : obj >= 0 ? { kind: "member", receiver: obj, expr: n } : { kind: "bare", expr: n };
+    }
+    if (pt2 === "field_access" && f2 === "field") return { kind: "member", receiver: child(t, p, "object"), expr: n };
+    if (pt2 === "method_reference") {
+      const parts2 = code(t, p);
+      return parts2.length > 1 && n === parts2[parts2.length - 1] ? { kind: "member", receiver: parts2[0], expr: n } : { kind: "bare", expr: n };
+    }
+    if (pt2 === "scoped_type_identifier") {
+      const parts2 = code(t, p).filter((c) => t.type[c] !== "annotation" && t.type[c] !== "marker_annotation");
+      return parts2.length > 1 && n === parts2[parts2.length - 1] ? { kind: "path", receiver: parts2[0], expr: n } : { kind: "bare", expr: n };
+    }
+    if (pt2 === "scoped_identifier" && f2 === "name") return { kind: "path", receiver: child(t, p, "scope"), expr: n };
+    return { kind: "bare", expr: n };
+  };
+  var anonymousBody = (t, creation) => namedChildren(t, creation).find((c) => t.type[c] === "class_body");
+  var qualifiedCreation = (t, creation) => code(t, creation).some((c) => t.field[c] === "" && t.type[c] !== "class_body" && t.type[c] !== "annotation" && t.type[c] !== "marker_annotation");
+  var creationOf = (t, n) => {
+    let x2 = n;
+    let q2 = t.parent[n];
+    if (q2 >= 0 && t.type[q2] === "scoped_type_identifier") {
+      const parts2 = code(t, q2);
+      if (x2 !== parts2[parts2.length - 1]) return -1;
+      x2 = q2;
+      q2 = t.parent[q2];
+    }
+    if (q2 >= 0 && t.type[q2] === "generic_type") {
+      x2 = q2;
+      q2 = t.parent[q2];
+    }
+    return q2 >= 0 && t.type[q2] === "object_creation_expression" && t.field[x2] === "type" ? q2 : -1;
+  };
+  var isCallee2 = (t, e) => {
+    const p = t.parent[e];
+    if (p < 0) return false;
+    const pt2 = t.type[p];
+    if (pt2 === "method_invocation") return t.field[e] === "name";
+    if (pt2 === "explicit_constructor_invocation") return t.field[e] === "constructor";
+    const creation = creationOf(t, e);
+    return creation >= 0 && anonymousBody(t, creation) === void 0;
+  };
+  var isType2 = (t, n) => t.type[n] === "type_identifier" || t.type[t.parent[n]] === "marker_annotation" || t.type[t.parent[n]] === "annotation" || t.type[t.parent[n]] === "record_pattern";
+  var namesOf = (spec) => spec ? spec.split(".") : [];
+  var dotted = (t, n) => n < 0 ? [] : t.type[n] === "scoped_identifier" ? [...dotted(t, child(t, n, "scope")), textOf(t, child(t, n, "name"))] : [textOf(t, n)];
+  var importsOf2 = (t) => {
+    const out2 = [];
+    for (const n of namedChildren(t, 0)) {
+      if (t.type[n] !== "import_declaration") continue;
+      const path = namedChildren(t, n).find((c) => t.type[c] === "scoped_identifier" || t.type[c] === "identifier");
+      if (path === void 0) continue;
+      const segs = dotted(t, path);
+      if (namedChildren(t, n).some((c) => t.type[c] === "asterisk")) {
+        out2.push({ local: "", spec: segs.join("."), level: 0, name: "*", node: -1, bind: -1, stmt: n });
+        continue;
+      }
+      const last = t.type[path] === "scoped_identifier" ? child(t, path, "name") : path;
+      out2.push({ local: segs[segs.length - 1], spec: segs.slice(0, -1).join("."), level: 0, name: segs[segs.length - 1], node: last, bind: last, stmt: n });
+    }
+    return out2;
+  };
+  var importCache2 = /* @__PURE__ */ new WeakMap();
+  var imports2 = (t) => {
+    let hit = importCache2.get(t);
+    if (!hit) importCache2.set(t, hit = importsOf2(t));
+    return hit;
+  };
+  var KEYWORD = { class_declaration: "class", interface_declaration: "interface", enum_declaration: "enum", record_declaration: "record", annotation_type_declaration: "@interface" };
+  var JAVA = {
+    unit: unit2,
+    extraUnits: (t) => {
+      const out2 = [];
+      for (let n = 0; n < t.count; n++) {
+        const ty = t.type[n];
+        const kind = ty === "enum_declaration" || ty === "record_declaration" || ty === "annotation_type_declaration" ? "class" : CONSTRUCTORS.has(ty) || ty === "annotation_type_element_declaration" ? "function" : null;
+        if (kind && isMember(t, n)) out2.push({ kind, nameNode: child(t, n, "name"), outer: n, node: n });
+      }
+      return out2;
+    },
+    // \`class Foo\`, \`Foo.run()\`, a constructor \`Foo()\`.
+    label: (t, u, parent) => {
+      const ty = t.type[u.node];
+      if (KEYWORD[ty]) return \`\${KEYWORD[ty]} \${u.name}\`;
+      return CONSTRUCTORS.has(ty) || !parent ? \`\${u.name}()\` : \`\${parent.name}.\${u.name}()\`;
+    },
+    scope: (t, n) => {
+      const ty = t.type[n];
+      if (TYPES.has(ty) || isAnonymousBody(t, n)) return "class";
+      if (ty === "method_declaration" || CONSTRUCTORS.has(ty) || ty === "lambda_expression") return "function";
+      if (ty === "block" || ty === "switch_block" || ty === "switch_rule" || ty === "for_statement" || ty === "enhanced_for_statement" || ty === "catch_clause" || ty === "try_with_resources_statement") return "block";
+      return null;
+    },
+    binds: binds2,
+    identifiers: /* @__PURE__ */ new Set(["identifier", "type_identifier", "this", "super"]),
+    role: role2,
+    isCallee: isCallee2,
+    isType: isType2,
+    imports: imports2
+  };
+  var packageOf = (t) => {
+    const pd = namedChildren(t, 0).find((c) => t.type[c] === "package_declaration");
+    const name2 = pd !== void 0 ? namedChildren(t, pd).find((c) => t.type[c] === "scoped_identifier" || t.type[c] === "identifier") : void 0;
+    return name2 !== void 0 ? dotted(t, name2).join(".") : "";
+  };
+  var rootOf = (path, pkg) => {
+    const dir = path.split("/").slice(0, -1);
+    const segs = pkg ? pkg.split(".") : [];
+    if (segs.length > dir.length) return null;
+    for (let i2 = 0; i2 < segs.length; i2++) if (dir[dir.length - segs.length + i2] !== segs[i2]) return null;
+    return dir.slice(0, dir.length - segs.length).join("/");
+  };
+  var SOURCE_SET = /^(.*\\/)?src\\/([^/]+)\\/java$/;
+  var rootsSeen = (root) => {
+    const m2 = SOURCE_SET.exec(root);
+    return m2 && m2[2] !== "main" ? [root, \`\${m2[1] ?? ""}src/main/java\`] : [root];
+  };
+  var at = (root, rel) => root ? \`\${root}/\${rel}\` : rel;
+  var typeFile = (segs) => {
+    if (segs.length === 0) return null;
+    let i2 = segs.findIndex((s) => /^[A-Z]/.test(s));
+    if (i2 < 0) i2 = segs.length - 1;
+    return { pkg: segs.slice(0, i2).join("."), top: segs[i2], rel: [...segs.slice(0, i2), \`\${segs[i2]}.java\`].join("/"), nested: segs.slice(i2 + 1) };
+  };
+  var JAVA_LANG = new Set(
+    "AbstractMethodError Appendable ArithmeticException ArrayIndexOutOfBoundsException ArrayStoreException AssertionError AutoCloseable Boolean BootstrapMethodError Byte Character CharSequence Class ClassCastException ClassCircularityError ClassFormatError ClassLoader ClassNotFoundException ClassValue CloneNotSupportedException Cloneable Comparable Deprecated Double Enum EnumConstantNotPresentException Error Exception ExceptionInInitializerError Float FunctionalInterface IllegalAccessError IllegalAccessException IllegalArgumentException IllegalCallerException IllegalMonitorStateException IllegalStateException IllegalThreadStateException IncompatibleClassChangeError IndexOutOfBoundsException InheritableThreadLocal InstantiationError InstantiationException Integer InternalError InterruptedException Iterable LayerInstantiationException LinkageError Long Math NegativeArraySizeException NoClassDefFoundError NoSuchFieldError NoSuchFieldException NoSuchMethodError NoSuchMethodException NullPointerException Number NumberFormatException Object OutOfMemoryError Override Readable ReflectiveOperationException Runnable Runtime RuntimeException SafeVarargs SecurityException Short StackOverflowError StackTraceElement StackWalker StrictMath String StringBuffer StringBuilder StringIndexOutOfBoundsException SuppressWarnings System Thread ThreadDeath ThreadGroup ThreadLocal Throwable TypeNotPresentException UnknownError UnsatisfiedLinkError UnsupportedClassVersionError UnsupportedOperationException VerifyError VirtualMachineError Void".split(" ")
+  );
+  var libOf = (line) => {
+    const [fqn, kind, supers, methods, fields3, types] = line.replace(/!([0-9a-z]+)/g, (_2, n) => JDK_ALIASES[parseInt(n, 36)]).replace(/@([0-9a-z]+)\\./g, (_2, n) => \`\${JDK_PACKAGES[parseInt(n, 36)]}.\`).split("|");
+    return {
+      fqn,
+      iface: kind.toLowerCase() === "i",
+      supers: supers ? supers.split(",") : [],
+      members: kind === "i" || kind === "c",
+      methods: (methods ? methods.split(" ") : []).map((m2) => {
+        const flags2 = m2.split(":");
+        const sig = flags2.pop();
+        const list = sig.slice(sig.indexOf("(") + 1, -1);
+        const varargs = list.endsWith("...");
+        const written2 = list ? list.replace(/\\.\\.\\.$/, "").split(",") : [];
+        const params2 = written2.map((p, i2) => varargs && i2 === written2.length - 1 && p !== "?" ? \`\${p}[]\` : p);
+        const key = params2.includes("?") ? null : params2.join(",");
+        return { name: sig.slice(0, sig.indexOf("(")), n: params2.length, varargs, access: flags2.includes("p") ? "protected" : "public", isStatic: flags2.includes("s"), abstract: flags2.includes("a"), key, params: params2 };
+      }),
+      fields: new Set(fields3 ? fields3.split(" ") : []),
+      types: new Set(types ? types.split(" ") : [])
+    };
+  };
+  var libs = null;
+  var libNamed = (fqn) => (libs ?? (libs = new Map(JDK_TYPES.split("\\n").map((line) => {
+    const l3 = libOf(line);
+    return [l3.fqn, l3];
+  })))).get(fqn);
+  var OBJECT = () => libNamed("java.lang.Object");
+  var exportsSet = null;
+  var jdkPackage = (pkg) => /^java(\\.|$)/.test(pkg) || (exportsSet ?? (exportsSet = new Set(
+    JDK_EXPORTS.split("\\n").flatMap((line) => {
+      const [around, names] = line.split("|");
+      return names.split(" ").map((n) => \`\${around}.\${n}\`);
+    })
+  ))).has(pkg);
+  var interfaceObject = null;
+  var INTERFACE_OBJECT = () => interfaceObject ?? (interfaceObject = { ...OBJECT(), iface: true, methods: OBJECT().methods.filter((m2) => m2.access === "public").map((m2) => ({ ...m2, abstract: true })) });
+  var outlines = /* @__PURE__ */ new WeakMap();
+  var outlineOf = (f2) => {
+    const t = f2.flat;
+    let hit = outlines.get(t);
+    if (hit) return hit;
+    const pkg = packageOf(t);
+    const isStatic = (i2) => hasToken(t, i2.stmt, "static");
+    const declared = /* @__PURE__ */ new Set();
+    const tops = /* @__PURE__ */ new Set();
+    const params2 = /* @__PURE__ */ new Set();
+    for (let n = 0; n < t.count; n++) {
+      if (TYPES.has(t.type[n])) {
+        declared.add(textOf(t, child(t, n, "name")));
+        if (t.parent[n] === 0) tops.add(textOf(t, child(t, n, "name")));
+      } else if (t.type[n] === "type_parameter") {
+        for (const c of namedChildren(t, n)) if (t.type[c] === "type_identifier") params2.add(textOf(t, c));
+      }
+    }
+    hit = {
+      pkg,
+      root: rootOf(f2.path, pkg),
+      singles: f2.imports.filter((i2) => i2.name !== "*" && !isStatic(i2)),
+      statics: f2.imports.filter((i2) => i2.name !== "*" && isStatic(i2)),
+      staticStars: f2.imports.filter((i2) => i2.name === "*" && isStatic(i2)),
+      declared,
+      tops,
+      params: params2,
+      lombok: f2.imports.some((i2) => i2.spec === "lombok" || i2.spec.startsWith("lombok.")) || t.text.includes("@lombok.")
+    };
+    outlines.set(t, hit);
+    return hit;
+  };
+  var typeParts = (t, n) => {
+    if (n < 0) return [];
+    switch (t.type[n]) {
+      case "type_identifier":
+        return isVar(t, n) ? [] : [textOf(t, n)];
+      case "generic_type":
+        return typeParts(t, namedChildren(t, n)[0] ?? -1);
+      case "annotated_type":
+        return typeParts(t, namedChildren(t, n).find((c) => t.type[c] !== "annotation" && t.type[c] !== "marker_annotation") ?? -1);
+      case "scoped_type_identifier": {
+        const parts2 = code(t, n).filter((c) => t.type[c] !== "annotation" && t.type[c] !== "marker_annotation");
+        const head = typeParts(t, parts2[0] ?? -1);
+        return parts2.length > 1 && head.length > 0 ? [...head, textOf(t, parts2[parts2.length - 1])] : [];
+      }
+      default:
+        return [];
+    }
+  };
+  var supertypeNodes = (t, n) => {
+    if (t.type[n] === "class_body") {
+      const creation = t.parent[n];
+      return t.type[creation] === "object_creation_expression" && child(t, creation, "type") >= 0 ? [child(t, creation, "type")] : [];
+    }
+    const out2 = [];
+    const sup = child(t, n, "superclass");
+    if (sup >= 0) out2.push(...code(t, sup));
+    for (const l3 of [child(t, n, "interfaces"), namedChildren(t, n).find((c) => t.type[c] === "extends_interfaces") ?? -1]) {
+      if (l3 >= 0) {
+        for (const tl of namedChildren(t, l3)) if (t.type[tl] === "type_list") out2.push(...code(t, tl));
+      }
+    }
+    return out2;
+  };
+  var mayBeType = (t, n) => {
+    if (t.type[n] === "type_identifier") return true;
+    const p = t.parent[n];
+    const pt2 = t.type[p];
+    if ((pt2 === "marker_annotation" || pt2 === "annotation") && t.field[n] === "name") return true;
+    if (pt2 === "record_pattern" || (pt2 === "method_invocation" || pt2 === "field_access") && t.field[n] === "object") return true;
+    return pt2 === "method_reference" && code(t, p)[0] === n;
+  };
+  var BODY_BLOCKS = /* @__PURE__ */ new Set(["block", "constructor_body", "lambda_expression", "static_initializer"]);
+  var javaWants = (files, ctx, changed) => {
+    const out2 = [];
+    const asked = /* @__PURE__ */ new Set();
+    const want = (p) => {
+      if (!asked.has(p)) out2.push(p);
+      asked.add(p);
+    };
+    const look = (own, rel, pkg) => {
+      if (/^javax?\\./.test(\`\${pkg}.\`) || jdkPackage(pkg)) return;
+      for (const r of own) {
+        if (ctx.exists?.(at(r, rel)) === false) continue;
+        return want(at(r, rel));
+      }
+    };
+    const lookFqn = (own, segs) => {
+      const tf = typeFile(segs);
+      if (tf) look(own, tf.rel, tf.pkg);
+    };
+    for (const f2 of files) {
+      const o = outlineOf(f2);
+      if (o.root === null || jdkPackage(o.pkg)) continue;
+      const own = rootsSeen(o.root);
+      const pkgDir = o.pkg ? o.pkg.split(".") : [];
+      const besides = (name2) => look(own, [...pkgDir, \`\${name2}.java\`].join("/"), o.pkg);
+      const imported = /* @__PURE__ */ new Map();
+      for (const i2 of [...o.singles, ...o.statics]) imported.set(i2.local, i2);
+      const t = f2.flat;
+      const lookType = (segs, declared) => {
+        const [first] = segs;
+        if (!first || declared.has(first) || o.params.has(first)) return;
+        const i2 = imported.get(first);
+        if (i2) return lookFqn(own, [...namesOf(i2.spec), ...o.singles.includes(i2) ? [first] : []]);
+        if (/^[A-Z]/.test(first)) return besides(first);
+        if (segs.length > 1) lookFqn(own, segs);
+      };
+      const isChanged = changed(f2.path);
+      if (isChanged) {
+        for (const i2 of o.singles) lookFqn(own, [...namesOf(i2.spec), i2.local]);
+        for (const i2 of [...o.statics, ...o.staticStars]) lookFqn(own, namesOf(i2.spec));
+        for (const s of f2.sites) {
+          if (s.shape !== "bare" || !/^[A-Z]/.test(s.name) || !mayBeType(t, s.node)) continue;
+          if (!o.declared.has(s.name) && !o.params.has(s.name) && !imported.has(s.name)) besides(s.name);
+        }
+        for (let n = 0; n < t.count; n++) if (t.type[n] === "scoped_type_identifier" && t.type[t.parent[n]] !== "scoped_type_identifier") lookType(typeParts(t, n), o.declared);
+      } else {
+        for (let n = 0; n < t.count; n++) {
+          if (t.type[n] !== "type_identifier" || !JAVA_LANG.has(textOf(t, n)) || o.declared.has(textOf(t, n)) || imported.has(textOf(t, n))) continue;
+          let x2 = t.parent[n];
+          while (x2 > 0 && !BODY_BLOCKS.has(t.type[x2])) x2 = t.parent[x2];
+          if (x2 <= 0) besides(textOf(t, n));
+        }
+      }
+      for (let n = 0; n < t.count; n++) if (TYPES.has(t.type[n]) || isChanged && t.type[n] === "class_body" && t.type[t.parent[n]] === "object_creation_expression") for (const s of supertypeNodes(t, n)) lookType(typeParts(t, s), o.tops);
+    }
+    return out2;
+  };
+  var UNTYPED = { k: "unknown" };
+  var WIDENING = {
+    byte: ["short", "int", "long", "float", "double"],
+    short: ["int", "long", "float", "double"],
+    char: ["int", "long", "float", "double"],
+    int: ["long", "float", "double"],
+    long: ["float", "double"],
+    float: ["double"]
+  };
+  var BOXES = { int: "java.lang.Integer", long: "java.lang.Long", short: "java.lang.Short", byte: "java.lang.Byte", char: "java.lang.Character", boolean: "java.lang.Boolean", float: "java.lang.Float", double: "java.lang.Double" };
+  var UNBOXED = Object.fromEntries(Object.entries(BOXES).map(([prim, box]) => [box, prim]));
+  var PRIMITIVES = new Set(Object.keys(BOXES));
+  var NO_VARS = /* @__PURE__ */ new Set();
+  var isAnnotation = (t, n) => t.type[n] === "annotation" || t.type[n] === "marker_annotation";
+  var constrained = (t, n, lone = NO_VARS) => {
+    const last = gapsOf(t).last[n];
+    for (let x2 = n; x2 <= last; x2++) {
+      if (t.type[x2] !== "type_arguments") continue;
+      if (code(t, x2).some((c) => t.type[c] === "wildcard" ? code(t, c).some((b2) => !isAnnotation(t, b2)) : t.type[c] !== "type_identifier" || !lone.has(textOf(t, c)))) return true;
+    }
+    return false;
+  };
+  var loneVars = (t, decl, params2) => {
+    const tps = child(t, decl, "type_parameters");
+    if (tps < 0) return NO_VARS;
+    const free = /* @__PURE__ */ new Set();
+    for (const tp of code(t, tps)) {
+      const parts2 = code(t, tp).filter((c) => !isAnnotation(t, c));
+      if (t.type[tp] === "type_parameter" && parts2.length === 1 && t.type[parts2[0]] === "type_identifier") free.add(textOf(t, parts2[0]));
+    }
+    if (free.size === 0) return NO_VARS;
+    const seen = /* @__PURE__ */ new Map();
+    for (const p of params2) {
+      const last = gapsOf(t).last[p];
+      for (let x2 = p; x2 <= last; x2++) if (t.type[x2] === "type_identifier" && free.has(textOf(t, x2))) seen.set(textOf(t, x2), (seen.get(textOf(t, x2)) ?? 0) + 1);
+    }
+    return new Set([...free].filter((v2) => seen.get(v2) === 1));
+  };
+  var libParam = (p) => p === "?" ? { k: "var" } : p.endsWith("[]") ? { k: "array", elem: libParam(p.slice(0, -2)) } : PRIMITIVES.has(p) ? { k: "prim", name: p } : { k: "ref", key: p };
+  var sameType = (a, b2) => a.k === b2.k && (a.k === "prim" ? a.name === b2.name : a.k === "ref" ? a.key === b2.key : a.k === "array" ? sameType(a.elem, b2.elem) : a.k === "null");
+  var promote = (prim) => prim === "byte" || prim === "short" || prim === "char" ? "int" : prim;
+  var promoted = (a, b2, op) => {
+    if (a === "boolean" || b2 === "boolean") return a === b2 && ["&", "|", "^"].includes(op) ? { k: "prim", name: "boolean" } : UNTYPED;
+    if (op === "<<" || op === ">>" || op === ">>>") return { k: "prim", name: promote(a) };
+    for (const wide of ["double", "float", "long"]) if (a === wide || b2 === wide) return { k: "prim", name: wide };
+    return { k: "prim", name: "int" };
+  };
+  var UNKNOWN = { k: "unknown" };
+  var NONE = { k: "none" };
+  var UNSURE = { k: "unknown" };
+  var openCache = /* @__PURE__ */ new WeakMap();
+  var openOf = (T) => {
+    let hit = openCache.get(T);
+    if (hit !== void 0) return hit;
+    hit = T.file.lombok;
+    const t = T.file.t;
+    const anonymous = T.kind === "anonymous" || T.kind === "constant";
+    if (!anonymous && headerGap(t, T.node)) hit = true;
+    const body2 = anonymous ? T.node : child(t, T.node, "body");
+    for (let c = body2 >= 0 ? t.first[body2] : -1; c >= 0 && !hit; c = t.next[c]) {
+      for (const m2 of t.type[c] === "enum_body_declarations" ? namedChildren(t, c) : [c]) {
+        if (t.type[m2] === "ERROR" || t.start[m2] === t.end[m2]) hit = true;
+        else if (TYPES.has(t.type[m2])) hit || (hit = headerGap(t, m2));
+        else if (t.type[m2] !== "block" && t.type[m2] !== "static_initializer") hit || (hit = headerGap(t, m2));
+      }
+    }
+    openCache.set(T, hit);
+    return hit;
+  };
+  var modifiersOf = (t, decl) => namedChildren(t, decl).find((c) => t.type[c] === "modifiers") ?? -1;
+  var has = (t, decl, word) => {
+    const mods = modifiersOf(t, decl);
+    return mods >= 0 && hasToken(t, mods, word);
+  };
+  var accessOf = (t, decl, inInterface) => has(t, decl, "private") ? "private" : has(t, decl, "protected") ? "protected" : inInterface || has(t, decl, "public") ? "public" : "package";
+  var lazy = (make) => {
+    let done = false;
+    let value;
+    return () => {
+      if (!done) {
+        value = make();
+        done = true;
+      }
+      return value;
+    };
+  };
+  var program = (files, ctx) => {
+    const known = new Set(ctx.known);
+    const exists = (p) => ctx.exists ? ctx.exists(p) : known.has(p) ? true : void 0;
+    const byPath = new Map(files.map((f2) => [f2.path, f2]));
+    let ids = 0;
+    const jfiles = /* @__PURE__ */ new Map();
+    const jfileOf = (f2) => {
+      let hit = jfiles.get(f2);
+      if (hit) return hit;
+      const t = f2.flat;
+      hit = { ...outlineOf(f2), f: f2, t, byNode: /* @__PURE__ */ new Map(), top: /* @__PURE__ */ new Map() };
+      jfiles.set(f2, hit);
+      for (let n = 0; n < t.count; n++) {
+        const named = TYPES.has(t.type[n]);
+        if (!named && !isAnonymousBody(t, n)) continue;
+        let outer = null;
+        for (let x2 = t.parent[n]; x2 >= 0 && !outer; x2 = t.parent[x2]) outer = hit.byNode.get(x2) ?? null;
+        const kind = named ? KINDS[t.type[n]] : t.type[t.parent[n]] === "enum_constant" ? "constant" : "anonymous";
+        const jt = { id: ids++, file: hit, node: n, name: named ? textOf(t, child(t, n, "name")) : "", kind, outer, unit: named ? f2.unitByNode.get(n) : void 0 };
+        hit.byNode.set(n, jt);
+        if (named && t.parent[n] === 0) hit.top.set(jt.name, jt);
+      }
+      return hit;
+    };
+    const isIface = (x2) => "fqn" in x2 ? x2.iface : x2.kind === "interface" || x2.kind === "annotation";
+    const typeKey = (T) => {
+      if (!isMember(T.file.t, T.node)) return \`#\${T.id}\`;
+      const names2 = [];
+      for (let x2 = T; x2; x2 = x2.outer) names2.unshift(x2.name);
+      return [...T.file.pkg ? [T.file.pkg] : [], ...names2].join(".");
+    };
+    const pkgOf = (x2) => "fqn" in x2 ? x2.fqn.slice(0, x2.fqn.lastIndexOf(".")) : x2.file.pkg;
+    const topAt = (path, pkg, name2) => {
+      if (exists(path) === false) return "absent";
+      const f2 = byPath.get(path);
+      if (!f2) return "unknown";
+      const jf = jfileOf(f2);
+      return jf.pkg === pkg ? jf.top.get(name2) ?? "absent" : "absent";
+    };
+    const typeIn = (from, pkg, name2, rel) => {
+      if (from.root === null) return "unknown";
+      for (const r of rootsSeen(from.root)) {
+        const got = topAt(at(r, rel), pkg, name2);
+        if (got !== "absent") return got;
+      }
+      return "absent";
+    };
+    const fqnType = (from, segs, imported = false) => {
+      const tf = typeFile(segs);
+      if (!tf) return NONE;
+      const l3 = libNamed(segs.join("."));
+      if (jdkPackage(tf.pkg)) return l3 ? { k: "lib", lib: l3 } : { k: "none", fqn: segs.join(".") };
+      const got = typeIn(from, tf.pkg, tf.top, tf.rel);
+      if (l3 && (got === "absent" || got === "unknown" && from.root !== null && rootsSeen(from.root).every((r) => exists(at(r, tf.rel)) !== true))) return { k: "lib", lib: l3 };
+      if (got === "unknown") return UNKNOWN;
+      if (got === "absent") return { k: "none", fqn: segs.join(".") };
+      let res = { k: "type", t: got };
+      for (const name2 of tf.nested) {
+        if (res.k !== "type") return UNKNOWN;
+        const own = membersOf(res.t).types.get(name2);
+        if (imported) {
+          if (!own) return NONE;
+          res = { k: "type", t: own };
+          continue;
+        }
+        const m2 = memberType(res.t, name2);
+        if (m2.found === void 0) return m2.complete ? NONE : UNKNOWN;
+        res = m2.found;
+      }
+      return res;
+    };
+    const memberCache = /* @__PURE__ */ new Map();
+    const membersOf = (T) => {
+      let hit = memberCache.get(T);
+      if (hit) return hit;
+      const found = { methods: /* @__PURE__ */ new Map(), ctors: [], fields: /* @__PURE__ */ new Map(), types: /* @__PURE__ */ new Map() };
+      memberCache.set(T, found);
+      const t = T.file.t;
+      const iface = T.kind === "interface" || T.kind === "annotation";
+      const addMethod = (m2) => found.methods.set(m2.name, [...found.methods.get(m2.name) ?? [], m2]);
+      const components2 = T.kind === "record" ? recordComponents(T) : [];
+      const method = (decl) => {
+        const ty = t.type[decl];
+        const ps = namedChildren(t, child(t, decl, "parameters")).filter((c) => t.type[c] === "formal_parameter" || t.type[c] === "spread_parameter");
+        const compact2 = ty === "compact_constructor_declaration";
+        const isStatic = has(t, decl, "static");
+        return {
+          name: CONSTRUCTORS.has(ty) ? T.name : textOf(t, child(t, decl, "name")),
+          owner: T,
+          node: decl,
+          unit: T.file.f.unitByNode.get(decl),
+          n: compact2 ? components2.length : ps.length,
+          varargs: (compact2 ? components2 : ps).some((c) => t.type[c] === "spread_parameter"),
+          isStatic,
+          abstract: ty === "annotation_type_element_declaration" || has(t, decl, "abstract") || iface && child(t, decl, "body") < 0 && !isStatic && !has(t, decl, "default") && !has(t, decl, "private"),
+          access: accessOf(t, decl, iface),
+          key: lazy(() => keyOfParams(T.file, compact2 ? components2 : ps)),
+          params: lazy(() => compact2 ? paramTypes(T.file, components2) : paramTypes(T.file, ps, loneVars(t, decl, ps)))
+        };
+      };
+      const field = (typeNode, dims, isStatic, access2) => ({
+        owner: T,
+        access: access2,
+        isStatic,
+        type: lazy(() => typeNode >= 0 && dims === 0 ? typeOfNode(T.file, typeNode) : null),
+        static: lazy(() => staticType(T.file, typeNode, dims)),
+        typeVar: lazy(() => dims === 0 && !isStatic ? classTypeVar(T, typeNode) : null)
+      });
+      const body2 = T.kind === "anonymous" || T.kind === "constant" ? T.node : child(t, T.node, "body");
+      for (const c of namedChildren(t, body2).flatMap((c2) => t.type[c2] === "enum_body_declarations" ? namedChildren(t, c2) : [c2])) {
+        const ty = t.type[c];
+        if (ty === "method_declaration" || ty === "annotation_type_element_declaration") addMethod(method(c));
+        else if (CONSTRUCTORS.has(ty)) found.ctors.push(method(c));
+        else if (ty === "field_declaration" || ty === "constant_declaration") {
+          for (let d = t.first[c]; d >= 0; d = t.next[d]) {
+            const name2 = t.field[d] === "declarator" ? child(t, d, "name") : -1;
+            if (name2 >= 0) found.fields.set(textOf(t, name2), field(child(t, c, "type"), dimsOf(t, child(t, d, "dimensions")), iface || has(t, c, "static"), accessOf(t, c, iface)));
+          }
+        } else if (ty === "enum_constant") found.fields.set(textOf(t, child(t, c, "name")), { owner: T, access: "public", isStatic: true, type: () => T, static: () => ({ k: "ref", key: typeKey(T), type: T }), typeVar: () => null });
+        else if (TYPES.has(ty)) found.types.set(textOf(t, child(t, c, "name")), T.file.byNode.get(c));
+      }
+      const implicit = (name2, n, isStatic, key, at3) => ({ name: name2, owner: T, node: at3?.node ?? -1, unit: at3?.unit, n, varargs: false, isStatic, abstract: false, access: "public", key: () => key, params: () => key ? key.split(",").map(libParam) : [] });
+      if (T.kind === "enum") {
+        addMethod(implicit("values", 0, true, ""));
+        addMethod(implicit("valueOf", 1, true, "java.lang.String"));
+      }
+      for (const c of components2) {
+        const name2 = textOf(t, child(t, c, "name") >= 0 ? child(t, c, "name") : namedChildren(t, namedChildren(t, c).find((x2) => t.type[x2] === "variable_declarator") ?? -1)[0] ?? c);
+        found.fields.set(name2, field(t.type[c] === "formal_parameter" ? child(t, c, "type") : -1, 0, false, "private"));
+        if (!(found.methods.get(name2) ?? []).some((m2) => m2.n === 0)) addMethod(implicit(name2, 0, false, "", { node: c, unit: T.unit }));
+      }
+      return found;
+    };
+    const recordComponents = (T) => namedChildren(T.file.t, child(T.file.t, T.node, "parameters")).filter((c) => T.file.t.type[c] === "formal_parameter" || T.file.t.type[c] === "spread_parameter");
+    const keyOfParams = (jf, params2) => {
+      const t = jf.t;
+      const keys = [];
+      for (const p of params2) {
+        const spread = t.type[p] === "spread_parameter";
+        const typeNode = spread ? spreadType(t, p) : child(t, p, "type");
+        const k2 = keyOfType(jf, typeNode, (spread ? 1 : 0) + dimsOf(t, child(t, p, "dimensions")));
+        if (k2 === null) return null;
+        keys.push(k2);
+      }
+      return keys.join(",");
+    };
+    const dimsOf = (t, dims) => dims < 0 ? 0 : (textOf(t, dims).match(/\\[/g) ?? []).length;
+    const bindingDims = (t, b2) => {
+      const p = t.parent[b2.node];
+      return t.type[p] === "variable_declarator" && t.type[t.parent[p]] === "spread_parameter" ? 1 : dimsOf(t, child(t, p, "dimensions"));
+    };
+    const keyOfType = (jf, n, dims, depth = 0) => {
+      const t = jf.t;
+      if (n < 0 || depth > 8) return null;
+      const ty = t.type[n];
+      if (ty === "integral_type" || ty === "floating_point_type" || ty === "boolean_type") return textOf(t, n) + "[]".repeat(dims);
+      if (ty === "array_type") return keyOfType(jf, child(t, n, "element"), dims + dimsOf(t, child(t, n, "dimensions")), depth);
+      const parts2 = typeParts(t, n);
+      const r = parts2.length > 0 ? resolveParts(jf, n, parts2) : NONE;
+      if (r.k === "param") {
+        const tp = typeParameterOf(jf, n, parts2[0]);
+        const bound = tp < 0 ? void 0 : namedChildren(t, tp).find((c) => t.type[c] === "type_bound");
+        return tp < 0 ? null : bound === void 0 ? \`java.lang.Object\${"[]".repeat(dims)}\` : keyOfType(jf, code(t, bound)[0] ?? -1, dims, depth + 1);
+      }
+      const name2 = r.k === "type" ? typeKey(r.t) : r.k === "lib" ? r.lib.fqn : r.k === "none" ? r.fqn ?? null : null;
+      return name2 === null ? null : name2 + "[]".repeat(dims);
+    };
+    const typeParameterOf = (jf, n, name2) => {
+      for (let s = scopeOf(jf, n); s; s = s.parent) {
+        const bs = visible2(jf, s.names.get(name2), jf.t.start[n]).filter((b2) => b2.kind === "type");
+        if (bs.length > 0) return isTypeParam(jf, bs[bs.length - 1]) ? jf.t.parent[bs[bs.length - 1].node] : -1;
+      }
+      return -1;
+    };
+    const writtenKey = (jf, n) => {
+      const t = jf.t;
+      const ty = t.type[n];
+      if (ty === "integral_type" || ty === "floating_point_type" || ty === "boolean_type") return textOf(t, n);
+      if (ty === "annotated_type") {
+        const inner = code(t, n).find((c) => !isAnnotation(t, c));
+        return inner === void 0 ? void 0 : writtenKey(jf, inner);
+      }
+      if (ty === "array_type") {
+        const elem = writtenKey(jf, child(t, n, "element"));
+        return elem === void 0 ? void 0 : elem + "[]".repeat(dimsOf(t, child(t, n, "dimensions")));
+      }
+      if (ty !== "generic_type") {
+        for (let x2 = n; x2 <= gapsOf(t).last[n]; x2++) if (t.type[x2] === "type_arguments") return void 0;
+      }
+      const parts2 = typeParts(t, n);
+      if (parts2.length === 0) return void 0;
+      const r = resolveParts(jf, n, parts2);
+      const base = r.k === "type" ? typeKey(r.t) : r.k === "lib" ? r.lib.fqn : r.k === "none" && r.fqn ? r.fqn : void 0;
+      if (base === void 0 || ty !== "generic_type") return base;
+      const targs = argsKey(jf, n);
+      return targs === void 0 ? void 0 : base + targs;
+    };
+    const argsKey = (jf, n) => {
+      const t = jf.t;
+      const lists = code(t, n).filter((c) => t.type[c] === "type_arguments");
+      if (lists.length !== 1 || code(t, n).some((c) => t.type[c] === "scoped_type_identifier")) return void 0;
+      const out2 = [];
+      for (const c of code(t, lists[0])) {
+        if (t.type[c] !== "wildcard") {
+          const k3 = writtenKey(jf, c);
+          if (k3 === void 0) return void 0;
+          out2.push(k3);
+          continue;
+        }
+        const bound = code(t, c).filter((b2) => !isAnnotation(t, b2));
+        if (bound.length === 0) {
+          out2.push("?");
+          continue;
+        }
+        const k2 = writtenKey(jf, bound[bound.length - 1]);
+        if (k2 === void 0) return void 0;
+        out2.push(\`? \${hasToken(t, c, "super") ? "super" : "extends"} \${k2}\`);
+      }
+      return \`<\${out2.join(",")}>\`;
+    };
+    const staticType = (jf, n, dims = 0, lone = NO_VARS) => {
+      const t = jf.t;
+      const wrap = (x2, d) => d > 0 ? wrap({ k: "array", elem: x2 }, d - 1) : x2;
+      if (n < 0) return UNTYPED;
+      const ty = t.type[n];
+      if (ty === "integral_type" || ty === "floating_point_type" || ty === "boolean_type") return wrap({ k: "prim", name: textOf(t, n) }, dims);
+      if (ty === "array_type") return staticType(jf, child(t, n, "element"), dims + dimsOf(t, child(t, n, "dimensions")));
+      const parts2 = typeParts(t, n);
+      if (parts2.length === 0) return UNTYPED;
+      const r = resolveParts(jf, n, parts2);
+      const targs = constrained(t, n, lone) && t.type[n] === "generic_type" ? argsKey(jf, n) : void 0;
+      const args2 = constrained(t, n, lone) ? { args: true, ...targs !== void 0 ? { targs } : {} } : {};
+      const base = r.k === "type" ? { k: "ref", key: typeKey(r.t), type: r.t, ...args2 } : r.k === "lib" ? { k: "ref", key: r.lib.fqn, type: r.lib, ...args2 } : r.k === "param" ? { k: "var" } : r.k === "none" && r.fqn ? { k: "ref", key: r.fqn, ...args2 } : UNTYPED;
+      return wrap(base, dims);
+    };
+    const paramTypes = (jf, params2, lone = NO_VARS) => params2.map((p) => {
+      const t = jf.t;
+      return t.type[p] === "spread_parameter" ? staticType(jf, spreadType(t, p), 1, lone) : staticType(jf, child(t, p, "type"), dimsOf(t, child(t, p, "dimensions")), lone);
+    });
+    const exprTypes = /* @__PURE__ */ new Map();
+    const exprType = (jf, e) => {
+      let byNode = exprTypes.get(jf);
+      if (!byNode) exprTypes.set(jf, byNode = /* @__PURE__ */ new Map());
+      const hit = byNode.get(e);
+      if (hit) return hit;
+      byNode.set(e, UNTYPED);
+      const v2 = exprTypeUncached(jf, e);
+      byNode.set(e, v2);
+      return v2;
+    };
+    const STRING = { k: "ref", key: "java.lang.String" };
+    const BOOLEAN = { k: "prim", name: "boolean" };
+    const exprTypeUncached = (jf, e) => {
+      const t = jf.t;
+      if (e < 0) return UNTYPED;
+      const text = () => textOf(t, e);
+      switch (t.type[e]) {
+        case "decimal_integer_literal":
+        case "hex_integer_literal":
+        case "octal_integer_literal":
+        case "binary_integer_literal":
+          return { k: "prim", name: /[lL]$/.test(text()) ? "long" : "int" };
+        case "decimal_floating_point_literal":
+        case "hex_floating_point_literal":
+          return { k: "prim", name: /[fF]$/.test(text()) ? "float" : "double" };
+        case "character_literal":
+          return { k: "prim", name: "char" };
+        case "true":
+        case "false":
+        case "instanceof_expression":
+          return BOOLEAN;
+        case "string_literal":
+          return STRING;
+        case "null_literal":
+          return { k: "null" };
+        case "class_literal":
+          return { k: "ref", key: "java.lang.Class" };
+        case "lambda_expression": {
+          const ps = child(t, e, "parameters");
+          return { k: "fn", arity: ps < 0 ? 0 : t.type[ps] === "identifier" ? 1 : namedChildren(t, ps).filter((c) => t.type[c] === "identifier" || t.type[c] === "formal_parameter" || t.type[c] === "spread_parameter").length };
+        }
+        case "method_reference":
+          return { k: "fn", arity: null };
+        case "this": {
+          const c = classAround(jf, e);
+          return c ? { k: "ref", key: typeKey(c), type: c } : UNTYPED;
+        }
+        case "parenthesized_expression":
+          return exprType(jf, code(t, e)[0] ?? -1);
+        case "cast_expression": {
+          const types = namedChildren(t, e).filter((c) => t.field[c] === "type");
+          return types.length === 1 ? staticType(jf, types[0]) : UNTYPED;
+        }
+        case "object_creation_expression": {
+          const body2 = anonymousBody(t, e);
+          const anon = body2 !== void 0 ? jf.byNode.get(body2) : void 0;
+          if (anon) return { k: "ref", key: typeKey(anon), type: anon };
+          return qualifiedCreation(t, e) ? UNTYPED : staticType(jf, child(t, e, "type"));
+        }
+        case "array_creation_expression":
+          return staticType(jf, child(t, e, "type"), namedChildren(t, e).filter((c) => t.field[c] === "dimensions").reduce((n, c) => n + (textOf(t, c).match(/\\[/g) ?? []).length, 0));
+        case "identifier":
+          return variableType(jf, e, text());
+        case "field_access": {
+          const obj = child(t, e, "object");
+          const field = child(t, e, "field");
+          if (t.type[field] === "this") {
+            const q2 = exprVal(jf, obj);
+            return q2.k === "type" && q2.res.k === "type" ? { k: "ref", key: typeKey(q2.res.t), type: q2.res.t } : UNTYPED;
+          }
+          const T = typeOf(t.type[obj] === "super" ? superVal(jf, obj) : exprVal(jf, obj));
+          const fd = T ? fieldOf(T, textOf(t, field)) : { complete: false };
+          const self2 = selfOf(jf, obj);
+          return T && fd.found && fd.found !== "unknown" ? fieldStatic(self2 ?? T, fd.found, self2 !== null) : UNTYPED;
+        }
+        case "method_invocation": {
+          const m2 = callOf(jf, child(t, e, "name"));
+          if (!m2 || m2.node < 0 || "fqn" in m2.owner) return UNTYPED;
+          const rt2 = child(m2.owner.file.t, m2.node, "type");
+          const bound = resultView(jf, child(t, e, "name"), m2, rt2);
+          return bound ? { k: "ref", key: typeKey(bound), type: bound } : rt2 >= 0 ? staticType(m2.owner.file, rt2) : UNTYPED;
+        }
+        case "array_access": {
+          const a = exprType(jf, child(t, e, "array"));
+          return a.k === "array" ? a.elem : UNTYPED;
+        }
+        case "binary_expression": {
+          const op = t.type[child(t, e, "operator")];
+          if (["==", "!=", "<", ">", "<=", ">=", "&&", "||"].includes(op)) return BOOLEAN;
+          const a = exprType(jf, child(t, e, "left"));
+          const b2 = exprType(jf, child(t, e, "right"));
+          if (op === "+" && (a.k === "ref" && a.key === STRING.key || b2.k === "ref" && b2.key === STRING.key)) return STRING;
+          return a.k === "prim" && b2.k === "prim" ? promoted(a.name, b2.name, op) : UNTYPED;
+        }
+        case "unary_expression": {
+          const op = t.type[child(t, e, "operator")];
+          if (op === "!") return BOOLEAN;
+          const a = exprType(jf, child(t, e, "operand"));
+          return a.k === "prim" && a.name !== "boolean" ? { k: "prim", name: promote(a.name) } : UNTYPED;
+        }
+        case "update_expression":
+          return exprType(jf, code(t, e)[0] ?? -1);
+        case "assignment_expression":
+          return exprType(jf, child(t, e, "left"));
+        case "ternary_expression": {
+          const a = exprType(jf, child(t, e, "consequence"));
+          const b2 = exprType(jf, child(t, e, "alternative"));
+          return sameType(a, b2) ? a : UNTYPED;
+        }
+        default:
+          return UNTYPED;
+      }
+    };
+    const variableType = (jf, n, name2) => {
+      const at3 = jf.t.start[n];
+      for (let s = scopeOf(jf, n); s; s = s.parent) {
+        const vs = visible2(jf, s.names.get(name2), at3).filter((b2) => b2.kind === "local" || b2.kind === "param");
+        if (vs.length > 0) {
+          if (vs.length > 1) return UNTYPED;
+          const b2 = vs[0];
+          if (b2.typeNode !== void 0) return staticType(jf, b2.typeNode, bindingDims(jf.t, b2));
+          return b2.init !== void 0 ? exprType(jf, b2.init) : UNTYPED;
+        }
+        if (s.kind === "class") {
+          const T = jf.byNode.get(s.node);
+          if (!T) return UNTYPED;
+          if (!inBody(T, n)) continue;
+          const fd = fieldOf(T, name2);
+          if (fd.found !== void 0) return fd.found === "unknown" ? UNTYPED : fieldStatic(T, fd.found, true);
+          if (!fd.complete) return UNTYPED;
+        }
+        if (s.kind === "module") break;
+      }
+      const sf = staticField(jf, name2);
+      return sf && sf !== "unknown" ? sf.static() : UNTYPED;
+    };
+    const closures = /* @__PURE__ */ new Map();
+    const closureOf = (x2) => {
+      let hit = closures.get(x2);
+      if (hit) return hit;
+      hit = { keys: /* @__PURE__ */ new Set([keyOfRef(x2)]), complete: true };
+      closures.set(x2, hit);
+      for (const s of supersOf(x2)) {
+        if (!s) {
+          hit.complete = false;
+          continue;
+        }
+        const c = closureOf(s);
+        for (const k2 of c.keys) hit.keys.add(k2);
+        if (!c.complete) hit.complete = false;
+      }
+      return hit;
+    };
+    const keyOfRef = (x2) => "fqn" in x2 ? x2.fqn : typeKey(x2);
+    const refType = (s) => s.type ?? libNamed(s.key);
+    const fits = (a, p, loose) => {
+      if (a.k === "unknown" || p.k === "unknown" || p.k === "null" || p.k === "fn") return "maybe";
+      if (a.k === "fn") return p.k === "var" ? "maybe" : p.k === "ref" ? takesFn(p, a.arity) : "no";
+      if (p.k === "var") return a.k === "prim" && !loose ? "no" : "maybe";
+      if (a.k === "var") return p.k === "prim" ? loose ? "maybe" : "no" : "maybe";
+      if (a.k === "null") return p.k === "prim" ? "no" : "yes";
+      if (a.k === "prim") {
+        if (p.k === "prim") return a.name === p.name || (WIDENING[a.name] ?? []).includes(p.name) ? "yes" : "no";
+        if (!loose || p.k === "array") return "no";
+        return fits({ k: "ref", key: BOXES[a.name] }, p, true);
+      }
+      if (p.k === "prim") {
+        if (!loose || a.k === "array") return "no";
+        const prim = UNBOXED[a.key];
+        return prim && (prim === p.name || (WIDENING[prim] ?? []).includes(p.name)) ? "yes" : "no";
+      }
+      if (a.k === "array") {
+        if (p.k === "array") return a.elem.k === "prim" || p.elem.k === "prim" ? a.elem.k === "prim" && p.elem.k === "prim" ? a.elem.name === p.elem.name ? "yes" : "no" : sameType(a.elem, p.elem) ? "yes" : "no" : fits(a.elem, p.elem, false);
+        return ["java.lang.Object", "java.lang.Cloneable", "java.io.Serializable"].includes(p.key) ? "yes" : "no";
+      }
+      if (p.k === "array") return "no";
+      if (p.args && p.targs !== void 0 && a.key === p.key && a.targs === p.targs) return "yes";
+      const yes = p.args ? "maybe" : "yes";
+      if (a.key === p.key || p.key === "java.lang.Object") return yes;
+      const pt2 = refType(p);
+      const final = pt2 !== void 0 && isFinal(pt2);
+      const at3 = refType(a);
+      if (!at3) return final ? "no" : "maybe";
+      const c = closureOf(at3);
+      return c.keys.has(p.key) ? yes : c.complete || final ? "no" : "maybe";
+    };
+    const FINAL_LIB = /* @__PURE__ */ new Set(["java.lang.String", "java.lang.Class", "java.lang.StringBuilder", "java.lang.StringBuffer", "java.util.Optional", ...Object.values(BOXES)]);
+    const isFinal = (x2) => "fqn" in x2 ? FINAL_LIB.has(x2.fqn) : x2.kind === "enum" || x2.kind === "record" || x2.kind === "class" && has(x2.file.t, x2.node, "final");
+    const takesFn = (p, arity2) => {
+      const x2 = refType(p);
+      if (!x2) return "maybe";
+      if (!isIface(x2)) return "no";
+      const shape = fnShape(x2);
+      if (!shape) return "maybe";
+      if (shape.length !== 1) return "no";
+      return arity2 === null || shape[0].some((m2) => m2.varargs || m2.n === arity2) ? "maybe" : "no";
+    };
+    const OBJECT_PUBLIC = /* @__PURE__ */ new Set(["equals/1", "hashCode/0", "toString/0", "getClass/0", "notify/0", "notifyAll/0", "wait/0", "wait/1", "wait/2"]);
+    const shapes = /* @__PURE__ */ new Map();
+    const fnShape = (x2) => {
+      if (shapes.has(x2)) return shapes.get(x2);
+      shapes.set(x2, null);
+      const names2 = /* @__PURE__ */ new Set();
+      const seen = /* @__PURE__ */ new Set();
+      const walk = (y2) => {
+        if (!y2) return false;
+        if (seen.has(y2)) return true;
+        seen.add(y2);
+        if ("fqn" in y2) {
+          if (!y2.members) return false;
+          for (const m2 of y2.methods) names2.add(m2.name);
+        } else for (const name2 of membersOf(y2).methods.keys()) names2.add(name2);
+        return supersOf(y2).every(walk);
+      };
+      let shape = walk(x2) ? [] : null;
+      for (const name2 of names2) {
+        if (!shape) break;
+        const set = methodsOf(x2, name2);
+        const live = set.list.filter((m2) => !m2.isStatic && !OBJECT_PUBLIC.has(\`\${m2.name}/\${m2.n}\`));
+        const abstract = live.filter((m2) => m2.abstract);
+        if (!set.complete || live.some((m2) => !m2.abstract && abstract.some((a) => a.n === m2.n && (a.key() === null || m2.key() === null)))) shape = null;
+        else if (abstract.length > 0) shape.push(abstract);
+      }
+      shapes.set(x2, shape);
+      return shape;
+    };
+    const applies = (m2, args2, phase) => {
+      const ps = m2.params();
+      if (phase < 3 ? ps.length !== args2.length : !m2.varargs || args2.length < ps.length - 1) return "no";
+      const last = ps[ps.length - 1];
+      let all2 = "yes";
+      for (let i2 = 0; i2 < args2.length; i2++) {
+        const p = phase === 3 && i2 >= ps.length - 1 ? last.k === "array" ? last.elem : last.k === "var" ? last : UNTYPED : ps[i2];
+        const f2 = fits(args2[i2], p, phase > 1);
+        if (f2 === "no") return "no";
+        if (f2 === "maybe") all2 = "maybe";
+      }
+      return all2;
+    };
+    const subtype = (a, b2) => {
+      if (a.k === "prim" && b2.k === "prim") return a.name === b2.name || (WIDENING[a.name] ?? []).includes(b2.name);
+      if (b2.k === "ref" && b2.args) return a.k === "ref" && a.key === b2.key && b2.targs !== void 0 && a.targs === b2.targs;
+      if (a.k === "array" && b2.k === "array") return a.elem.k === "prim" ? sameType(a.elem, b2.elem) : subtype(a.elem, b2.elem);
+      if (a.k === "array" && b2.k === "ref") return ["java.lang.Object", "java.lang.Cloneable", "java.io.Serializable"].includes(b2.key);
+      if (a.k !== "ref" || b2.k !== "ref") return false;
+      if (a.key === b2.key || b2.key === "java.lang.Object") return true;
+      const at3 = refType(a);
+      return !!at3 && closureOf(at3).keys.has(b2.key);
+    };
+    const moreSpecific = (m2, o) => {
+      const a = m2.params();
+      const b2 = o.params();
+      return a.length === b2.length && a.every((p, i2) => subtype(p, b2[i2]));
+    };
+    const byArguments = (cands, args2) => {
+      const first = cands.map((m2) => applies(m2, args2, 1));
+      if (first.includes("yes")) {
+        const may = cands.filter((_2, i2) => first[i2] !== "no");
+        if (may.length === 1) return may[0];
+        const best = may.filter((m2) => first[cands.indexOf(m2)] === "yes" && may.every((o) => o === m2 || moreSpecific(m2, o) && !moreSpecific(o, m2)));
+        return best.length === 1 ? best[0] : null;
+      }
+      const any = cands.filter((m2) => applies(m2, args2, 1) !== "no" || applies(m2, args2, 2) !== "no" || applies(m2, args2, 3) !== "no");
+      return any.length === 1 ? any[0] : null;
+    };
+    const argTypes = (jf, call) => code(jf.t, child(jf.t, call, "arguments")).map((a) => exprType(jf, a));
+    const typeParamsOf = (T) => {
+      const t = T.file.t;
+      return code(t, child(t, T.node, "type_parameters")).map((tp) => namedChildren(t, tp).find((c) => t.type[c] === "type_identifier") ?? -1).map((id) => id >= 0 ? textOf(t, id) : "");
+    };
+    const classTypeVar = (T, n) => {
+      const t = T.file.t;
+      if (n < 0 || t.type[n] !== "type_identifier") return null;
+      const tp = typeParameterOf(T.file, n, textOf(t, n));
+      return tp >= 0 && t.parent[t.parent[tp]] === T.node ? textOf(t, n) : null;
+    };
+    const viewOf = (X2, C3, name2, depth = 0) => {
+      if (X2 === C3) return { k: "var", name: name2 };
+      if (depth > 20) return null;
+      const t = X2.file.t;
+      let found;
+      for (const sn2 of supertypeNodes(t, X2.node)) {
+        const r = resolveParts(X2.file, sn2, typeParts(t, sn2));
+        if (r.k !== "type" || !closureOf(r.t).keys.has(typeKey(C3))) continue;
+        const up = viewOf(r.t, C3, name2, depth + 1);
+        let here = up?.k === "type" ? up : null;
+        if (up?.k === "var") {
+          const params2 = typeParamsOf(r.t);
+          const generic = t.type[sn2] === "generic_type" ? namedChildren(t, sn2).find((c) => t.type[c] === "type_arguments") : void 0;
+          const args2 = generic === void 0 ? [] : code(t, generic);
+          const arg = args2.length === params2.length ? args2[params2.indexOf(up.name)] ?? -1 : -1;
+          const a = arg >= 0 ? resolveParts(X2.file, arg, typeParts(t, arg)) : NONE;
+          here = a.k === "type" ? { k: "type", t: a.t } : a.k === "param" && classTypeVar(X2, arg) !== null ? { k: "var", name: textOf(t, arg) } : null;
+        }
+        if (found !== void 0 && !(found?.k === here?.k && (found?.k === "type" ? found.t === here.t : found?.name === here?.name))) return null;
+        found = here;
+      }
+      return found ?? null;
+    };
+    const viewType = (S3, C3, name2, free) => {
+      if (!S3 || !name2 || "fqn" in S3 || "fqn" in C3) return null;
+      const v2 = viewOf(S3, C3, name2);
+      if (v2?.k !== "var") return v2?.k === "type" ? v2.t : null;
+      if (!free) return null;
+      const t = S3.file.t;
+      const tp = code(t, child(t, S3.node, "type_parameters")).find((c) => textOf(t, namedChildren(t, c).find((x2) => t.type[x2] === "type_identifier") ?? c) === v2.name);
+      return tp === void 0 ? null : boundOf(S3.file, tp);
+    };
+    const boundOf = (jf, tp) => {
+      const t = jf.t;
+      const bound = namedChildren(t, tp).find((c) => t.type[c] === "type_bound");
+      const types = bound === void 0 ? [] : code(t, bound);
+      if (types.length !== 1) return null;
+      const r = resolveParts(jf, types[0], typeParts(t, types[0]));
+      return r.k === "type" ? r.t : null;
+    };
+    const fieldType = (S3, fd, free) => fd.type() ?? viewType(S3, fd.owner, fd.typeVar(), free);
+    const fieldStatic = (S3, fd, free) => {
+      const v2 = fd.typeVar() ? viewType(S3, fd.owner, fd.typeVar(), free) : null;
+      return v2 ? { k: "ref", key: typeKey(v2), type: v2 } : fd.static();
+    };
+    const superCache = /* @__PURE__ */ new Map();
+    const supersOf = (x2) => {
+      const hit = superCache.get(x2);
+      if (hit) return hit;
+      superCache.set(x2, [null]);
+      let supers;
+      if ("fqn" in x2) supers = x2.supers.length > 0 ? x2.supers.map((s) => libNamed(s) ?? null) : x2 === OBJECT() || x2 === INTERFACE_OBJECT() ? [] : [x2.iface ? INTERFACE_OBJECT() : OBJECT()];
+      else {
+        const t = x2.file.t;
+        const written2 = supertypeNodes(t, x2.node).map((n) => {
+          const r = resolveParts(x2.file, n, typeParts(t, n));
+          return r.k === "type" ? r.t : r.k === "lib" ? r.lib : null;
+        });
+        if (x2.kind !== "anonymous" && x2.kind !== "constant" && headerGap(t, x2.node)) supers = [null];
+        else if (x2.kind === "class") supers = child(t, x2.node, "superclass") >= 0 ? written2 : [OBJECT(), ...written2];
+        else if (x2.kind === "interface") supers = written2.length > 0 ? written2 : [INTERFACE_OBJECT()];
+        else if (x2.kind === "enum") supers = [libNamed("java.lang.Enum"), ...written2];
+        else if (x2.kind === "record") supers = [libNamed("java.lang.Record"), ...written2];
+        else if (x2.kind === "annotation") supers = [libNamed("java.lang.annotation.Annotation")];
+        else if (x2.kind === "constant") supers = [x2.outer];
+        else supers = written2[0] && isIface(written2[0]) ? [OBJECT(), written2[0]] : written2.length > 0 ? written2 : [null];
+      }
+      superCache.set(x2, supers);
+      return supers;
+    };
+    const superclassOf = (x2) => supersOf(x2).find((s) => s === null || !isIface(s)) ?? null;
+    const inherits = (x2, m2) => m2.access !== "private" && !(m2.access === "package" && pkgOf(m2.owner) !== pkgOf(x2));
+    const methodCache = /* @__PURE__ */ new Map();
+    const libMethods = /* @__PURE__ */ new Map();
+    const declaredMethods = (x2, name2) => {
+      if (!("fqn" in x2)) return membersOf(x2).methods.get(name2) ?? [];
+      let byName = libMethods.get(x2);
+      if (!byName) {
+        const made = /* @__PURE__ */ new Map();
+        for (const m2 of x2.methods) made.set(m2.name, [...made.get(m2.name) ?? [], { ...m2, owner: x2, node: -1, unit: void 0, key: () => m2.key, params: lazy(() => m2.params.map(libParam)) }]);
+        libMethods.set(x2, byName = made);
+      }
+      return byName.get(name2) ?? [];
+    };
+    const methodsOf = (x2, name2) => {
+      let byName = methodCache.get(x2);
+      if (!byName) methodCache.set(x2, byName = /* @__PURE__ */ new Map());
+      const hit = byName.get(name2);
+      if (hit) return hit;
+      byName.set(name2, { list: [], complete: false });
+      const own = declaredMethods(x2, name2);
+      let complete = "fqn" in x2 ? x2.members : !openOf(x2);
+      const inherited = [];
+      for (const s of supersOf(x2)) {
+        if (!s) {
+          complete = false;
+          continue;
+        }
+        const set = methodsOf(s, name2);
+        if (!set.complete) complete = false;
+        for (const m2 of set.list) if (inherits(x2, m2) && !(m2.isStatic && isIface(m2.owner)) && !inherited.includes(m2)) inherited.push(m2);
+      }
+      const same = (a, b2) => a.n === b2.n && a.varargs === b2.varargs && a.key() !== null && a.key() === b2.key();
+      const all2 = [...own, ...inherited.filter((m2) => !own.some((d) => same(d, m2)))];
+      const found = { list: all2.filter((m2) => !(isIface(m2.owner) && all2.some((c) => c !== m2 && !isIface(c.owner) && !c.abstract && same(c, m2)))), complete };
+      byName.set(name2, found);
+      return found;
+    };
+    const memberType = (x2, name2, depth = 0) => {
+      if (depth > 40) return { complete: false };
+      if ("fqn" in x2) {
+        const nested = x2.types.has(name2) ? libNamed(\`\${x2.fqn}.\${name2}\`) : void 0;
+        if (x2.types.has(name2)) return { found: nested ? { k: "lib", lib: nested } : UNKNOWN, complete: true };
+        if (!x2.members) return { complete: false };
+      } else {
+        const own = membersOf(x2).types.get(name2);
+        if (own) return { found: { k: "type", t: own }, complete: true };
+        if (openOf(x2)) return { complete: false };
+      }
+      let complete = true;
+      let found;
+      for (const s of supersOf(x2)) {
+        if (!s) {
+          complete = false;
+          continue;
+        }
+        const m2 = memberType(s, name2, depth + 1);
+        if (!m2.complete) complete = false;
+        if (m2.found === void 0) continue;
+        if (m2.found.k === "type" && m2.found.t.outer && !inherits(x2, { access: accessOf(m2.found.t.file.t, m2.found.t.node, isIface(m2.found.t.outer)), owner: m2.found.t.outer })) continue;
+        found = found === void 0 || found.k === "type" && m2.found.k === "type" && found.t === m2.found.t ? m2.found : UNKNOWN;
+      }
+      return { ...found !== void 0 ? { found } : {}, complete };
+    };
+    const fieldOf = (x2, name2, depth = 0) => {
+      if (depth > 40) return { complete: false };
+      if ("fqn" in x2) {
+        if (x2.fields.has(name2)) return { found: "unknown", complete: true };
+        if (!x2.members) return { complete: false };
+      } else {
+        const own = membersOf(x2).fields.get(name2);
+        if (own) return { found: own, complete: true };
+        if (openOf(x2)) return { complete: false };
+      }
+      let complete = true;
+      let found;
+      for (const s of supersOf(x2)) {
+        if (!s) {
+          complete = false;
+          continue;
+        }
+        const m2 = fieldOf(s, name2, depth + 1);
+        if (!m2.complete) complete = false;
+        if (m2.found === void 0 || m2.found !== "unknown" && !inherits(x2, m2.found)) continue;
+        found = found === void 0 || found === m2.found ? m2.found : "unknown";
+      }
+      return { ...found !== void 0 ? { found } : {}, complete };
+    };
+    const scopeOf = (jf, n) => jf.f.scopes[jf.f.enclosing[n]];
+    const visible2 = (jf, bs, at3) => (bs ?? []).filter((b2) => {
+      if (b2.from !== void 0 && b2.from > at3) return false;
+      const t = jf.t;
+      if (t.type[t.parent[b2.node]] !== "resource") return true;
+      const body2 = child(t, t.parent[t.parent[t.parent[b2.node]]], "body");
+      return body2 >= 0 && at3 < t.end[body2];
+    });
+    const isTypeParam = (jf, b2) => jf.t.type[jf.t.parent[b2.node]] === "type_parameter";
+    const inBody = (T, n) => {
+      if (T.kind === "anonymous" || T.kind === "constant") return true;
+      const t = T.file.t;
+      const within = (x2) => x2 >= 0 && t.start[x2] <= t.start[n] && t.end[n] <= t.end[x2];
+      return within(child(t, T.node, "body")) || T.kind === "record" && within(child(t, T.node, "parameters"));
+    };
+    const typeName4 = (jf, n, name2) => {
+      const at3 = jf.t.start[n];
+      for (let s = scopeOf(jf, n); s; s = s.parent) {
+        const bs = visible2(jf, s.names.get(name2), at3).filter((b2) => b2.kind === "type");
+        if (s.kind === "class") {
+          if (bs.some((b2) => isTypeParam(jf, b2))) return { k: "param" };
+          const T = jf.byNode.get(s.node);
+          if (!T) return UNKNOWN;
+          if (inBody(T, n)) {
+            const m2 = memberType(T, name2);
+            if (m2.found !== void 0) return m2.found;
+            if (!m2.complete) return UNKNOWN;
+          }
+          continue;
+        }
+        if (s.kind === "module") break;
+        if (bs.length > 0) {
+          const b2 = bs[bs.length - 1];
+          const local = jf.byNode.get(jf.t.parent[b2.node]);
+          return isTypeParam(jf, b2) ? { k: "param" } : local ? { k: "type", t: local } : UNKNOWN;
+        }
+      }
+      return topType(jf, name2);
+    };
+    const ownerOf = (r) => r.k === "type" ? r.t : r.k === "lib" ? r.lib : null;
+    const topType = (jf, name2) => {
+      const own = jf.top.get(name2);
+      if (own) return { k: "type", t: own };
+      const single = jf.singles.find((i2) => i2.local === name2);
+      if (single) return fqnType(jf, [...namesOf(single.spec), name2], true);
+      for (const i2 of jf.statics.filter((i3) => i3.local === name2)) {
+        const c = ownerOf(fqnType(jf, namesOf(i2.spec), true));
+        if (!c) return UNKNOWN;
+        const m2 = memberType(c, name2);
+        if (m2.found !== void 0) return m2.found;
+        if (!m2.complete) return UNKNOWN;
+      }
+      if (!/^[A-Z]/.test(name2)) return NONE;
+      if (jf.root === null) return UNKNOWN;
+      const got = typeIn(jf, jf.pkg, name2, [...jf.pkg ? jf.pkg.split(".") : [], \`\${name2}.java\`].join("/"));
+      if (got !== "absent") return got === "unknown" ? UNKNOWN : { k: "type", t: got };
+      if (!JAVA_LANG.has(name2)) return UNKNOWN;
+      const l3 = libNamed(\`java.lang.\${name2}\`);
+      return l3 ? { k: "lib", lib: l3 } : { k: "none", fqn: \`java.lang.\${name2}\` };
+    };
+    const resolveParts = (jf, n, parts2) => {
+      if (parts2.length === 0) return NONE;
+      let res = typeName4(jf, n, parts2[0]);
+      if (parts2.length === 1) return res;
+      if (res.k === "none" && !res.fqn) return fqnType(jf, parts2);
+      for (const name2 of parts2.slice(1)) {
+        if (res.k !== "type" && res.k !== "lib") return res.k === "none" ? UNKNOWN : res;
+        const m2 = memberType(res.k === "type" ? res.t : res.lib, name2);
+        if (m2.found === void 0) return m2.complete ? NONE : UNKNOWN;
+        res = m2.found;
+      }
+      return res;
+    };
+    const typeOfNode = (jf, n) => {
+      const r = resolveParts(jf, n, typeParts(jf.t, n));
+      return r.k === "type" ? r.t : null;
+    };
+    const classAround = (jf, n) => {
+      for (let s = scopeOf(jf, n); s; s = s.parent) if (s.kind === "class") return jf.byNode.get(s.node) ?? null;
+      return null;
+    };
+    const nameVal = (jf, n, name2) => {
+      const at3 = jf.t.start[n];
+      for (let s = scopeOf(jf, n); s; s = s.parent) {
+        const vs = visible2(jf, s.names.get(name2), at3).filter((b2) => b2.kind === "local" || b2.kind === "param");
+        if (vs.length > 0) return vs.length === 1 ? { k: "value", t: typeOfBinding(jf, vs[0]) } : UNSURE;
+        if (s.kind === "class") {
+          const T = jf.byNode.get(s.node);
+          if (!T) return UNSURE;
+          if (!inBody(T, n)) continue;
+          const fd = fieldOf(T, name2);
+          if (fd.found !== void 0) return { k: "value", t: fd.found === "unknown" ? null : fieldType(T, fd.found, true) };
+          if (!fd.complete) return UNSURE;
+        }
+        if (s.kind === "module") break;
+      }
+      const sf = staticField(jf, name2);
+      if (sf === null) return UNSURE;
+      if (sf !== void 0) return { k: "value", t: sf === "unknown" ? null : sf.type() };
+      const res = typeName4(jf, n, name2);
+      if (res.k === "none" && !res.fqn) return { k: "package", name: name2 };
+      return res.k === "param" || res.k === "unknown" ? UNSURE : { k: "type", res };
+    };
+    const staticField = (jf, name2) => {
+      for (const i2 of jf.statics.filter((i3) => i3.local === name2)) {
+        const c = ownerOf(fqnType(jf, namesOf(i2.spec), true));
+        if (!c) return null;
+        const fd = fieldOf(c, name2);
+        if (fd.found !== void 0 && (fd.found === "unknown" || fd.found.isStatic)) return fd.found;
+        if (!fd.complete) return null;
+      }
+      let found;
+      let known2 = true;
+      for (const i2 of jf.staticStars) {
+        const c = ownerOf(fqnType(jf, namesOf(i2.spec), true));
+        const fd = c ? fieldOf(c, name2) : { complete: false };
+        if (fd.found !== void 0 && (fd.found === "unknown" || fd.found.isStatic)) {
+          if (found !== void 0 && found !== fd.found) return null;
+          found = fd.found;
+        } else if (!fd.complete) known2 = false;
+      }
+      return found ?? (known2 ? void 0 : null);
+    };
+    const typeOfBinding = (jf, b2) => {
+      if (b2.typeNode !== void 0) {
+        if (bindingDims(jf.t, b2) > 0) return null;
+        const t = jf.t;
+        const tp = t.type[b2.typeNode] === "type_identifier" ? typeParameterOf(jf, b2.typeNode, textOf(t, b2.typeNode)) : -1;
+        return tp >= 0 ? boundOf(jf, tp) : typeOfNode(jf, b2.typeNode);
+      }
+      if (b2.init === void 0) return null;
+      const v2 = exprVal(jf, b2.init);
+      return v2.k === "value" ? v2.t : null;
+    };
+    const exprCache = /* @__PURE__ */ new Map();
+    const exprVal = (jf, e) => {
+      let byNode = exprCache.get(jf);
+      if (!byNode) exprCache.set(jf, byNode = /* @__PURE__ */ new Map());
+      const hit = byNode.get(e);
+      if (hit) return hit;
+      byNode.set(e, UNSURE);
+      const v2 = exprValUncached(jf, e);
+      byNode.set(e, v2);
+      return v2;
+    };
+    const exprValUncached = (jf, e) => {
+      const t = jf.t;
+      switch (t.type[e]) {
+        case "this":
+          return { k: "value", t: classAround(jf, e) };
+        case "identifier":
+          return nameVal(jf, e, textOf(t, e));
+        case "type_identifier":
+        case "generic_type":
+        case "scoped_type_identifier":
+          return { k: "type", res: resolveParts(jf, e, typeParts(t, e)) };
+        case "parenthesized_expression":
+          return exprVal(jf, code(t, e)[0] ?? -1);
+        case "cast_expression": {
+          const types = namedChildren(t, e).filter((c) => t.field[c] === "type");
+          return types.length === 1 ? { k: "value", t: typeOfNode(jf, types[0]) } : UNSURE;
+        }
+        case "object_creation_expression": {
+          const body2 = anonymousBody(t, e);
+          if (body2 !== void 0) return { k: "value", t: jf.byNode.get(body2) ?? null };
+          return qualifiedCreation(t, e) ? UNSURE : { k: "value", t: typeOfNode(jf, child(t, e, "type")) };
+        }
+        case "field_access": {
+          const obj = child(t, e, "object");
+          const field = child(t, e, "field");
+          if (t.type[field] === "this") {
+            const q2 = exprVal(jf, obj);
+            return q2.k === "type" && q2.res.k === "type" ? { k: "value", t: q2.res.t } : UNSURE;
+          }
+          return memberVal(jf, t.type[obj] === "super" ? superVal(jf, obj) : exprVal(jf, obj), textOf(t, field), selfOf(jf, obj));
+        }
+        case "method_invocation": {
+          const m2 = callOf(jf, child(t, e, "name"));
+          if (!m2 || m2.node < 0 || "fqn" in m2.owner) return UNSURE;
+          const i2 = child(t, e, "type_arguments") < 0 ? identityArg(m2) : -1;
+          if (i2 >= 0) {
+            const v2 = exprVal(jf, code(t, child(t, e, "arguments"))[i2] ?? -1);
+            return v2.k === "value" ? v2 : UNSURE;
+          }
+          const rt2 = child(m2.owner.file.t, m2.node, "type");
+          const bound = resultView(jf, child(t, e, "name"), m2, rt2);
+          return { k: "value", t: bound ?? (rt2 >= 0 ? typeOfNode(m2.owner.file, rt2) : null) };
+        }
+        default:
+          return UNSURE;
+      }
+    };
+    const identityArg = (m2) => {
+      if ("fqn" in m2.owner || m2.node < 0 || m2.varargs) return -1;
+      const t = m2.owner.file.t;
+      const rt2 = child(t, m2.node, "type");
+      if (rt2 < 0 || t.type[rt2] !== "type_identifier") return -1;
+      const name2 = textOf(t, rt2);
+      if (!namedChildren(t, child(t, m2.node, "type_parameters")).some((tp) => namedChildren(t, tp).some((c) => t.type[c] === "type_identifier" && textOf(t, c) === name2))) return -1;
+      const names2 = (n) => n >= 0 && (t.type[n] === "type_identifier" && textOf(t, n) === name2 || namedChildren(t, n).some(names2));
+      let at3 = -1;
+      for (const [i2, p] of namedChildren(t, child(t, m2.node, "parameters")).filter((c) => t.type[c] === "formal_parameter").entries()) {
+        const ty = child(t, p, "type");
+        if (t.type[ty] === "type_identifier" && textOf(t, ty) === name2 && child(t, p, "dimensions") < 0) {
+          if (at3 >= 0) return -1;
+          at3 = i2;
+        } else if (names2(ty)) return -1;
+      }
+      return at3;
+    };
+    const superVal = (jf, n) => {
+      const c = classAround(jf, n);
+      const s = c ? superclassOf(c) : null;
+      return s && !("fqn" in s) ? { k: "value", t: s } : UNSURE;
+    };
+    const resultView = (jf, nameNode, m2, rt2) => {
+      const recv = receivers.get(jf)?.get(nameNode);
+      if (!recv || recv.kind === "type" || "fqn" in m2.owner) return null;
+      return viewType(recv.kind === "self" ? recv.view : recv.type, m2.owner, classTypeVar(m2.owner, rt2), recv.kind === "self");
+    };
+    const memberVal = (jf, q2, name2, self2) => {
+      if (q2.k === "package") {
+        const res = fqnType(jf, [...q2.name.split("."), name2]);
+        return res.k === "none" && !/^[A-Z]/.test(name2) ? { k: "package", name: \`\${q2.name}.\${name2}\` } : res.k === "type" ? { k: "type", res } : UNSURE;
+      }
+      const T = q2.k === "value" ? q2.t : q2.k === "type" && q2.res.k === "type" ? q2.res.t : null;
+      if (!T) return UNSURE;
+      const fd = fieldOf(T, name2);
+      if (fd.found !== void 0) return { k: "value", t: fd.found === "unknown" ? null : fieldType(self2 ?? T, fd.found, self2 !== null) };
+      if (!fd.complete || q2.k !== "type") return UNSURE;
+      const m2 = memberType(T, name2);
+      return m2.found !== void 0 ? { k: "type", res: m2.found } : UNSURE;
+    };
+    const reachable = (list, k2) => {
+      if (k2 === null) return [...list];
+      const fixed = list.filter((m2) => !m2.varargs && m2.n === k2);
+      return k2 === 0 && fixed.length === 1 ? fixed : list.filter((m2) => m2.varargs ? k2 >= m2.n - 1 : k2 === m2.n);
+    };
+    const topOfType = (T) => T.outer ? topOfType(T.outer) : T;
+    const access = (jf, n, m2, recv) => {
+      if (m2.access === "public") return "yes";
+      if (m2.access === "private") {
+        const here = classAround(jf, n);
+        return !("fqn" in m2.owner) && here !== null && topOfType(here) === topOfType(m2.owner) ? "yes" : "no";
+      }
+      if (pkgOf(m2.owner) === jf.pkg) return "yes";
+      if (m2.access === "package") return "no";
+      const owner = keyOfRef(m2.owner);
+      let open = false;
+      for (let S3 = classAround(jf, n); S3; S3 = S3.outer) {
+        const c = closureOf(S3);
+        if (!c.keys.has(owner)) {
+          if (!c.complete) open = true;
+          continue;
+        }
+        if (m2.isStatic || recv.kind !== "expr") return "yes";
+        const q2 = closureOf(recv.type);
+        if (q2.keys.has(keyOfRef(S3))) return "yes";
+        if (!q2.complete) open = true;
+      }
+      return open ? "maybe" : "no";
+    };
+    const importable = (jf, m2) => m2.access === "public" || m2.access !== "private" && pkgOf(m2.owner) === jf.pkg;
+    const mayApply = (m2, args2) => applies(m2, args2, 1) !== "no" || applies(m2, args2, 2) !== "no" || applies(m2, args2, 3) !== "no";
+    const receivers = /* @__PURE__ */ new Map();
+    const pick = (jf, n, owner, set, k2, recv) => {
+      const m2 = pickUncached(jf, n, owner, set, k2, recv);
+      if (m2) {
+        let byNode = receivers.get(jf);
+        if (!byNode) receivers.set(jf, byNode = /* @__PURE__ */ new Map());
+        byNode.set(n, recv);
+      }
+      return m2;
+    };
+    const pickUncached = (jf, n, owner, set, k2, recv) => {
+      const call = jf.t.parent[n];
+      if (k2 !== null && gapIn(jf.t, child(jf.t, call, "arguments"))) return null;
+      const usable = set.list.map((m3) => ({ m: m3, a: access(jf, n, m3, recv) })).filter((x2) => x2.a !== "no");
+      const possible = reachable(usable.map((x2) => x2.m), k2);
+      if (usable.some((x2) => x2.a === "maybe" && possible.includes(x2.m))) return null;
+      if (possible.length > 1) return set.complete && k2 !== null ? byArguments(possible, argTypes(jf, call)) : null;
+      if (possible.length !== 1) return null;
+      const m2 = possible[0];
+      if (k2 !== null && !mayApply(m2, argTypes(jf, call))) return null;
+      if (set.complete) return m2;
+      if (k2 !== 0 || m2.varargs || m2.n !== 0) return null;
+      for (let s = owner; s; s = superclassOf(s)) {
+        if (s === m2.owner) return s === owner || !m2.abstract ? m2 : null;
+        if (!("fqn" in s) && openOf(s)) return null;
+      }
+      return null;
+    };
+    const argCount = (t, call) => code(t, child(t, call, "arguments")).length;
+    const callCache = /* @__PURE__ */ new Map();
+    const callOf = (jf, nameNode) => {
+      let byNode = callCache.get(jf);
+      if (!byNode) callCache.set(jf, byNode = /* @__PURE__ */ new Map());
+      if (byNode.has(nameNode)) return byNode.get(nameNode);
+      byNode.set(nameNode, null);
+      const m2 = callUncached(jf, nameNode);
+      byNode.set(nameNode, m2);
+      return m2;
+    };
+    const selfOf = (jf, q2) => {
+      const t = jf.t;
+      if (t.type[q2] === "this" || t.type[q2] === "super") return classAround(jf, q2);
+      if (t.type[q2] !== "field_access" || t.type[child(t, q2, "field")] !== "this") return null;
+      const v2 = exprVal(jf, q2);
+      return v2.k === "value" ? v2.t : null;
+    };
+    const callUncached = (jf, nameNode) => {
+      const t = jf.t;
+      const call = t.parent[nameNode];
+      const name2 = textOf(t, nameNode);
+      const k2 = argCount(t, call);
+      const obj = child(t, call, "object");
+      const sup = namedChildren(t, call).find((c) => t.type[c] === "super" && t.field[c] !== "object");
+      if (sup !== void 0) {
+        const q3 = exprVal(jf, obj);
+        const X2 = q3.k === "type" && q3.res.k === "type" ? q3.res.t : null;
+        const target = X2 ? isIface(X2) ? X2 : superclassOf(X2) : null;
+        return target ? pick(jf, nameNode, target, methodsOf(target, name2), k2, { kind: "self", view: null }) : null;
+      }
+      if (obj < 0) return unqualified(jf, nameNode, name2, k2);
+      const q2 = t.type[obj] === "super" ? superVal(jf, obj) : exprVal(jf, obj);
+      const T = q2.k === "value" ? q2.t : q2.k === "type" && q2.res.k === "type" ? q2.res.t : null;
+      if (!T) return null;
+      const self2 = selfOf(jf, obj);
+      return pick(jf, nameNode, T, methodsOf(T, name2), k2, self2 ? { kind: "self", view: self2 } : q2.k === "type" ? { kind: "type" } : { kind: "expr", type: T });
+    };
+    const unqualified = (jf, n, name2, k2) => {
+      for (let s = scopeOf(jf, n); s; s = s.parent) {
+        if (s.kind !== "class") continue;
+        const T = jf.byNode.get(s.node);
+        if (!T) return null;
+        const set = methodsOf(T, name2);
+        if (set.list.length > 0) return pick(jf, n, T, set, k2, { kind: "self", view: T });
+        if (!set.complete) return null;
+      }
+      if (gapIn(jf.t, child(jf.t, jf.t.parent[n], "arguments"))) return null;
+      const candidates = [];
+      let complete = true;
+      for (const i2 of jf.statics.filter((i3) => i3.local === name2)) {
+        const c = fqnType(jf, namesOf(i2.spec), true);
+        if (c.k !== "type") return null;
+        const set = methodsOf(c.t, name2);
+        if (!set.complete) complete = false;
+        candidates.push(...set.list.filter((m2) => m2.isStatic));
+      }
+      const singles = candidates.length;
+      for (const i2 of jf.staticStars) {
+        const c = fqnType(jf, namesOf(i2.spec), true);
+        if (c.k !== "type") {
+          complete = false;
+          continue;
+        }
+        const set = methodsOf(c.t, name2);
+        if (!set.complete) complete = false;
+        for (const m2 of set.list) if (m2.isStatic && !candidates.slice(0, singles).some((x2) => x2.n === m2.n && x2.key() !== null && x2.key() === m2.key())) candidates.push(m2);
+      }
+      const possible = reachable(candidates.filter((m2) => importable(jf, m2)), k2);
+      const args2 = argTypes(jf, jf.t.parent[n]);
+      if (possible.length > 1 && complete) return byArguments(possible, args2);
+      if (possible.length !== 1 || !mayApply(possible[0], args2)) return null;
+      return complete || k2 === 0 && possible[0].n === 0 && !possible[0].varargs && candidates.indexOf(possible[0]) < singles ? possible[0] : null;
+    };
+    const ctorOf = (jf, n, T, k2, how, call = -1) => {
+      if (T.kind !== "class" && T.kind !== "record" || openOf(T)) return [];
+      if (call >= 0 && gapIn(jf.t, child(jf.t, call, "arguments"))) return [];
+      const usable = (c) => c.access !== "protected" || pkgOf(T) === jf.pkg || how === "super" || how === "anonymous" || how === "this";
+      const ctors = membersOf(T).ctors.filter((c) => c.access === "protected" ? usable(c) : access(jf, n, c, { kind: "type" }) === "yes");
+      const implicit = (params2, count2, varargs) => ({ name: T.name, owner: T, node: -1, unit: T.unit, n: count2, varargs, isStatic: false, abstract: false, access: "public", key: () => null, params: params2 });
+      if (T.kind === "class" && membersOf(T).ctors.length === 0) ctors.push(implicit(() => [], 0, false));
+      if (T.kind === "record") {
+        const components2 = recordComponents(T);
+        const key = keyOfParams(T.file, components2);
+        const varargs = components2.some((c) => T.file.t.type[c] === "spread_parameter");
+        if (!membersOf(T).ctors.some((c) => T.file.t.type[c.node] === "compact_constructor_declaration" || c.n === components2.length && key !== null && c.key() === key)) ctors.push(implicit(lazy(() => paramTypes(T.file, components2)), components2.length, varargs));
+      }
+      const possible = reachable(ctors, k2);
+      const args2 = call >= 0 ? argTypes(jf, call) : null;
+      const one = possible.length > 1 ? args2 ? byArguments(possible, args2) : null : possible.length === 1 && (!args2 || mayApply(possible[0], args2)) ? possible[0] : null;
+      const unit5 = one?.unit ?? (one ? T.unit : void 0);
+      return unit5 ? [{ ref: "call", units: [unit5], ...unit5 !== T.unit && T.unit ? { alt: T.unit } : {} }] : [];
+    };
+    const typeOf = (v2) => v2.k === "value" ? v2.t : v2.k === "type" && v2.res.k === "type" ? v2.res.t : null;
+    const resolveSite = (f2, s) => {
+      const jf = jfileOf(f2);
+      const t = jf.t;
+      const n = s.node;
+      if (unsureAt(t, n) || jdkPackage(jf.pkg)) return [];
+      const p = t.parent[n];
+      const pt2 = t.type[p];
+      const one = (u, ref = s.ref) => u ? [{ ref, units: [u] }] : [];
+      if (s.ref === "import") {
+        const i2 = f2.imports.find((x2) => x2.node === n);
+        if (!i2) return [];
+        if (jf.singles.includes(i2)) {
+          const r = fqnType(jf, [...namesOf(i2.spec), s.name], true);
+          return r.k === "type" ? one(r.t.unit) : [];
+        }
+        const c = fqnType(jf, namesOf(i2.spec), true);
+        if (c.k !== "type") return [];
+        const own = membersOf(c.t);
+        const type = own.types.get(s.name);
+        const units = [...(own.methods.get(s.name) ?? []).filter((m2) => m2.isStatic && importable(jf, m2)).map((m2) => m2.unit), ...type && importable(jf, { access: accessOf(type.file.t, type.node, isIface(c.t)), owner: c.t }) ? [type.unit] : []];
+        const known2 = [...new Set(units.filter((u) => u !== void 0))];
+        return known2.length > 0 ? [{ ref: s.ref, units: known2 }] : [];
+      }
+      if (t.type[n] === "this" || t.type[n] === "super") {
+        const c = classAround(jf, n);
+        const target = c && t.type[n] === "super" ? superclassOf(c) : c;
+        return target && !("fqn" in target) ? ctorOf(jf, n, target, argCount(t, p), t.type[n] === "super" ? "super" : "this", p) : [];
+      }
+      if (pt2 === "method_invocation" && t.field[n] === "name") return one(callOf(jf, n)?.unit);
+      if (pt2 === "method_reference") {
+        const parts2 = code(t, p);
+        if (parts2.length > 1 && n === parts2[parts2.length - 1]) {
+          const q3 = t.type[parts2[0]] === "super" ? superVal(jf, parts2[0]) : exprVal(jf, parts2[0]);
+          const T2 = typeOf(q3);
+          const self2 = selfOf(jf, parts2[0]);
+          return T2 ? one(pick(jf, n, T2, methodsOf(T2, s.name), null, self2 ? { kind: "self", view: self2 } : q3.k === "type" ? { kind: "type" } : { kind: "expr", type: T2 })?.unit) : [];
+        }
+        const q2 = exprVal(jf, n);
+        if (q2.k !== "type" || q2.res.k !== "type") return [];
+        return [...one(q2.res.t.unit), ...hasToken(t, p, "new") ? ctorOf(jf, n, q2.res.t, null, "ref").map((x2) => ({ ...x2, ref: s.ref })) : []];
+      }
+      if (pt2 === "field_access" && t.field[n] === "field") {
+        const v2 = exprVal(jf, p);
+        return v2.k === "type" && v2.res.k === "type" ? one(v2.res.t.unit) : [];
+      }
+      const creation = creationOf(t, n);
+      if (creation >= 0 && qualifiedCreation(t, creation)) return [];
+      let T = null;
+      if (t.type[n] === "type_identifier") {
+        const r = resolveParts(jf, n, typeParts(t, s.shape === "path" ? p : n));
+        T = r.k === "type" ? r.t : null;
+      } else if (s.shape === "path") {
+        const r = resolveParts(jf, n, dotted(t, p));
+        T = r.k === "type" ? r.t : null;
+      } else if (mayBeType(t, n)) {
+        const q2 = isType2(t, n) ? { k: "type", res: typeName4(jf, n, s.name) } : nameVal(jf, n, s.name);
+        T = q2.k === "type" && q2.res.k === "type" ? q2.res.t : null;
+      }
+      if (!T) return [];
+      return creation >= 0 ? [...one(T.unit, "type"), ...ctorOf(jf, n, T, argCount(t, creation), anonymousBody(t, creation) !== void 0 ? "anonymous" : "new", creation)] : one(T.unit);
+    };
+    const names = /* @__PURE__ */ new Set(["this", "super"]);
+    for (const f2 of files) {
+      for (const u of f2.units) names.add(u.name);
+      for (const T of jfileOf(f2).byNode.values()) if (T.kind === "record") for (const name2 of membersOf(T).fields.keys()) names.add(name2);
+    }
+    return (f2, s) => names.has(s.name) ? resolveSite(f2, s) : [];
+  };
+  var JAVA_RESOLVER = { program };
+
   // src/lib/langs/python.ts
   var COMPREHENSIONS = /* @__PURE__ */ new Set(["list_comprehension", "set_comprehension", "dictionary_comprehension", "generator_expression"]);
   var PATTERNS = /* @__PURE__ */ new Set(["pattern_list", "tuple_pattern", "list_pattern", "tuple", "list", "parenthesized_expression", "list_splat_pattern", "list_splat", "as_pattern_target", "expression_list"]);
@@ -6462,7 +8653,7 @@ export const WORKER_SCRIPT = `"use strict";
     }
     return null;
   };
-  var importsOf2 = (t) => {
+  var importsOf3 = (t) => {
     const out2 = [];
     const ids = (n) => namedChildren(t, n).filter((c) => t.type[c] === "identifier");
     const flat = (n) => textOf(t, n).replace(/\\s+/g, "");
@@ -6512,13 +8703,13 @@ export const WORKER_SCRIPT = `"use strict";
     for (let x2 = t.parent[n]; x2 >= 0; x2 = t.parent[x2]) if (t.type[x2] === "function_definition" || t.type[x2] === "lambda") return true;
     return false;
   };
-  var importCache2 = /* @__PURE__ */ new WeakMap();
-  var imports2 = (t) => {
-    let hit = importCache2.get(t);
-    if (!hit) importCache2.set(t, hit = importsOf2(t));
+  var importCache3 = /* @__PURE__ */ new WeakMap();
+  var imports3 = (t) => {
+    let hit = importCache3.get(t);
+    if (!hit) importCache3.set(t, hit = importsOf3(t));
     return hit;
   };
-  var binds2 = (t, n, emit) => {
+  var binds3 = (t, n, emit) => {
     switch (t.type[n]) {
       case "function_definition": {
         emit(child(t, n, "name"), "def", { unitNode: n, from: seenInClassFrom(t, n) });
@@ -6590,7 +8781,7 @@ export const WORKER_SCRIPT = `"use strict";
         return;
       case "import_statement":
       case "import_from_statement":
-        for (const i2 of imports2(t)) if (i2.stmt === n && i2.bind >= 0) emit(i2.bind, "import", { import: i2 });
+        for (const i2 of imports3(t)) if (i2.stmt === n && i2.bind >= 0) emit(i2.bind, "import", { import: i2 });
         return;
     }
   };
@@ -6615,7 +8806,7 @@ export const WORKER_SCRIPT = `"use strict";
     const annotation = str >= 0 ? t.parent[str] : -1;
     return t.type[str] === "string" && annotation >= 0 && t.type[annotation] === "type" && (t.field[annotation] === "type" || t.field[annotation] === "return_type") && namedChildren(t, str).length === 3 && /^[A-Za-z_]\\w*$/.test(textOf(t, content));
   };
-  var role2 = (t, n) => {
+  var role3 = (t, n) => {
     if (t.type[n] === "string_content") return annotationName(t, n) ? { kind: "bare", expr: n } : { kind: "skip" };
     const p = t.parent[n];
     if (p < 0) return { kind: "bare", expr: n };
@@ -6628,18 +8819,18 @@ export const WORKER_SCRIPT = `"use strict";
     if ((pt2 === "function_definition" || pt2 === "class_definition") && f2 === "name") return { kind: "decl" };
     return { kind: "bare", expr: n };
   };
-  var isCallee2 = (t, e) => {
+  var isCallee3 = (t, e) => {
     const p = t.parent[e];
     return p >= 0 && t.type[p] === "call" && t.field[e] === "function";
   };
-  var isType2 = (t, n) => {
+  var isType3 = (t, n) => {
     for (let x2 = t.parent[n], k2 = 0; x2 >= 0 && k2 < 8; x2 = t.parent[x2], k2++) {
       if (t.type[x2] === "type") return true;
       if (t.type[x2] === "block" || t.type[x2] === "call") return false;
     }
     return false;
   };
-  var unit2 = (t, capture, node) => {
+  var unit3 = (t, capture, node) => {
     const outerOf = (n) => t.parent[n] >= 0 && t.type[t.parent[n]] === "decorated_definition" ? t.parent[n] : n;
     if (capture === "definition.class" && t.type[node] === "class_definition") return { kind: "class", nameNode: child(t, node, "name"), outer: outerOf(node) };
     if (capture === "definition.function" && t.type[node] === "function_definition") return { kind: "function", nameNode: child(t, node, "name"), outer: outerOf(node) };
@@ -6651,7 +8842,7 @@ export const WORKER_SCRIPT = `"use strict";
     return null;
   };
   var PYTHON = {
-    unit: unit2,
+    unit: unit3,
     // \`type X = ...\` (PEP 695) declares a type, though \`tags.scm\` predates it.
     extraUnits: (t) => {
       const out2 = [];
@@ -6686,12 +8877,12 @@ export const WORKER_SCRIPT = `"use strict";
       const fn = p === "function_definition" ? t.parent[n] : t.parent[t.parent[t.parent[n]]];
       return !(fn >= 0 && t.type[fn] === "function_definition" && child(t, fn, "type_parameters") >= 0);
     },
-    binds: binds2,
+    binds: binds3,
     identifiers: /* @__PURE__ */ new Set(["identifier", "string_content"]),
-    role: role2,
-    isCallee: isCallee2,
-    isType: isType2,
-    imports: imports2,
+    role: role3,
+    isCallee: isCallee3,
+    isType: isType3,
+    imports: imports3,
     classOf: (t, n) => {
       if (t.type[n] !== "class_definition") return null;
       const sup = child(t, n, "superclasses");
@@ -6885,7 +9076,7 @@ export const WORKER_SCRIPT = `"use strict";
       const marker = [...d, "__init__.py"].join("/");
       return exists(marker) ? true : missing(marker) ? false : void 0;
     };
-    const rootOf = (dir) => {
+    const rootOf2 = (dir) => {
       const here = isPackage(dir);
       if (here !== true) return here === false ? dir.join("/") : null;
       let top = dir;
@@ -6904,12 +9095,12 @@ export const WORKER_SCRIPT = `"use strict";
       if (!path.endsWith(".py")) continue;
       shown.add(path.slice(0, -3));
       const dir = segs.slice(0, -1);
-      const root = isPackage(dir) ? rootOf(dir) : null;
+      const root = isPackage(dir) ? rootOf2(dir) : null;
       if (root !== null) sourceRoots.add(root);
     }
     if ([...known].some((p) => p.startsWith("src/"))) sourceRoots.add("src");
     sourceRoots.delete("");
-    hit = { exists, missing, rootOf, sourceRoots: [...sourceRoots].sort(), shown };
+    hit = { exists, missing, rootOf: rootOf2, sourceRoots: [...sourceRoots].sort(), shown };
     layouts.set(ctx, hit);
     return hit;
   };
@@ -7188,15 +9379,15 @@ export const WORKER_SCRIPT = `"use strict";
       out2.push({ local: full[full.length - 1], spec: full.slice(0, -1).join("::"), level: 0, name: full[full.length - 1], node: last, bind: last, stmt });
     }
   };
-  var importsOf3 = (t) => {
+  var importsOf4 = (t) => {
     const out2 = [];
     for (let n = 0; n < t.count; n++) if (t.type[n] === "use_declaration") useEntries(t, child(t, n, "argument"), [], n, out2);
     return out2;
   };
-  var importCache3 = /* @__PURE__ */ new WeakMap();
-  var imports3 = (t) => {
-    let hit = importCache3.get(t);
-    if (!hit) importCache3.set(t, hit = importsOf3(t));
+  var importCache4 = /* @__PURE__ */ new WeakMap();
+  var imports4 = (t) => {
+    let hit = importCache4.get(t);
+    if (!hit) importCache4.set(t, hit = importsOf4(t));
     return hit;
   };
   var DECLARATIONS = /* @__PURE__ */ new Set([
@@ -7219,7 +9410,7 @@ export const WORKER_SCRIPT = `"use strict";
     const owner = list >= 0 && t.type[list] === "declaration_list" ? t.parent[list] : -1;
     return owner >= 0 && (t.type[owner] === "impl_item" || t.type[owner] === "trait_item");
   };
-  var binds3 = (t, n, emit) => {
+  var binds4 = (t, n, emit) => {
     switch (t.type[n]) {
       case "function_item":
       case "function_signature_item":
@@ -7278,11 +9469,11 @@ export const WORKER_SCRIPT = `"use strict";
         return;
       }
       case "use_declaration":
-        for (const i2 of imports3(t)) if (i2.stmt === n && i2.bind >= 0) emit(i2.bind, "import", { import: i2, name: i2.local });
+        for (const i2 of imports4(t)) if (i2.stmt === n && i2.bind >= 0) emit(i2.bind, "import", { import: i2, name: i2.local });
         return;
     }
   };
-  var role3 = (t, n) => {
+  var role4 = (t, n) => {
     const p = t.parent[n];
     if (p < 0) return { kind: "bare", expr: n };
     const pt2 = t.type[p];
@@ -7313,7 +9504,7 @@ export const WORKER_SCRIPT = `"use strict";
     if (ty === "identifier" && textOf(t, n) === "Self") return { kind: "skip" };
     return { kind: "bare", expr: n };
   };
-  var isCallee3 = (t, e) => {
+  var isCallee4 = (t, e) => {
     if (t.type[t.parent[e]] === "token_tree") return opensCall(t, t.next[e]);
     let x2 = e;
     let p = t.parent[x2];
@@ -7328,7 +9519,7 @@ export const WORKER_SCRIPT = `"use strict";
     for (let p = previous(t, n); p >= 0 && t.type[p] === "attribute_item"; p = previous(t, p)) outer = p;
     return outer;
   };
-  var unit3 = (t, capture, node) => {
+  var unit4 = (t, capture, node) => {
     const ty = t.type[node];
     const outer = withAttributes(t, node);
     if ((capture === "definition.function" || capture === "definition.method") && ty === "function_item") return { kind: "function", nameNode: child(t, node, "name"), outer };
@@ -7350,7 +9541,7 @@ export const WORKER_SCRIPT = `"use strict";
     return x2 >= 0 ? textOf(t, x2) : "";
   };
   var RUST = {
-    unit: unit3,
+    unit: unit4,
     extraUnits: (t) => {
       const out2 = [];
       for (let n = 0; n < t.count; n++) {
@@ -7395,12 +9586,12 @@ export const WORKER_SCRIPT = `"use strict";
           return null;
       }
     },
-    binds: binds3,
+    binds: binds4,
     identifiers: /* @__PURE__ */ new Set(["identifier", "type_identifier", "field_identifier"]),
-    role: role3,
-    isCallee: isCallee3,
+    role: role4,
+    isCallee: isCallee4,
     isType: (t, n) => t.type[n] === "type_identifier",
-    imports: imports3,
+    imports: imports4,
     classOf: (t, n) => {
       const ty = t.type[n];
       return ty === "impl_item" || ty === "trait_item" || ty === "struct_item" || ty === "enum_item" || ty === "union_item" ? { bases: [] } : null;
@@ -7552,7 +9743,7 @@ export const WORKER_SCRIPT = `"use strict";
     const own = ownParams(t, impl);
     return typeArgs(t, child(t, impl, "type")).every((a) => t.type[a] === "type_identifier" && own.delete(textOf(t, a)));
   };
-  var typeParts = (t, n) => {
+  var typeParts2 = (t, n) => {
     const out2 = [];
     for (let c = t.first[n]; c >= 0; c = t.next[c]) {
       if (t.type[c] === "lifetime") {
@@ -7561,7 +9752,7 @@ export const WORKER_SCRIPT = `"use strict";
     }
     return out2;
   };
-  var typeText = (t, n) => t.first[n] < 0 ? textOf(t, n) : typeParts(t, n).map((c) => typeText(t, c)).join(" ");
+  var typeText = (t, n) => t.first[n] < 0 ? textOf(t, n) : typeParts2(t, n).map((c) => typeText(t, c)).join(" ");
   var covers = (mt, p, r, own, bound, names) => {
     const rt2 = r.f.flat;
     if (mt.type[p] === "type_identifier" && own.has(textOf(mt, p))) {
@@ -7570,8 +9761,8 @@ export const WORKER_SCRIPT = `"use strict";
       return was === void 0 || was === typeText(rt2, r.n);
     }
     if (mt.type[p] !== rt2.type[r.n]) return false;
-    const ps = typeParts(mt, p);
-    const rs = typeParts(rt2, r.n);
+    const ps = typeParts2(mt, p);
+    const rs = typeParts2(rt2, r.n);
     if (ps.length === 0) {
       if (rs.length > 0 || textOf(mt, p) !== textOf(rt2, r.n)) return false;
       if (/^[A-Za-z_]\\w*$/.test(textOf(mt, p))) names.push(r);
@@ -7681,7 +9872,8 @@ export const WORKER_SCRIPT = `"use strict";
   var LANGS = {
     python: { rules: PYTHON, resolver: PYTHON_RESOLVER, isPackage: (path) => /(^|\\/)__init__\\.py$/.test(path), packageMarkers },
     go: { rules: GO2, resolver: GO_RESOLVER, configFiles: (path) => [goModsAbove(path)] },
-    rust: { rules: RUST, resolver: RUST_RESOLVER, local: true }
+    rust: { rules: RUST, resolver: RUST_RESOLVER, local: true },
+    java: { rules: JAVA, resolver: JAVA_RESOLVER, wants: javaWants }
   };
   var langOf = (path) => {
     const g = grammarOf(path);
@@ -7695,7 +9887,7 @@ export const WORKER_SCRIPT = `"use strict";
   };
 
   // src/lib/anylink.ts
-  var NONE = (why) => ({ kind: "none", why });
+  var NONE2 = (why) => ({ kind: "none", why });
   var MAX_DEPTH = 40;
   var CLASSY = /* @__PURE__ */ new Set(["class", "type"]);
   var push = (map, key, value) => {
@@ -7727,15 +9919,15 @@ export const WORKER_SCRIPT = `"use strict";
       const us = f2.units;
       let lo = 0;
       let hi = us.length - 1;
-      let at2 = -1;
+      let at3 = -1;
       while (lo <= hi) {
         const mid = lo + hi >> 1;
         if (us[mid].start <= offset) {
-          at2 = mid;
+          at3 = mid;
           lo = mid + 1;
         } else hi = mid - 1;
       }
-      for (let u = at2 >= 0 ? us[at2] : void 0; u; u = parentOf(u)) if (offset < u.end) return u;
+      for (let u = at3 >= 0 ? us[at3] : void 0; u; u = parentOf(u)) if (offset < u.end) return u;
       return void 0;
     };
     const classAround = (f2, offset) => {
@@ -7792,45 +9984,45 @@ export const WORKER_SCRIPT = `"use strict";
       }
     };
     const throughStars = (f2, name2, depth) => {
-      if (depth > MAX_DEPTH) return NONE("too deep");
+      if (depth > MAX_DEPTH) return NONE2("too deep");
       const found = [];
       for (const i2 of starsIn(f2.module)) {
-        if (i2.unproven) return NONE("sys.path may have moved");
+        if (i2.unproven) return NONE2("sys.path may have moved");
         const mods = moduleOf(f2, i2.spec, i2.level);
-        if (mods.length === 0) return NONE("star import not read");
+        if (mods.length === 0) return NONE2("star import not read");
         for (const m2 of mods) {
           const takes = typing(m2).starNames?.(m2);
-          if (takes === "unknown") return NONE("star import's __all__ not literal");
+          if (takes === "unknown") return NONE2("star import's __all__ not literal");
           if (takes && !takes(name2)) continue;
           const v2 = topLevel(m2, name2, depth + 1);
           if (v2.kind !== "none") found.push(v2);
-          else if (v2.why === "star import" || v2.why === "star import not read" || v2.why === "star ambiguous") return NONE("star import not read");
+          else if (v2.why === "star import" || v2.why === "star import not read" || v2.why === "star ambiguous") return NONE2("star import not read");
         }
       }
       const units = [...new Set(found.flatMap((v2) => v2.kind === "units" ? v2.units : []))];
       if (found.length > 0 && found.every((v2) => v2.kind === "units") && units.length === 1) return { kind: "units", units };
       if (found.length === 1) return found[0];
-      return NONE(found.length > 1 ? "star ambiguous" : \`no \${name2} in \${f2.path}\`);
+      return NONE2(found.length > 1 ? "star ambiguous" : \`no \${name2} in \${f2.path}\`);
     };
     const topLevel = (f2, name2, depth) => {
       const bs = (f2.module.names.get(name2) ?? []).filter((b2) => b2.kind !== "global" && b2.kind !== "nonlocal");
       if (bs.length > 0) return bindingsVal(f2, bs, depth);
       if (starsIn(f2.module).length > 0) return throughStars(f2, name2, depth + 1);
       const pk = pkgOf.get(f2);
-      return pk ? packageLookup(f2, pk, name2) : NONE(\`no \${name2} in \${f2.path}\`);
+      return pk ? packageLookup(f2, pk, name2) : NONE2(\`no \${name2} in \${f2.path}\`);
     };
     const bindingsVal = (f2, bs, depth) => {
       const lastStar = Math.max(-1, ...starsIn(bs[0].scope).map((i2) => f2.flat.start[i2.stmt]));
-      if (bs.some((b3) => f2.flat.start[b3.node] < lastStar)) return NONE("star import after it");
+      if (bs.some((b3) => f2.flat.start[b3.node] < lastStar)) return NONE2("star import after it");
       const units = [...new Set(bs.flatMap((b3) => b3.unit ? [b3.unit] : []))];
       if (units.length === 1 && bs.every((b3) => b3.unit)) return { kind: "units", units };
       const first = bs[0].import;
       if (first?.name === null && bs.every((b3) => b3.import?.name === null && b3.import.spec === first.spec && b3.import.level === first.level)) return importVal(f2, first, depth + 1);
-      if (bs.length !== 1) return NONE("bound more than once");
+      if (bs.length !== 1) return NONE2("bound more than once");
       const b2 = bs[0];
       if (b2.import) return importVal(f2, b2.import, depth + 1);
       if (b2.typeNode !== void 0 || b2.init !== void 0) return localVal(f2, b2, depth + 1);
-      return NONE(\`\${b2.kind} binding\`);
+      return NONE2(\`\${b2.kind} binding\`);
     };
     const packageLookup = (f2, pk, name2) => {
       const { sees, reaches: reaches2 } = typing(f2);
@@ -7846,7 +10038,7 @@ export const WORKER_SCRIPT = `"use strict";
       }
       const uniq = [...new Set(units)];
       if (uniq.length === 1 && other === 0) return { kind: "units", units: uniq };
-      return NONE(uniq.length > 1 ? "several in package" : "not in package files read");
+      return NONE2(uniq.length > 1 ? "several in package" : "not in package files read");
     };
     const modules = /* @__PURE__ */ new Map();
     const lookupContext = { known: [...byPath.keys()], text, ...exists ? { exists } : {} };
@@ -7867,12 +10059,12 @@ export const WORKER_SCRIPT = `"use strict";
     };
     const ownNamed = (mods, name2) => mods.length > 0 && mods.every((g) => typing(g).ownName?.(g.flat) === name2);
     const importVal = (f2, imp, depth) => {
-      if (depth > MAX_DEPTH) return NONE("import chain too deep");
-      if (imp.unproven) return NONE("sys.path may have moved");
+      if (depth > MAX_DEPTH) return NONE2("import chain too deep");
+      if (imp.unproven) return NONE2("sys.path may have moved");
       const mods = moduleOf(f2, imp.spec, imp.level);
-      if (imp.implicit && !ownNamed(mods, imp.local)) return NONE("the module's own name differs");
-      if (imp.name === null) return mods.length > 0 ? { kind: "module", files: mods, spec: imp.spec } : NONE(\`module \${imp.spec} not read\`);
-      if (imp.name === "*") return NONE("star");
+      if (imp.implicit && !ownNamed(mods, imp.local)) return NONE2("the module's own name differs");
+      if (imp.name === null) return mods.length > 0 ? { kind: "module", files: mods, spec: imp.spec } : NONE2(\`module \${imp.spec} not read\`);
+      if (imp.name === "*") return NONE2("star");
       const found = [];
       for (const m2 of mods) {
         const v2 = topLevel(m2, imp.name, depth);
@@ -7883,35 +10075,35 @@ export const WORKER_SCRIPT = `"use strict";
       if (found.length > 1 && found.every((v2) => v2.kind === "units") && same.length === 1 && sub.length === 0) return { kind: "units", units: same };
       if (found.length === 1 && sub.length === 0) return found[0];
       if (found.length === 0 && sub.length > 0) return { kind: "module", files: sub, spec: \`\${imp.spec}.\${imp.name}\` };
-      return NONE(found.length + sub.length === 0 ? \`import \${imp.spec}:\${imp.name} not read\` : "import ambiguous");
+      return NONE2(found.length + sub.length === 0 ? \`import \${imp.spec}:\${imp.name} not read\` : "import ambiguous");
     };
-    const nameVal = (f2, scope, name2, node, at2, depth) => {
+    const nameVal = (f2, scope, name2, node, at3, depth) => {
       const deferred = scope.kind === "class" ? typing(f2).deferredAnnotation?.(f2.flat, node) : null;
-      const later = deferred && scope.names.get(name2)?.some((b2) => b2.from !== void 0 && b2.from > at2);
-      if (later && deferred === "unknown") return NONE("an annotation the Python version reads");
-      return lookup2(f2, scope, name2, depth, later ? Number.MAX_SAFE_INTEGER : at2);
+      const later = deferred && scope.names.get(name2)?.some((b2) => b2.from !== void 0 && b2.from > at3);
+      if (later && deferred === "unknown") return NONE2("an annotation the Python version reads");
+      return lookup2(f2, scope, name2, depth, later ? Number.MAX_SAFE_INTEGER : at3);
     };
-    const bindingAt = (scope, name2, at2) => {
+    const bindingAt = (scope, name2, at3) => {
       for (let s = scope; s; s = s.parent) {
         if (s.kind === "class" && s !== scope) continue;
         const named = s.names.get(name2);
-        const bs = named?.some((b2) => b2.from !== void 0) ? named.filter((b2) => b2.from === void 0 || b2.from <= at2) : named;
+        const bs = named?.some((b2) => b2.from !== void 0) ? named.filter((b2) => b2.from === void 0 || b2.from <= at3) : named;
         if (bs && bs.length > 0) return bs.length === 1 ? bs[0] : null;
       }
       return null;
     };
-    const lookup2 = (f2, scope, name2, depth, at2) => {
+    const lookup2 = (f2, scope, name2, depth, at3) => {
       for (let s = scope; s; s = s.parent) {
         const named = s.names.get(name2);
-        const bs = named?.some((b2) => b2.from !== void 0) ? named.filter((b2) => b2.from === void 0 || b2.from <= at2) : named;
+        const bs = named?.some((b2) => b2.from !== void 0) ? named.filter((b2) => b2.from === void 0 || b2.from <= at3) : named;
         if (s.kind === "class" && s !== scope) {
-          if (bs?.some((b2) => b2.kind === "param")) return NONE("type parameter");
+          if (bs?.some((b2) => b2.kind === "param")) return NONE2("type parameter");
           continue;
         }
         if ((!bs || bs.length === 0) && s.kind === "module" && s !== f2.module) {
           const ss = starsIn(s);
           if (ss.length === 1 && ss[0].spec === "super") continue;
-          return NONE(ss.length > 0 ? "glob import in inline module" : "inline module");
+          return NONE2(ss.length > 0 ? "glob import in inline module" : "inline module");
         }
         if (!bs || bs.length === 0) continue;
         if (s.kind === "module") return bindingsVal(f2, bs, depth);
@@ -7925,35 +10117,35 @@ export const WORKER_SCRIPT = `"use strict";
           const keys = new Set(vs.map((v2) => v2.kind === "instance" ? v2.key : ""));
           if (keys.size === 1 && !keys.has("")) return vs[0];
         }
-        return NONE("local");
+        return NONE2("local");
       }
-      if (typing(f2).builtins?.has(name2)) return NONE("builtin");
+      if (typing(f2).builtins?.has(name2)) return NONE2("builtin");
       if (typing(f2).ownName) {
         const specs = new Set(f2.imports.filter((i2) => i2.implicit).map((i2) => i2.spec));
         const named = [...specs].map((spec) => moduleOf(f2, spec, 0)).filter((mods) => ownNamed(mods, name2));
         if (named.length === 1) return { kind: "module", files: named[0], spec: name2 };
-        if (named.length > 1) return NONE("two imports named alike");
+        if (named.length > 1) return NONE2("two imports named alike");
       }
       const pk = pkgOf.get(f2);
-      if (starsIn(f2.module).length > 0) return pk ? NONE("star import") : throughStars(f2, name2, depth + 1);
-      return pk ? packageLookup(f2, pk, name2) : NONE(\`unbound \${name2}\`);
+      if (starsIn(f2.module).length > 0) return pk ? NONE2("star import") : throughStars(f2, name2, depth + 1);
+      return pk ? packageLookup(f2, pk, name2) : NONE2(\`unbound \${name2}\`);
     };
     const localVal = (f2, b2, depth) => {
-      if (depth > MAX_DEPTH) return NONE("too deep");
+      if (depth > MAX_DEPTH) return NONE2("too deep");
       if (b2.kind === "self" || b2.kind === "selfclass") {
         const cls = selfUnit(f2, b2.node);
-        if (!cls) return NONE("self outside a class");
+        if (!cls) return NONE2("self outside a class");
         return b2.kind === "self" ? { kind: "instance", key: selfKey(f2, cls) } : { kind: "class", key: selfKey(f2, cls) };
       }
       if (b2.typeNode !== void 0) {
         const key = typeKey(f2, b2.typeNode, scopeAround(f2, b2.typeNode), depth + 1);
-        return key ? { kind: "instance", key } : NONE("type not resolved");
+        return key ? { kind: "instance", key } : NONE2("type not resolved");
       }
       if (b2.init !== void 0) {
         const v2 = b2.initResult !== void 0 ? callResult(f2, b2.init, b2.scope, b2.initResult, depth + 1) : exprVal(f2, b2.init, b2.scope, depth + 1);
-        return v2.kind === "instance" || v2.kind === "class" || v2.kind === "module" ? v2 : NONE("initializer");
+        return v2.kind === "instance" || v2.kind === "class" || v2.kind === "module" ? v2 : NONE2("initializer");
       }
-      return NONE("local");
+      return NONE2("local");
     };
     const selfKey = (f2, cls) => {
       const owner = typing(f2).ownerType?.(f2.flat, cls.node) ?? -1;
@@ -7998,7 +10190,7 @@ export const WORKER_SCRIPT = `"use strict";
       const bs = bodyOf.get(key)?.names.get(name2);
       if (!bs || bs.length === 0) return void 0;
       const units = [...new Set(bs.flatMap((b2) => b2.unit ? [b2.unit] : []))];
-      return units.length === 1 && bs.every((b2) => b2.unit) ? { kind: "units", units } : NONE("class attribute");
+      return units.length === 1 && bs.every((b2) => b2.unit) ? { kind: "units", units } : NONE2("class attribute");
     };
     const mros = /* @__PURE__ */ new Map();
     const linearize = (key, depth) => {
@@ -8033,33 +10225,33 @@ export const WORKER_SCRIPT = `"use strict";
     };
     const memberOf = (key, name2, depth, skip = 0) => {
       resolveOwners();
-      if (depth > MAX_DEPTH) return NONE("too deep");
+      if (depth > MAX_DEPTH) return NONE2("too deep");
       if (bodyOf.has(key)) {
         const { order, complete } = linearize(key, depth + 1);
         for (const k2 of order.slice(skip)) {
           const v2 = bodyAttr(k2, name2);
           if (v2) return v2;
         }
-        return NONE(complete ? "no member" : "base not resolved");
+        return NONE2(complete ? "no member" : "base not resolved");
       }
       const own = membersByKey.get(key)?.get(name2);
-      if (own && own.length > 0) return own.length > 1 ? NONE("overloaded") : { kind: "units", units: own };
-      return NONE(membersByKey.has(key) ? "no member" : "type not read");
+      if (own && own.length > 0) return own.length > 1 ? NONE2("overloaded") : { kind: "units", units: own };
+      return NONE2(membersByKey.has(key) ? "no member" : "type not read");
     };
     const fieldsOf = (key) => (bodyOf.has(key) ? linearize(key, 0).order : [key]).flatMap((k2) => fieldsByKey.get(k2) ?? []);
     const fieldVal = (key, name2, depth) => {
       const all2 = fieldsOf(key).filter((x2) => x2.name === name2);
       const declared = all2.filter((x2) => !x2.onSelf && x2.typeNode >= 0);
       const fs = declared.length > 0 ? declared : all2;
-      if (fs.length === 0) return NONE("no field");
+      if (fs.length === 0) return NONE2("no field");
       const keys = /* @__PURE__ */ new Set();
       for (const fd of fs) {
         const k2 = fd.typeNode >= 0 ? typeKey(fd.f, fd.typeNode, fd.scope, depth + 1) : null;
-        const v2 = k2 ? { kind: "instance", key: k2 } : fd.typeNode < 0 && fd.init >= 0 ? exprVal(fd.f, fd.init, fd.scope, depth + 1) : NONE("field type");
-        if (v2.kind !== "instance") return NONE("field not typed");
+        const v2 = k2 ? { kind: "instance", key: k2 } : fd.typeNode < 0 && fd.init >= 0 ? exprVal(fd.f, fd.init, fd.scope, depth + 1) : NONE2("field type");
+        if (v2.kind !== "instance") return NONE2("field not typed");
         keys.add(v2.key);
       }
-      return keys.size === 1 ? { kind: "instance", key: [...keys][0] } : NONE("field typed twice");
+      return keys.size === 1 ? { kind: "instance", key: [...keys][0] } : NONE2("field typed twice");
     };
     const memberVal = (obj, name2, depth) => {
       if (obj.kind === "module") {
@@ -8071,42 +10263,42 @@ export const WORKER_SCRIPT = `"use strict";
           const sub = moduleOf(obj.files[0], \`\${obj.spec}.\${name2}\`, 0);
           if (sub.length > 0) return { kind: "module", files: sub, spec: \`\${obj.spec}.\${name2}\` };
         }
-        return NONE("module member");
+        return NONE2("module member");
       }
       if (obj.kind === "super") return memberOf(obj.key, name2, depth + 1, 1);
       if (obj.kind === "instance" || obj.kind === "class") {
         const m2 = memberOf(obj.key, name2, depth + 1);
-        if (obj.kind === "instance" && bodyOf.has(obj.key) && m2.kind === "units" && fieldsOf(obj.key).some((x2) => x2.onSelf && x2.name === name2)) return NONE("attribute set on self");
+        if (obj.kind === "instance" && bodyOf.has(obj.key) && m2.kind === "units" && fieldsOf(obj.key).some((x2) => x2.onSelf && x2.name === name2)) return NONE2("attribute set on self");
         if (m2.kind === "units" || obj.kind === "class") return m2;
         const fv = fieldVal(obj.key, name2, depth + 1);
         return fv.kind !== "none" ? fv : m2;
       }
       if (obj.kind === "units" && obj.units.length === 1 && CLASSY.has(obj.units[0].kind)) return memberVal({ kind: "class", key: keyOfTypeUnit(obj.units[0]) }, name2, depth);
-      return NONE("receiver unknown");
+      return NONE2("receiver unknown");
     };
     const resultOf = (u, index, depth) => {
       const g = fileOfUnit.get(u.id);
       const rt2 = typing(g).returnType(g.flat, u.node, index);
-      if (rt2 < 0) return NONE("no result type");
+      if (rt2 < 0) return NONE2("no result type");
       const key = typeKey(g, rt2, scopeAround(g, rt2), depth + 1);
-      return key ? { kind: "instance", key } : NONE("result type unknown");
+      return key ? { kind: "instance", key } : NONE2("result type unknown");
     };
     const callResult = (f2, e, scope, index, depth) => {
       const h = typing(f2).hint(f2.flat, e);
-      if (!h || h.kind !== "call") return NONE("not a call");
+      if (!h || h.kind !== "call") return NONE2("not a call");
       const callee = exprVal(f2, h.callee, scope, depth + 1);
-      return callee.kind === "units" && callee.units.length === 1 ? resultOf(callee.units[0], index, depth) : NONE("callee unknown");
+      return callee.kind === "units" && callee.units.length === 1 ? resultOf(callee.units[0], index, depth) : NONE2("callee unknown");
     };
     const exprVal = (f2, e, scope, depth) => {
-      if (depth > MAX_DEPTH || e < 0) return NONE("too deep");
+      if (depth > MAX_DEPTH || e < 0) return NONE2("too deep");
       const h = typing(f2).hint(f2.flat, e);
-      if (!h) return NONE("no hint");
+      if (!h) return NONE2("no hint");
       switch (h.kind) {
         case "self":
         case "selfclass":
         case "super": {
           const cls = selfUnit(f2, e);
-          if (!cls) return NONE("self outside a class");
+          if (!cls) return NONE2("self outside a class");
           const key = selfKey(f2, cls);
           return h.kind === "self" ? { kind: "instance", key } : h.kind === "selfclass" ? { kind: "class", key } : { kind: "super", key };
         }
@@ -8120,7 +10312,7 @@ export const WORKER_SCRIPT = `"use strict";
           }
           if (v2.kind === "units" && v2.units.length === 1 && v2.units[0].kind === "value") {
             const vb = bindingOfUnit.get(v2.units[0].id);
-            return vb ? localVal(vb.f, vb.b, depth + 1) : NONE("value");
+            return vb ? localVal(vb.f, vb.b, depth + 1) : NONE2("value");
           }
           return v2;
         }
@@ -8134,13 +10326,13 @@ export const WORKER_SCRIPT = `"use strict";
           return memberVal(exprVal(f2, h.qualifier, scope, depth + 1), h.name, depth + 1);
         case "new": {
           const key = typeKey(f2, h.type, scopeAround(f2, h.type), depth + 1);
-          return key ? { kind: "instance", key } : NONE("new of unknown type");
+          return key ? { kind: "instance", key } : NONE2("new of unknown type");
         }
         case "call": {
           const callee = exprVal(f2, h.callee, scope, depth + 1);
           if (callee.kind === "class") return { kind: "instance", key: callee.key };
           if (callee.kind === "units" && callee.units.length === 1 && CLASSY.has(callee.units[0].kind)) return { kind: "instance", key: keyOfTypeUnit(callee.units[0]) };
-          return callee.kind === "units" && callee.units.length === 1 ? resultOf(callee.units[0], void 0, depth) : NONE("callee unknown");
+          return callee.kind === "units" && callee.units.length === 1 ? resultOf(callee.units[0], void 0, depth) : NONE2("callee unknown");
         }
       }
     };
@@ -8148,10 +10340,10 @@ export const WORKER_SCRIPT = `"use strict";
     const resolveSite = (f2, s) => {
       let v2;
       if (s.ref === "import") {
-        let at2 = importAt.get(f2);
-        if (!at2) importAt.set(f2, at2 = new Map(f2.imports.map((i2) => [i2.node, i2])));
-        const imp = at2.get(s.node);
-        v2 = imp ? importVal(f2, imp, 0) : NONE("import");
+        let at3 = importAt.get(f2);
+        if (!at3) importAt.set(f2, at3 = new Map(f2.imports.map((i2) => [i2.node, i2])));
+        const imp = at3.get(s.node);
+        v2 = imp ? importVal(f2, imp, 0) : NONE2("import");
       } else v2 = s.shape === "bare" ? nameVal(f2, s.scope, s.name, s.node, s.start, 0) : memberVal(exprVal(f2, s.receiver, s.scope, 0), s.name, 0);
       if (v2.kind !== "units") return [];
       const ty = typing(f2);
@@ -8193,18 +10385,31 @@ export const WORKER_SCRIPT = `"use strict";
     return { resolveSite, ownType };
   };
   var resolveAny = (files, langOf2, text, exists) => {
-    const program = createProgram(files, langOf2, text, exists);
+    const generic = files.filter((f2) => "typing" in langOf2(f2));
+    const program2 = createProgram(generic, (f2) => langOf2(f2), text, exists);
     const names = /* @__PURE__ */ new Set();
-    for (const f2 of files) {
+    for (const f2 of generic) {
       for (const u of f2.units) names.add(u.name);
       for (const i2 of f2.imports) if (i2.local) names.add(i2.local);
     }
+    const own = /* @__PURE__ */ new Map();
+    const ownOf = (r) => {
+      let hit = own.get(r);
+      if (!hit) own.set(r, hit = r.program(files.filter((g) => langOf2(g) === r), { known: files.map((g) => g.path), text, ...exists ? { exists } : {} }));
+      return hit;
+    };
     const refs = [];
     for (const f2 of files) {
-      const conversions = langOf2(f2).typing.conversions;
+      const lang = langOf2(f2);
+      if (!("typing" in lang)) {
+        const resolve = ownOf(lang);
+        for (const s of f2.sites) for (const { ref, units, alt } of resolve(f2, s)) if (units.length > 0) refs.push({ path: f2.path, start: s.start, line: s.line, ref, units, ...alt ? { alt } : {} });
+        continue;
+      }
+      const conversions = lang.typing.conversions;
       for (const s of f2.sites) {
         if (!names.has(s.name)) continue;
-        const units = program.resolveSite(f2, s).filter((u) => !program.ownType(f2, s.start, u));
+        const units = program2.resolveSite(f2, s).filter((u) => !program2.ownType(f2, s.start, u));
         if (units.length === 0) continue;
         const ref = conversions && s.ref === "call" && units.every((u) => CLASSY.has(u.kind)) ? "type" : s.ref;
         refs.push({ path: f2.path, start: s.start, line: s.line, ref, units });
@@ -8571,14 +10776,14 @@ export const WORKER_SCRIPT = `"use strict";
   var st = k(/\\\\(punct)/, "gu").replace(/punct/g, _).getRegex();
   var it = k(/^<(scheme:[^\\s\\x00-\\x1f<>]*|email)>/).replace("scheme", /[a-zA-Z][a-zA-Z0-9+.-]{1,31}/).replace("email", /[a-zA-Z0-9.!#$%&'*+/=?^_\`{|}~-]+(@)[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+(?![-_])/).getRegex();
   var ot = k(X).replace("(?:-->|$)", "-->").getRegex();
-  var at = k("^comment|^</[a-zA-Z][\\\\w:-]*\\\\s*>|^<[a-zA-Z][\\\\w-]*(?:attribute)*?\\\\s*/?>|^<\\\\?[\\\\s\\\\S]*?\\\\?>|^<![a-zA-Z]+\\\\s[\\\\s\\\\S]*?>|^<!\\\\[CDATA\\\\[[\\\\s\\\\S]*?\\\\]\\\\]>").replace("comment", ot).replace("attribute", /\\s+[a-zA-Z:_][\\w.:-]*(?:\\s*=\\s*"[^"]*"|\\s*=\\s*'[^']*'|\\s*=\\s*[^\\s"'=<>\`]+)?/).getRegex();
+  var at2 = k("^comment|^</[a-zA-Z][\\\\w:-]*\\\\s*>|^<[a-zA-Z][\\\\w-]*(?:attribute)*?\\\\s*/?>|^<\\\\?[\\\\s\\\\S]*?\\\\?>|^<![a-zA-Z]+\\\\s[\\\\s\\\\S]*?>|^<!\\\\[CDATA\\\\[[\\\\s\\\\S]*?\\\\]\\\\]>").replace("comment", ot).replace("attribute", /\\s+[a-zA-Z:_][\\w.:-]*(?:\\s*=\\s*"[^"]*"|\\s*=\\s*'[^']*'|\\s*=\\s*[^\\s"'=<>\`]+)?/).getRegex();
   var G = /(?:\\[(?:\\\\[\\s\\S]|[^\\[\\]\\\\])*\\]|\\\\[\\s\\S]|\`+(?!\`)[^\`]*?\`+(?!\`)|\`\`+(?=\\])|[^\\[\\]\\\\\`])*?/;
   var lt = k(/^!?\\[(label)\\]\\(\\s*(href)(?:(?:[ \\t]+(?:\\n[ \\t]*)?|\\n[ \\t]*)(title))?\\s*\\)/).replace("label", G).replace("href", /<(?:\\\\.|[^\\n<>\\\\])+>|[^ \\t\\n\\x00-\\x1f]+|(?=\\))/).replace("title", /"(?:\\\\"?|[^"\\\\])*"|'(?:\\\\'?|[^'\\\\])*'|\\((?:\\\\\\)?|[^)\\\\])*\\)/).getRegex();
   var de = k(/^!?\\[(label)\\]\\[(ref)\\]/).replace("label", G).replace("ref", W).getRegex();
   var ke = k(/^!?\\[(ref)\\](?:\\[\\])?/).replace("ref", W).getRegex();
   var pt = k("reflink|nolink(?!\\\\()", "g").replace("reflink", de).replace("nolink", ke).getRegex();
   var ie = /[hH][tT][tT][pP][sS]?|[fF][tT][pP]/;
-  var V = { _backpedal: z, anyPunctuation: st, autolink: it, blockSkip: Qe, br: pe, code: De, del: z, delLDelim: z, delRDelim: z, emStrongLDelim: Ne, emStrongRDelimAst: Ke, emStrongRDelimUnd: Ve, escape: Be, link: lt, nolink: ke, punctuation: ve, reflink: de, reflinkSearch: pt, tag: at, text: qe, url: z };
+  var V = { _backpedal: z, anyPunctuation: st, autolink: it, blockSkip: Qe, br: pe, code: De, del: z, delLDelim: z, delRDelim: z, emStrongLDelim: Ne, emStrongRDelimAst: Ke, emStrongRDelimUnd: Ve, escape: Be, link: lt, nolink: ke, punctuation: ve, reflink: de, reflinkSearch: pt, tag: at2, text: qe, url: z };
   var ut = { ...V, emStrongLDelim: Ue, emStrongRDelimAst: Je, emStrongRDelimUnd: et, link: k(/^!?\\[(label)\\]\\((.*?)\\)/).replace("label", G).getRegex(), reflink: k(/^!?\\[(label)\\]\\s*\\[([^\\]]*)\\]/).replace("label", G).getRegex() };
   var F = { ...V, emStrongRDelimAst: We, emStrongLDelim: je, delLDelim: tt, delRDelim: rt, url: k(/^((?:protocol):\\/\\/|www\\.)(?:[a-zA-Z0-9\\-]+\\.?)+[^\\s<]*|^email/).replace("protocol", ie).replace("email", /[A-Za-z0-9._+-]+(@)[a-zA-Z0-9-_]+(?:\\.[a-zA-Z0-9-_]*[a-zA-Z0-9])+(?![-_])/).getRegex(), _backpedal: /(?:[^?!.,:;*_'"~()&]+|\\([^)]*\\)|&(?![a-zA-Z0-9]+;$)|[?!.,:;*_'"~)]+(?!$))+/, del: /^(~~?)(?=[^\\s~])((?:\\\\[\\s\\S]|[^\\\\])*?(?:\\\\[\\s\\S]|[^\\s~\\\\]))\\1(?=[^~]|$)/, text: k(/^(\`+|~+|[^\`~])(?:(?=[\`~])|(?= {2,}\\n)|(?=[a-zA-Z0-9.!#$%&'*+\\/=?_\`{\\|}~-]+@)|[\\s\\S]*?(?:(?=[\\\\<!\\[\`*~_]|\\b_|protocol:\\/\\/|www\\.|$)|[^ ](?= {2,}\\n)|[^a-zA-Z0-9.!#$%&'*+\\/=?_\`{\\|}~-](?=[a-zA-Z0-9.!#$%&'*+\\/=?_\`{\\|}~-]+@)))/).replace("protocol", ie).getRegex() };
   var ct = { ...F, br: k(pe).replace("{2,}", "*").getRegex(), text: k(F.text).replace("\\\\b_", "\\\\b_| {2,}\\\\n").replace(/\\{2,\\}/g, "*").getRegex() };
@@ -9946,10 +12151,10 @@ Please report this to https://github.com/markedjs/marked.\`, e) {
     return dels.map((a) => {
       if (adds.length > 40) return null;
       let best = null;
-      for (let at2 = from; at2 < adds.length; at2++) {
-        const span2 = changedSpan(a, adds[at2]);
+      for (let at3 = from; at3 < adds.length; at3++) {
+        const span2 = changedSpan(a, adds[at3]);
         const score = span2 ? span2.start + (a.length - span2.endA) : -1;
-        if (span2 && (!best || score > best.score)) best = { add: at2, span: span2, score };
+        if (span2 && (!best || score > best.score)) best = { add: at3, span: span2, score };
       }
       if (!best) return null;
       from = best.add + 1;
@@ -10029,12 +12234,12 @@ Please report this to https://github.com/markedjs/marked.\`, e) {
       }
       return rows;
     };
-    const at2 = (min) => priority.map((p) => p >= min);
+    const at3 = (min) => priority.map((p) => p >= min);
     for (const min of [1, 2]) {
-      const rows = render(at2(min), false);
+      const rows = render(at3(min), false);
       if (rows.length <= max) return rows;
     }
-    const kept = at2(3);
+    const kept = at3(3);
     priority.forEach((p, i2) => {
       if (p !== 2) return;
       kept[i2] = true;
@@ -10144,7 +12349,7 @@ Please report this to https://github.com/markedjs/marked.\`, e) {
   var pinCard = (pin, review) => {
     const built = pin.kind === "change" || pin.kind === "context" ? declRows(pin, review) : pin.kind === "test" ? testRows(pin, review) : fileRows(pin, review);
     const header = 220 + (pin.name.length + (pin.path ?? "").length) * 7;
-    const named = (pin.kind === "change" || pin.kind === "context") && TYPED_METHODS.has(languageOf(pin.path ?? "")) ? Math.ceil(pin.name.length * 9.2 / 0.52 + 28) + 1 : 0;
+    const named = (pin.kind === "change" || pin.kind === "context") && typedMethods(pin.path ?? "") ? Math.ceil(pin.name.length * 9.2 / 0.52 + 28) + 1 : 0;
     const width = Math.round(clamp(Math.max(header, named, ...built.map(rowWidth)), CARD.minWidth, CARD.maxWidth));
     const room = width - (pin.kind === "context" ? 68 : CARD.gutter) - 12;
     const cut = built.flatMap((r) => r.kind === "line" && rowChars(r) * CARD.charWidth > room ? [r.line.at] : []);
@@ -10190,7 +12395,7 @@ mark { color: inherit; border-radius: 3px; background: var(--add-mark); }
 body.context { border: 1.5px dashed var(--ink3); border-radius: 12px; }
 body.context header { background: transparent; color: var(--ink2); }
 \`;
-  var TYPED_METHODS = /* @__PURE__ */ new Set(["py", "go", "rs"]);
+  var typedMethods = (path) => /\\.(py|go|rs|java)$/i.test(path);
   var PR = {
     width: 640,
     pad: 16,
@@ -10349,8 +12554,8 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
             const d4 = cross(p1, p2, q2);
             if (!(d3 > 0 && d4 < 0 || d3 < 0 && d4 > 0)) continue;
             const t = d1 / (d1 - d2);
-            const at2 = { x: p1.x + (p2.x - p1.x) * t, y: p1.y + (p2.y - p1.y) * t };
-            if (!near.some((e) => Math.hypot(e.x - at2.x, e.y - at2.y) <= radius)) n++;
+            const at3 = { x: p1.x + (p2.x - p1.x) * t, y: p1.y + (p2.y - p1.y) * t };
+            if (!near.some((e) => Math.hypot(e.x - at3.x, e.y - at3.y) <= radius)) n++;
           }
         }
       }
@@ -10459,8 +12664,8 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
       for (const f2 of files) if (!roles.has(f2.path)) roles.set(f2.path, f2.role);
       rolesOf.set(files, roles);
     }
-    const role4 = (pin.path === void 0 ? void 0 : roles.get(pin.path)) ?? "code";
-    return [role4 === "generated" ? 2 : role4 === "docs" || role4 === "config" ? 1 : 0, pin.path ?? "", pin.from];
+    const role5 = (pin.path === void 0 ? void 0 : roles.get(pin.path)) ?? "code";
+    return [role5 === "generated" ? 2 : role5 === "docs" || role5 === "config" ? 1 : 0, pin.path ?? "", pin.from];
   };
   var FLOW_KINDS = ["calls", "uses", "imports"];
   var S2 = smoothstep;
@@ -10528,13 +12733,13 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
       }
       course.push(q2);
     };
-    let at2 = a;
+    let at3 = a;
     columns.forEach((c, i2) => {
-      leg(at2, { x: c.lo - margin, y: c.y }, i2 > 0);
-      at2 = { x: c.hi + margin, y: c.y };
-      course.push(at2);
+      leg(at3, { x: c.lo - margin, y: c.y }, i2 > 0);
+      at3 = { x: c.hi + margin, y: c.y };
+      course.push(at3);
     });
-    leg(at2, b2, false);
+    leg(at3, b2, false);
     const length = course.slice(1).reduce((n, p, i2) => n + Math.hypot(p.x - course[i2].x, p.y - course[i2].y), 0);
     const count2 = Math.max(3, Math.round(length / step) - 1);
     const bends = [];
@@ -10835,11 +13040,11 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
       const others = strings.filter((o) => o !== s);
       const besideBend = (i2) => {
         const [before, middle2, after] = [s.bend[i2 - 1], s.bend[i2], s.bend[i2 + 1]];
-        const at2 = (i2 + 1) * SPLINE_STEPS;
+        const at3 = (i2 + 1) * SPLINE_STEPS;
         const near = (lo, hi, axis) => {
           const inside = (k2) => k2 >= 0 && k2 < s.path.length && s.path[k2][axis] >= lo - 2 && s.path[k2][axis] <= hi + 2;
-          let first = at2;
-          let last = at2;
+          let first = at3;
+          let last = at3;
           while (inside(first - 1)) first--;
           while (inside(last + 1)) last++;
           return s.path.slice(first, last + 1);
@@ -10885,7 +13090,7 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
   // src/lib/linker.ts
   var SAME_MEMBERS = /* @__PURE__ */ new Set(["Partial", "Required", "Readonly", "NonNullable", "Pick", "Omit"]);
   var COMPUTED = /* @__PURE__ */ new Set(["ReturnType", "Parameters", "ConstructorParameters", "Awaited", "ThisType", "ThisParameterType", "OmitThisParameter", "Extract", "Exclude", "Record", "InstanceType"]);
-  var NONE2 = { units: [], shapes: [] };
+  var NONE3 = { units: [], shapes: [] };
   var unknown = (why) => ({ units: [], shapes: [], unknown: why });
   var merge = (...vs) => {
     const known = vs.filter((v2) => !v2.unknown);
@@ -11019,16 +13224,16 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
       const t = f2.flat;
       if (b2.kind === "class") {
         const s = shapeOf(f2, b2.decl);
-        return s ? { units: [], shapes: [{ shape: s, side: "static", file: f2 }] } : NONE2;
+        return s ? { units: [], shapes: [{ shape: s, side: "static", file: f2 }] } : NONE3;
       }
-      if (b2.kind === "function") return NONE2;
+      if (b2.kind === "function") return NONE3;
       if (b2.kind === "type") {
         const s = shapeOf(f2, b2.decl);
         if (s) return { units: [], shapes: [{ shape: s, side: "instance", file: f2 }] };
         if (t.type[b2.decl] === "type_alias_declaration") return typeVal(f2, child(t, b2.decl, "value"));
-        return NONE2;
+        return NONE3;
       }
-      if (b2.kind === "enum" || b2.kind === "namespace") return NONE2;
+      if (b2.kind === "enum" || b2.kind === "namespace") return NONE3;
       if (b2.kind === "typeparam") return unknown("type parameter");
       if (b2.typeNode >= 0 || b2.init >= 0) {
         let v2 = b2.typeNode >= 0 ? typeVal(f2, b2.typeNode) : evalExpr(f2, b2.init);
@@ -11044,13 +13249,13 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
     };
     const importVal = (f2, entry) => {
       const target = resolveModule(f2.path, entry.spec);
-      if (!target.path) return target.external ? { ...NONE2, external: \`package '\${entry.spec}'\` } : unknown(\`missing module '\${entry.spec}'\`);
+      if (!target.path) return target.external ? { ...NONE3, external: \`package '\${entry.spec}'\` } : unknown(\`missing module '\${entry.spec}'\`);
       if (entry.imported === "*") return { units: [], shapes: [], module: target.path };
       if (entry.imported === "=") return moduleVal(target.path);
       const v2 = exportVal(target.path, entry.imported, /* @__PURE__ */ new Set());
       if (v2) return v2;
       if (entry.imported === "default") return moduleVal(target.path);
-      return NONE2;
+      return NONE3;
     };
     const moduleVal = (path) => {
       const f2 = byPath.get(path);
@@ -11071,13 +13276,13 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
         if (e.kind === "star" || e.name !== name2) continue;
         if (e.kind === "local") {
           const b2 = lookup(f2.module, e.local, VALUE | TYPE | NS);
-          return b2 ? bindingVal(f2, b2) : NONE2;
+          return b2 ? bindingVal(f2, b2) : NONE3;
         }
         if (e.kind === "expr") return evalExpr(f2, e.value);
         if (e.kind === "reexport") {
           const target = resolveModule(path, e.spec);
           if (!target.path) return unknown(\`re-export from external '\${e.spec}'\`);
-          return exportVal(target.path, e.imported, seen) ?? NONE2;
+          return exportVal(target.path, e.imported, seen) ?? NONE3;
         }
         if (e.kind === "namespace") {
           const target = resolveModule(path, e.spec);
@@ -11199,7 +13404,7 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
           const scope = scopeAt(f2, n);
           const name2 = textOf(t, n);
           const b2 = lookup(scope, name2, TYPE);
-          if (!b2) return COMPUTED.has(name2) || SAME_MEMBERS.has(name2) ? unknown(\`global type \${name2}\`) : { ...NONE2, external: \`global type \${name2}\` };
+          if (!b2) return COMPUTED.has(name2) || SAME_MEMBERS.has(name2) ? unknown(\`global type \${name2}\`) : { ...NONE3, external: \`global type \${name2}\` };
           return asSide(bindingVal(f2, b2), "instance");
         }
         case "generic_type": {
@@ -11220,14 +13425,14 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
         }
         case "union_type": {
           const parts2 = flattenUnion(t, n).filter((c) => !/^(null|undefined|void)$/.test(textOf(t, c)));
-          if (parts2.length === 0) return NONE2;
+          if (parts2.length === 0) return NONE3;
           return merge(...parts2.map((c) => typeVal(f2, c)));
         }
         case "intersection_type":
           return merge(...namedChildren(t, n).map((c) => typeVal(f2, c)));
         case "object_type": {
           const s = shapeOf(f2, n);
-          return s ? { units: [], shapes: [{ shape: s, side: "instance", file: f2 }] } : NONE2;
+          return s ? { units: [], shapes: [{ shape: s, side: "instance", file: f2 }] } : NONE3;
         }
         case "type_query":
           return evalExpr(f2, namedChildren(t, n)[0] ?? -1);
@@ -11244,7 +13449,7 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
         case "array_type":
         case "tuple_type":
         case "template_literal_type":
-          return NONE2;
+          return NONE3;
         default:
           return unknown(\`type \${ty}\`);
       }
@@ -11300,9 +13505,9 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
         }
         case "new_expression": {
           const ctor = child(t, n, "constructor");
-          if (t.type[ctor] === "identifier" && !lookup(scopeAt(f2, n), textOf(t, ctor), VALUE)) return { ...NONE2, external: \`new \${textOf(t, ctor)}\` };
+          if (t.type[ctor] === "identifier" && !lookup(scopeAt(f2, n), textOf(t, ctor), VALUE)) return { ...NONE3, external: \`new \${textOf(t, ctor)}\` };
           const c = evalExpr(f2, ctor);
-          if (c.external) return { ...NONE2, external: c.external };
+          if (c.external) return { ...NONE3, external: c.external };
           if (c.unknown) return unknown(\`new on \${c.unknown}\`);
           return asSide(c, "instance");
         }
@@ -11342,7 +13547,7 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
           return merge(evalExpr(f2, child(t, n, "consequence")), evalExpr(f2, child(t, n, "alternative")));
         case "binary_expression": {
           const op = tokensOf(t, n).find((x2) => x2 === "||" || x2 === "??" || x2 === "&&");
-          if (!op) return NONE2;
+          if (!op) return NONE3;
           return merge(evalExpr(f2, child(t, n, "left")), evalExpr(f2, child(t, n, "right")));
         }
         case "object": {
@@ -11374,7 +13579,7 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
         case "array":
         case "unary_expression":
         case "update_expression":
-          return NONE2;
+          return NONE3;
         default:
           return unknown(\`expression \${ty}\`);
       }
@@ -11418,11 +13623,11 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
       if (v2.module) {
         const e = exportVal(v2.module, name2, /* @__PURE__ */ new Set());
         if (e) return { units: e.units, next: e, found: e.unknown && e.units.length === 0 ? "unknown" : "yes", ...e.unknown ? { why: e.unknown } : {} };
-        if (v2.shapes.length === 0) return { units: [], next: NONE2, found: "no" };
+        if (v2.shapes.length === 0) return { units: [], next: NONE3, found: "no" };
       }
-      if (v2.external && v2.shapes.length === 0 && !v2.module) return { units: [], next: { ...NONE2, external: v2.external }, found: "no" };
+      if (v2.external && v2.shapes.length === 0 && !v2.module) return { units: [], next: { ...NONE3, external: v2.external }, found: "no" };
       if (v2.unknown && v2.shapes.length === 0) return { units: [], next: unknown(\`member of \${v2.unknown}\`), found: "unknown", why: v2.unknown };
-      if (v2.shapes.length === 0) return { units: [], next: NONE2, found: "no" };
+      if (v2.shapes.length === 0) return { units: [], next: NONE3, found: "no" };
       const units = [];
       const nexts = [];
       let found = false;
@@ -11472,12 +13677,12 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
       }
       if (found) return { units: [...new Set(units)], next: merge(...nexts), found: "yes" };
       if (open || v2.unknown) return { units: [], next: unknown(why || "open object"), found: "unknown", why: why || v2.unknown || "open object" };
-      return { units: [], next: NONE2, found: "no" };
+      return { units: [], next: NONE3, found: "no" };
     };
     const memberValue = (f2, m2) => {
       const t = f2.flat;
       if (m2.kind === "method" || m2.kind === "get" || m2.kind === "set" || m2.kind === "signature") {
-        return m2.unit ? { units: [m2.unit], shapes: [] } : NONE2;
+        return m2.unit ? { units: [m2.unit], shapes: [] } : NONE3;
       }
       if (m2.typeNode >= 0) return typeVal(f2, m2.typeNode);
       if (m2.kind === "shorthand") {
@@ -11551,13 +13756,13 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
     return { resolveModule, resolveSite };
   };
   var resolveAll = (files, changed, config) => {
-    const program = createProgram2(files, config);
-    const holdsCards = (f2) => changed.has(f2.path) || f2.specifiers.some((sp) => changed.has(program.resolveModule(f2.path, sp.spec).path ?? ""));
+    const program2 = createProgram2(files, config);
+    const holdsCards = (f2) => changed.has(f2.path) || f2.specifiers.some((sp) => changed.has(program2.resolveModule(f2.path, sp.spec).path ?? ""));
     const refs = [];
     for (const f2 of files) {
       if (!holdsCards(f2)) continue;
       for (const s of f2.sites) {
-        const units = program.resolveSite(f2, s);
+        const units = program2.resolveSite(f2, s);
         if (units.length > 0) refs.push({ path: f2.path, start: s.start, line: s.line, ref: s.ref, units });
       }
     }
@@ -11674,9 +13879,9 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
   };
   var changedSources = (files) => {
     const live = files.filter((f2) => f2.status !== "removed");
-    const code = live.filter((f2) => roleOf(f2.path) === "code" && languageOf(f2.path) !== "text" && (grammarOf(f2.path) !== null || f2.patch !== void 0 || f2.status === "added"));
+    const code2 = live.filter((f2) => roleOf(f2.path) === "code" && languageOf(f2.path) !== "text" && (grammarOf(f2.path) !== null || f2.patch !== void 0 || f2.status === "added"));
     const tests = live.filter((f2) => roleOf(f2.path) === "test" && grammarOf(f2.path) !== null && !langOf(f2.path)?.local);
-    return [...pickFiles(code, READ.code), ...pickFiles(tests, READ.tests)];
+    return [...pickFiles(code2, READ.code), ...pickFiles(tests, READ.tests)];
   };
   var parseJsonc = (text) => {
     let out2 = "";
@@ -11844,8 +14049,12 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
       for (const p of paths2) if (await exists(p)) return p;
       return null;
     };
+    const moduleResolver = (path) => {
+      const resolver = langOf(path)?.resolver;
+      return resolver && "typing" in resolver ? resolver : null;
+    };
     const moduleAnswers = async (from, spec, level) => {
-      const resolver = langOf(from).resolver;
+      const resolver = moduleResolver(from);
       const tries = resolver.moduleTries?.(from, spec, level, context) ?? resolver.moduleFiles(from, spec, level, context).map((c) => ({ files: [c] }));
       const out2 = [];
       for (const t of tries) {
@@ -11868,7 +14077,7 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
       );
       return found2.flat();
     };
-    const imports4 = parsedChanged.flatMap((c) => facts.get(c.path) ?? []).flatMap((f2) => isGeneric(f2) ? [genericImports(f2)] : f2.specifiers.map((s) => firstAnswer(moduleCandidates(f2.path, s.spec, paths(f2.path)).candidates)));
+    const imports5 = parsedChanged.flatMap((c) => facts.get(c.path) ?? []).flatMap((f2) => isGeneric(f2) ? moduleResolver(f2.path) ? [genericImports(f2)] : [] : f2.specifiers.map((s) => firstAnswer(moduleCandidates(f2.path, s.spec, paths(f2.path)).candidates)));
     let added = 0;
     const taken = new Set([...texts.keys()].filter((p) => !onlyMarkers.has(p)));
     const readAll = async (targets2) => {
@@ -11883,15 +14092,15 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
         }
       }
     };
-    await readAll(imports4);
+    await readAll(imports5);
     const reexports = [];
     for (const c of parsedChanged) {
       const f2 = facts.get(c.path);
-      const lang = langOf(c.path);
-      if (!f2 || !isGeneric(f2) || !lang) continue;
+      const resolver = moduleResolver(c.path);
+      if (!f2 || !isGeneric(f2) || !resolver) continue;
       for (const i2 of f2.imports) {
         if (i2.name === null || i2.name === "*" || i2.unproven) continue;
-        const from = facts.get(lang.resolver.moduleFiles(f2.path, i2.spec, i2.level, context).find((p) => facts.has(p)) ?? "");
+        const from = facts.get(resolver.moduleFiles(f2.path, i2.spec, i2.level, context).find((p) => facts.has(p)) ?? "");
         if (!from || !isGeneric(from)) continue;
         for (const j2 of from.imports) if (j2.local === i2.name && !j2.unproven) reexports.push(markers(from.path).then(() => moduleAnswers(from.path, j2.spec, j2.level)));
       }
@@ -11899,6 +14108,24 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
     await readAll(reexports);
     const there = new Map(files.flatMap((f2) => [[f2.path, f2.status !== "removed"], ...f2.previousPath && f2.previousPath !== f2.path ? [[f2.previousPath, false]] : []]));
     const existing = (path) => texts.has(path) || found.get(path) === true ? true : there.get(path) ?? found.get(path);
+    const changedPaths = new Set(changed.map((f2) => f2.path));
+    const live = { known: { [Symbol.iterator]: () => texts.keys() }, text: (path) => texts.get(path), exists: existing };
+    const wanting = [...new Set([...facts.values()].flatMap((f2) => isGeneric(f2) && langOf(f2.path)?.wants ? [langOf(f2.path)] : []))];
+    for (const lang of wanting) {
+      for (; ; ) {
+        const own = [...facts.values()].filter((f2) => isGeneric(f2) && langOf(f2.path) === lang);
+        const fresh = [...new Set(lang.wants(own, live, (path) => changedPaths.has(path)))].filter((path) => !answers.has(path));
+        if (fresh.length === 0 || added >= READ.imports) break;
+        const asked = fresh.map((path) => once(path));
+        for (const [i2, path] of fresh.entries()) {
+          const text = await asked[i2];
+          if (taken.has(path) || added >= READ.imports || !usable(text)) continue;
+          taken.add(path);
+          added++;
+          await take(path, text);
+        }
+      }
+    }
     return { texts, facts, paths, exists: existing };
   };
 
@@ -12040,18 +14267,18 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
     const units = /* @__PURE__ */ new Map();
     const nameOf = (u) => analysed.labels.get(u.id) ?? labelOf(u);
     const files = prFiles.map((f2) => {
-      const role4 = roleOf(f2.path);
+      const role5 = roleOf(f2.path);
       const lang = languageOf(f2.path);
       const whole = f2.patch === void 0 && f2.status === "added" ? analysed.texts.get(f2.path) : void 0;
       const hunks = f2.patch ? parsePatch(f2.patch) : whole !== void 0 ? addedHunks(whole) : [];
-      const ff = role4 === "code" && f2.status !== "removed" ? facts.get(f2.path) : void 0;
-      const found = ff ? parsedChanges(f2.path, lang, ff, hunks, units, nameOf) : role4 === "code" ? changedSymbols(f2.path, lang, heads.get(f2.path) ?? null, hunks) : { symbols: [], loose: [] };
+      const ff = role5 === "code" && f2.status !== "removed" ? facts.get(f2.path) : void 0;
+      const found = ff ? parsedChanges(f2.path, lang, ff, hunks, units, nameOf) : role5 === "code" ? changedSymbols(f2.path, lang, heads.get(f2.path) ?? null, hunks) : { symbols: [], loose: [] };
       const loose = found.loose.filter((r) => !found.symbols.some((s) => pinFrom(s) <= r.from && r.to <= s.end));
       return {
         path: f2.path,
         ...f2.previousPath ? { previousPath: f2.previousPath } : {},
         status: f2.status,
-        role: role4,
+        role: role5,
         lang,
         additions: f2.additions,
         deletions: f2.deletions,
@@ -12059,7 +14286,7 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
         hasPatch: f2.patch !== void 0 || whole !== void 0,
         symbols: found.symbols,
         loose,
-        cases: role4 === "test" ? testCases(hunks) : []
+        cases: role5 === "test" ? testCases(hunks) : []
       };
     });
     const context = { files, heads, facts, refs: analysed.refs, units, nameOf };
@@ -12109,7 +14336,8 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
     for (const r of refs) {
       const src = innermost(changedUnits.get(r.path) ?? [], r.path, r.start);
       if (!src || src.kind === "class") continue;
-      for (const target of r.units) {
+      for (const named of r.units) {
+        const target = !units.has(named.id) && r.alt ? r.alt : named;
         if (!units.has(target.id) || target.id === src.id || nests(src, target)) continue;
         edgeSet.set(\`\${src.id}>\${target.id}\`, { from: src.id, to: target.id });
       }
@@ -12172,8 +14400,8 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
     const callerIds = /* @__PURE__ */ new Set();
     bands.forEach((band, b2) => {
       for (const entry of band.entries) {
-        const unit4 = units.get(entry);
-        const caller = unit4 ? parsedCaller(unit4, b2) : null;
+        const unit5 = units.get(entry);
+        const caller = unit5 ? parsedCaller(unit5, b2) : null;
         if (!caller) continue;
         if (!callerIds.has(caller.id)) pins.push(caller);
         callerIds.add(caller.id);
@@ -12188,17 +14416,17 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
       const ff = facts.get(f2.path);
       const inImports = ff ? importLines(ff.flat) : /* @__PURE__ */ new Set();
       const lines = whole ? [] : f2.hunks.flatMap((h) => h.lines).filter((l3) => l3.t !== "ctx" && l3.text.trim() !== "" && ranges.some((r) => l3.at >= r.from && l3.at <= r.to));
-      const imports4 = lines.length > 0 && lines.every((l3) => inImports.has(l3.n ?? l3.at) || IMPORT_LINE.test(l3.text));
-      pins.push(filePin(f2, restBand, "rest", 0, ranges, whole ? fileName(f2.path) : imports4 ? \`\${fileName(f2.path)} imports\` : \`\${fileName(f2.path)}, other lines\`));
+      const imports5 = lines.length > 0 && lines.every((l3) => inImports.has(l3.n ?? l3.at) || IMPORT_LINE.test(l3.text));
+      pins.push(filePin(f2, restBand, "rest", 0, ranges, whole ? fileName(f2.path) : imports5 ? \`\${fileName(f2.path)} imports\` : \`\${fileName(f2.path)}, other lines\`));
     }
     pins.push(...testPins(files, restBand));
     return { mode: "symbols", pins, bands };
   };
   var fileBoard = (ctx) => {
     const { files, refs } = ctx;
-    const code = files.filter((f2) => f2.role === "code");
-    const ids = code.map((f2) => \`file:\${f2.path}\`);
-    const codePaths = new Set(code.map((f2) => f2.path));
+    const code2 = files.filter((f2) => f2.role === "code");
+    const ids = code2.map((f2) => \`file:\${f2.path}\`);
+    const codePaths = new Set(code2.map((f2) => f2.path));
     const edgeSet = /* @__PURE__ */ new Map();
     for (const r of refs) {
       if (!codePaths.has(r.path)) continue;
@@ -12221,13 +14449,13 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
     pins.push(...testPins(files, threads.length));
     return { mode: "files", pins, bands };
   };
-  var link = (kind, from, to, rows, at2, reads) => ({
+  var link = (kind, from, to, rows, at3, reads) => ({
     id: \`\${kind}:\${from}>\${to}\`,
     from,
     to,
     kind,
     ...reads ? { reads } : {},
-    ...at2 !== void 0 ? { at: at2 } : {},
+    ...at3 !== void 0 ? { at: at3 } : {},
     rows: [...rows]
   });
   var startRow = (calls, rows, changed) => calls.find((n) => changed.has(n)) ?? calls[0] ?? rows.find((n) => changed.has(n)) ?? rows[0];
@@ -12292,7 +14520,7 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
       const from = pinAt(r.path, r.start);
       if (!from) continue;
       for (const u of r.units) {
-        const to = pinById.get(represented.get(u.id) ?? "");
+        const to = pinById.get(represented.get(u.id) ?? (r.alt ? represented.get(r.alt.id) : void 0) ?? "");
         if (!to || to === from) continue;
         if (isDecl(from) && isDecl(to) && (holds2(from, to) || holds2(to, from))) continue;
         const key = \`\${from.id}>\${to.id}\`;

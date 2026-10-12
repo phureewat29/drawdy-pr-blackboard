@@ -412,7 +412,8 @@ const symbolBoard = (ctx: BoardContext): Draft => {
     for (const r of refs) {
         const src = innermost(changedUnits.get(r.path) ?? [], r.path, r.start);
         if (!src || src.kind === "class") continue;
-        for (const target of r.units) {
+        for (const named of r.units) {
+            const target = !units.has(named.id) && r.alt ? r.alt : named;
             if (!units.has(target.id) || target.id === src.id || nests(src, target)) continue;
             edgeSet.set(`${src.id}>${target.id}`, { from: src.id, to: target.id });
         }
@@ -552,9 +553,9 @@ const startRow = (calls: readonly number[], rows: readonly number[], changed: Re
 /**
  * The links between the cards given: each resolved reference goes from the
  * innermost card holding it to the card standing for what it names: that
- * declaration's own card, a card it is nested in when it has none, or the
- * file card showing a file's changed lines. Two declaration cards that nest
- * make no link.
+ * declaration's own card, a card it is nested in when it has none, its
+ * `alt`'s card (a constructor's class), or the file card showing a file's
+ * changed lines. Two declaration cards that nest make no link.
  */
 const linksOf = (pins: readonly Pin[], ctx: BoardContext): Link[] => {
     const { files, facts, refs, units } = ctx;
@@ -617,7 +618,7 @@ const linksOf = (pins: readonly Pin[], ctx: BoardContext): Link[] => {
         const from = pinAt(r.path, r.start);
         if (!from) continue;
         for (const u of r.units) {
-            const to = pinById.get(represented.get(u.id) ?? "");
+            const to = pinById.get(represented.get(u.id) ?? (r.alt ? represented.get(r.alt.id) : undefined) ?? "");
             if (!to || to === from) continue;
             if (isDecl(from) && isDecl(to) && (holds(from, to) || holds(to, from))) continue;
             const key = `${from.id}>${to.id}`;

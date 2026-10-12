@@ -91,14 +91,16 @@ pinned`, leaving out a zero part and using `1 function`, `1 file`.
 
 A string must be a fact. PR Blackboard parses every file it reads in
 TypeScript and JavaScript (`.ts .tsx .mts .cts .js .jsx .mjs .cjs`),
-Python (`.py`), Go (`.go`) and Rust (`.rs`) with tree-sitter, and follows
-each name to the declaration it means: through scopes, imports, and members
-whose receiver it can name. Only a reference that resolves makes a link.
-TypeScript and JavaScript have a linker of their own (`facts.ts`,
-`linker.ts`); Python, Go and Rust share one generic linker, a rule table
-per language over the grammar's own `tags.scm` (2.2.10, request 58). Other
-languages keep their cards from line patterns and draw no string (2.2.7).
-Nothing anywhere links code by its name alone.
+Python (`.py`), Go (`.go`), Rust (`.rs`) and Java (`.java`) with
+tree-sitter, and follows each name to the declaration it means: through
+scopes, imports, and members whose receiver it can name. Only a reference
+that resolves makes a link. TypeScript and JavaScript have a linker of
+their own (`facts.ts`, `linker.ts`); Python, Go, Rust and Java share one
+generic file index, a rule table per language over the grammar's own
+`tags.scm`, and Python, Go and Rust its resolver (2.2.10, request 58);
+Java resolves by the JLS's own rules (2.2.10, request 66). Other languages
+keep their cards from line patterns and draw no string (2.2.7). Nothing
+anywhere links code by its name alone.
 
 Measured on the 15 scored pull requests (the operator's research,
 `SCRATCH/research/truth`, `exp-parser` and `holdout`), against
@@ -124,13 +126,13 @@ An uncertain link is neither drawn nor listed.
 |---|---|---|
 | `vendor/web-tree-sitter.ts` | web-tree-sitter 0.27.1's `web-tree-sitter.js` (MIT), vendored as `marked` is, with three patches: its Node-only branches go (`import("module")`, `import("fs/promises")`, the `fs` loader) and `import.meta.url` reads `undefined`. Unpatched, the marketplace build refuses the bare imports `module` and `fs/promises`. Header: version, the npm file's SHA-256 (`7c49e3c1…4b8110`), the patches, `// @ts-nocheck` | |
 | `lib/sha256.ts` | SHA-256 in plain TypeScript; the driver's worker has no `crypto.subtle` | |
-| `lib/syntax.ts` | A's: grammar by extension, `loadSyntax(bytes)` (`Parser.init` with `wasmBinary` and a `locateFile`, which the bundle needs since it has no module URL), the tree flattened into typed arrays, the call-signature repair for tree-sitter-typescript 0.23.2; for Python, Go and Rust, the definitions of the grammar's `tags.scm`, its other patterns turned off, moved onto the flat tree | the JS patterns in `findDecls` for parsed files |
-| `lib/tags.ts` | The `tags.scm` of tree-sitter-python 0.25.0, tree-sitter-go 0.25.0 and tree-sitter-rust 0.24.0, copied unchanged from the pinned packages | |
+| `lib/syntax.ts` | A's: grammar by extension, `loadSyntax(bytes)` (`Parser.init` with `wasmBinary` and a `locateFile`, which the bundle needs since it has no module URL), the tree flattened into typed arrays, the call-signature repair for tree-sitter-typescript 0.23.2; for Python, Go, Rust and Java, the definitions of the grammar's `tags.scm`, its other patterns turned off, moved onto the flat tree | the JS patterns in `findDecls` for parsed files |
+| `lib/tags.ts` | The `tags.scm` of tree-sitter-python 0.25.0, tree-sitter-go 0.25.0, tree-sitter-rust 0.24.0 and tree-sitter-java 0.23.5, copied unchanged from the pinned packages | |
 | `lib/facts.ts` | A's: per file, the declarations a card can stand for (units), scopes and bindings, every identifier that refers to something (sites), imports, exports, class and object shapes | |
 | `lib/linker.ts` | A's resolver, less its uncertain results (2.2.5) | `useEdges`, `referenceRows`, `importEdges` and `mentions` for parsed files |
 | `lib/anyfacts.ts` | The generic file index (2.2.10): per file, the units its `tags.scm` defines, scopes and bindings, sites and imports, as a language's rule table reads its nodes | |
-| `lib/anylink.ts` | The generic resolver (2.2.10): one declaration proven through scopes, imports, a package's files, and the members of a receiver whose type is written, built or a class's own | `callEdges`, `callsTo` and `rust.ts`: the name-matched calls of every other language |
-| `lib/langs/` | The rule tables of Python, Go and Rust (`python.ts`, `go.ts`, `rust.ts`): nodes, scopes, card names, how a module names files; `index.ts` picks a table by grammar and parses a file with it | |
+| `lib/anylink.ts` | The generic resolver (2.2.10): one declaration proven through scopes, imports, a package's files, and the members of a receiver whose type is written, built or a class's own; a language that resolves its own files (Java) gets them all at once | `callEdges`, `callsTo` and `rust.ts`: the name-matched calls of every other language |
+| `lib/langs/` | The rule tables of Python, Go, Rust and Java (`python.ts`, `go.ts`, `rust.ts`, `java.ts`, Java's with its own resolver and read tier): nodes, scopes, card names, how a module names files; `jdk.ts`, the JDK types Java's resolver knows, generated from JDK 21 by reflection; `index.ts` picks a table by grammar and parses a file with it | |
 | `lib/sources.ts` | The read tier (2.2.3): tsconfig paths, import candidates, reading through an injected `read(path)` | the source list in `open.ts` |
 | `lib/model.ts` | Cards and links from A's `board.ts`: line ownership, thread edges, the context caller, file cards, links by region. `Review`, `Pin` and `Link` keep their shape; a parsed unit becomes a `ChangedSymbol`, id `path:nameLine` | `symbolBoard`, `fileBoard`, `addTests` and the mention block |
 | `lib/symbols.ts` | Cards by line patterns, for files no parser reads (2.2.7); card names (`labelOf`); `testCases` | |
@@ -165,10 +167,13 @@ runtime, 30 ms for TypeScript), parses and resolves.
 | `wasm:python` | `tree-sitter-python@0.25.0/tree-sitter-python.wasm` | 457 883 | 64 KB | `16108b50df4ee9a30168794252ab55e7c93bfc5765d7fa0aa3e335752c515f47` |
 | `wasm:go` | `tree-sitter-go@0.25.0/tree-sitter-go.wasm` | 217 182 | 38 KB | `9504573f352b20be7f2f1911754d710622aedc15afff16d5ed8fb5645681aee7` |
 | `wasm:rust` | `tree-sitter-rust@0.24.0/tree-sitter-rust.wasm` | 1 102 547 | 114 KB | `f65f354215611fd94ad34134b3427eb3d58cbb745df7b6509ba722184db73d57` |
+| `wasm:java` | `tree-sitter-java@0.23.5/tree-sitter-java.wasm` | 414 641 | 49 KB | `4fdeac4ca6ca089f06c6f7e562abcac1733cd465728cc7031ebb73c2019122c4` |
 
 - `.ts .mts .cts` (and `.d.ts`) take `typescript`, `.tsx` takes `tsx`,
   `.js .jsx .mjs .cjs` take `javascript`, `.py` takes `python`, `.go`
-  takes `go` and `.rs` takes `rust`. A pull request loads the
+  takes `go`, `.rs` takes `rust` and `.java` takes `java` (request 66:
+  tree-sitter-java 0.23.5 is npm's newest, ABI 14 as tree-sitter-typescript
+  0.23.2, which web-tree-sitter 0.27.1 loads). A pull request loads the
   runtime and only the grammars its files need, started as soon as the
   file list is known, beside the raw reads; a grammar an import needs
   loads when that import is read.
@@ -193,8 +198,9 @@ runtime, 30 ms for TypeScript), parses and resolves.
   shows nothing.
 - **First run:** 1.62 MB stored for a TypeScript pull request (216 KB
   over the wire), 3.07 MB with TSX (352 KB), 0.62 MB for JavaScript alone
-  (132 KB), 0.67 MB for Python (147 KB), 0.43 MB for Go (121 KB) and
-  1.31 MB for Rust (197 KB). The words name the languages: `Downloading
+  (132 KB), 0.67 MB for Python (147 KB), 0.43 MB for Go (121 KB),
+  1.31 MB for Rust (197 KB) and 0.63 MB for Java (132 KB). The words name
+  the languages: `Downloading
   the Python parser`, `the TypeScript and Go parsers`. Later opens read
   storage, and later pull requests in the session reuse the loaded
   parser.
@@ -258,6 +264,20 @@ commit, which costs no API quota; the GitHub API costs what it costs today,
    `WebSocketWriter` from `aiohttp/http.py`, which takes it from
    `http_websocket.py`). Go reads no more than its changed files, and Rust
    nothing.
+7. For Java (request 66, `javaWants` in `langs/java.ts`), what its names
+   need, asked again after each round of reads until no path is new or
+   300 files are taken, in the roots a file sees, its own first (a test
+   root sees `src/main/java`), never another module's: for a changed
+   file, its single-type and static imports' files, and each name it uses
+   that may be a type and that it neither declares nor imports, beside it
+   (`<root>/<package>/<Name>.java`); for every other file read, the
+   java.lang names its declarations' headers write, beside it the same
+   way, to know its package holds none of them; for every file read, its
+   classes' supertypes, round after round. A package `java.*`, `javax.*`
+   or another the JDK exports is looked for nowhere, nor is anything
+   through an on-demand import, nor for a file of a JDK package. The 50
+   gate pull requests ask for 245 files each on average, 185 of them
+   404s.
 
 Up to 16 requests in flight (8 before request 57: excalidraw#12237's 231
 reads take 1.6 s less at 100 ms each, the same reads in the same order).
@@ -299,6 +319,15 @@ function alone is `name()`, a type `type X`. A Python `@property` or
 `@cached_property` reads as a value, so its card drops the `()`:
 `Dependant.is_gen_callable`. JavaScript and TypeScript name a method
 alone, as before.
+
+In Java (request 66) the units are the classes, interfaces and methods
+its `tags.scm` defines, and the enums, records, annotation types,
+constructors (a record's compact one too) and annotation elements it
+leaves out: top-level types and the members of a type, at any depth, but
+never inside a method, a constructor, an initializer, an anonymous class
+or an enum constant's body, which belong to the code around them. Cards
+are named `class Parser`, `interface Node`, `enum State`, `record Point`,
+`@interface Rule`, `Parser.parse()` and, a constructor, `Parser()`.
 
 - A changed line belongs to the innermost unit whose range, from its
   first attached comment to its last line, holds the line's head position
@@ -354,8 +383,10 @@ alone, as before.
 2.2.6 **Links and kinds.** Each resolved reference goes from the innermost
 card holding it to the card standing for its target: the target's own
 card, a card it is nested in when it has none, or the file card showing its
-changed lines. Two declaration cards that nest make no link. A pair gets
-one link:
+changed lines. A Java constructor with no card of its own counts for its
+class's card (`alt`, as javac's truth reads it), so `super(…)` into an
+unchanged constructor of a changed class still links. Two declaration
+cards that nest make no link. A pair gets one link:
 
 | Kind | When |
 |---|---|
@@ -372,10 +403,10 @@ else the first call row, else the first changed row, else the first. No
 cards by links between them; a class never starts one, since its range
 holds every unchanged method. A Go method counts as nested in its
 receiver's type and a Rust impl's code in the type it implements, as a
-Python method is in its class: no string runs from a method to its own
-type.
+Python or Java method is in its class: no string runs from a method to
+its own type.
 
-2.2.7 **Other languages.** Ruby, Java, Kotlin, Swift, C#, PHP, C, `.vue`
+2.2.7 **Other languages.** Ruby, Kotlin, Swift, C#, PHP, C, Scala, `.vue`
 and `.svelte` (highlighted as JavaScript, not parsed), and a file of a
 parsed language the parser can't read, keep `symbols.ts`: declarations
 found by shape and indentation, as cards with no string. A language gets
@@ -396,7 +427,8 @@ the bottom row.
 2.2.8 **Tests** (Jest; the grammars come from exact-version
 devDependencies `web-tree-sitter@0.27.1`, `tree-sitter-typescript@0.23.2`,
 `tree-sitter-javascript@0.25.0`, `tree-sitter-python@0.25.0`,
-`tree-sitter-go@0.25.0` and `tree-sitter-rust@0.24.0`, never at run time):
+`tree-sitter-go@0.25.0`, `tree-sitter-rust@0.24.0` and
+`tree-sitter-java@0.23.5`, never at run time):
 
 - `sha256.test.ts`: the standard vectors, Node's own hash at every length
   around a block's padding, and each devDependency `.wasm` hashes to its
@@ -407,7 +439,7 @@ devDependencies `web-tree-sitter@0.27.1`, `tree-sitter-typescript@0.23.2`,
   network; a failed download and a wrong hash each fail in words and store
   nothing; a stored copy that isn't the pin downloads again; a runtime that
   won't start fails with `Couldn't parse this PR's TypeScript.`
-- `syntax.test.ts`: the six grammars parse; Python, Go and Rust carry
+- `syntax.test.ts`: the seven grammars parse; Python, Go, Rust and Java carry
   their `tags.scm` definitions and none of its references; `tags.ts` holds
   each pinned package's `tags.scm` unchanged; hono's generic call
   signature parses without an error after the repair; a `@flow` file and
@@ -444,6 +476,24 @@ devDependencies `web-tree-sitter@0.27.1`, `tree-sitter-typescript@0.23.2`,
   bitwise `|` in a macro; a method annotation naming a class below it.
   Round 4's: closures after `async`, `&mut` and `break` in a macro;
   `os.sys.path`, the list handed to a call, and a chain of names for it.
+  Java's (request 66), each with the case that must make no link: roots
+  and src/test seeing src/main, and nothing in another module's root nor
+  a test fixture's; no type through an on-demand import; java.lang's
+  names only once the package is known to hold none; a JDK package's type
+  never a stub's; a static on-demand import's field hiding a type, its
+  non-static member class, and a class not read hiding every name; the
+  review's ten cases (a parse gap, a parameterized receiver or parameter
+  type, a class's header, protected access, a try's resource, Lombok and
+  the rest); shadowing by a
+  member type, a local class or a single import; a variable before a type
+  of its name; unqualified calls with a supertype not read; overloads by
+  arity, by their arguments' static types (javac's three phases, `null`,
+  boxing, varargs, a final class, a lambda's arity), and across a
+  hierarchy by erasure; comments between arguments; type parameters,
+  `var`, a type variable bound by a subclass or to its one bound, and
+  `<T> T id(T x)`; enums, records and their accessors, default methods,
+  method references, anonymous classes; constructors by `new`, `this` and
+  `super`; private and package access; `this`, `super` and `Outer.this`.
 - `facts.test.ts`: the unit kinds of 2.2.4 with their lines and ids, and
   that names in strings, templates, comments and object keys are not
   sites.
@@ -457,13 +507,17 @@ devDependencies `web-tree-sitter@0.27.1`, `tree-sitter-typescript@0.23.2`,
   imports only, each path once, candidates in order; the go.mod above a Go
   file and a Python file's modules, a package's submodule and one hop
   more; no Rust test file; every changed Python, Go and Rust file read
-  parsed, however much there is, with only `READ.chars` leaving one out.
+  parsed, however much there is, with only `READ.chars` leaving one out;
+  Java's imports and its package's names in the roots a file sees
+  (src/main's from src/test, never another module's nor a package
+  imported on demand), java.lang's names a declaration's header writes,
+  and supertypes a nested type of the same name doesn't hide.
 - `model.test.ts`: hono's ten links, the two Vite cases on their own small
   diffs, no `mentions`; a Python pull request's calls, uses and tests
   through its resolver; no string for a language without a table; a Go
   call chain keeping its cards on a full board among types many functions
   use; a Python module too long to take that still makes another root's
-  module not unique.
+  module not unique; a Java `super(…)` into its class's card.
 - `card.test.ts`: an unchanged caller from a file the pull request leaves
   alone shows its code, on the card and in Read all; a method's name cut
   from its type's left (5.2); a Python, Go or Rust card wide enough for
@@ -532,6 +586,24 @@ among them, find nothing in 253 357 references. The standard-library rule
 (2.2.10) costs the 42 and the 17 three `tests` links each, from CPython's
 `Lib/test/test_csv.py` into `Lib/csv.py`: which `csv` runs depends on
 how Python starts.
+
+Request 66 adds Java: 40 merged pull requests (`java40`) and 10 held out
+(`java10`) from twelve projects (jsoup, gson, JavaPoet, Mockito, RxJava,
+Commons Lang, JUnit 5, Netty, Maven, Kafka's clients, Jenkins, Keycloak),
+each by the project's creator or a core member, opened from saved data
+and scored against javac 21's own resolutions (`truth/java40`,
+`truth/java10`, `scoreJava`): every identifier javac attributes to a
+declaration of the repository, sure where nothing javac can't read could
+change its answer. A link is right when a sure call or method reference
+backs its pair, whatever its kind. The gate passes with no wrong link and
+84 % of the true calls found in java40, 78 % in java10, a point under
+each measurement, as for Python and Go. Measured: 734 of 870 (84.5 %)
+and 104 of 132 (78.8 %). The whole reviews hold 1 494 and 144 links, none
+wrong, 12 unjudged. Read whole and compared with javac, the 12 cloned
+repositories give 608 228 references and none wrong (request 66's
+review: ten patterns, each now a test). Most missed calls need a type
+from another module of the repository, which the reads don't see;
+reaching them would cost one more GitHub request per open.
 
 2.2.10 **One linker for Python, Go and Rust** (request 58). A per-file
 index (`anyfacts.ts`) and a resolver (`anylink.ts`) know no language;
@@ -665,6 +737,101 @@ Sites that name nothing the files read declare are skipped before they
 are resolved: a site can only reach a unit of its own name, or one through
 an import's local name. Measured by the gate (2.2.9) against pyright's
 definitions (Python) and go/types (Go), and by hand on Bun's Rust.
+
+**Java** (request 66). Java shares the index (`anyfacts.ts`) and brings
+its own resolver (`langs/java.ts`), since its names follow the JLS rather
+than nested scopes, and it gets the files read all at once. A name
+resolves only when, for code that compiles, exactly one declaration is
+proven:
+
+- **Roots.** A file's package clause, against its folders, gives its
+  source root. A test root (`…/src/<set>/java`) sees `…/src/main/java`
+  first after its own. No other root: which modules a build puts beside
+  the file, and which copy of a class two modules declare (an unread
+  module may hold another), the files don't say, so a name only another
+  module holds names nothing.
+- **Type names**, in the JLS's order (6.4.1, 6.5.5): a type parameter, a
+  local class, a member type of a class around (declared or inherited),
+  a type the file declares, a single-type import, a single static
+  import's member type, a type of the package, then java.lang's once
+  every root the file sees is known to hold no file of the name (a
+  package's `Error` or `Override` comes first). An on-demand import
+  proves no type: its package's type loses to one of the file's own
+  package that the reads may not see, another module's half of a split
+  package or a second class in a file named for another. A name in lower
+  case is a package's. A type of a package the JDK has (`java.*`, or one
+  JDK 21's modules export, `JDK_EXPORTS`) is the JDK's whatever a root
+  holds, and a file of such a package (netty's stubs of
+  `com.sun.nio.sctp`) names nothing.
+- **Scope of a class's header** (6.3): its type parameters' bounds,
+  supertypes and annotations see the names around the class, not its own
+  or inherited members; a record's components are in scope there.
+- **Names before `.`** (6.5.2): a local or a parameter, a field of a
+  class around, a static import's field (a single import's, then the one
+  a static on-demand import gives: code that compiles has no second),
+  then a type, then a package. A static on-demand import of a class not
+  read may hold a field of any name, so it hides every such name. A
+  try-with-resources variable is in its try block alone, not in the
+  catch or finally after it.
+- **Members.** A type's members are declared or inherited: never a
+  private one, a package-private one across packages, or an interface's
+  static method; a class's concrete method hides an interface's. A
+  supertype not read may hold any member: then only a class's own
+  members are sure, a member type of its name hides every type name in
+  the class, and a call is sure only with no argument, to the type's own
+  method or a concrete one of a class it extends. So may a class the
+  parser left a gap in (an ERROR or a missing node in its header or
+  members: `T @Nullable ... xs` doesn't parse in tree-sitter-java
+  0.23.5), and a class of a file that uses Lombok, which writes members
+  in. JDK supertypes are known from `jdk.ts`: 408 types, their public and
+  protected members, generated from JDK 21 by reflection; one listed for
+  its supertypes alone (`String`, the boxes) has members not known.
+- **Access.** A protected member of another package is reached only as
+  6.6.2 allows: from a subclass, unqualified, through `this` or `super`,
+  or through an expression of the subclass's own type; a static one
+  through any. A protected constructor of another package only through
+  `super(…)` or an anonymous class. Where the reach isn't known, nothing.
+- **Calls.** An unqualified call searches the innermost class around
+  with a member of its name, then the static imports. Of the methods a
+  call may reach, the one javac picks (15.12.2): its number of
+  arguments, varargs counted, then the arguments' static types (literals,
+  `this`, `new T()`, casts, variables and fields with written types, a
+  method's written result, `null`) through javac's three phases, strict,
+  loose and varargs. When one applies for sure in the first phase, the
+  most specific of those that may apply there; else only one that may
+  apply in some phase. Only the eight boxes unbox, a final class, a
+  record or an enum has no other subtype, and a lambda or a method
+  reference never stands for a class or for an interface of no, or of
+  two, abstract methods, nor a lambda for a method of another arity. A
+  parameter type with type arguments is a sure fit only for an argument
+  of the type written alike (`Map<String, Integer>` for
+  `Map<String, Integer>`), or where its arguments are unbounded wildcards
+  or the method's own type variables, unbounded and written once among its
+  parameters, which inference binds from that argument alone (`<T> T
+  fromJson(String json, Class<T> c)` takes any `Class`); a lone candidate
+  the arguments' types rule out is no answer. Overloads spread across a
+  hierarchy count; methods whose parameters erase alike override one
+  another. A call whose arguments hold a parse gap names nothing. A call
+  goes to the method of the type searched, never to an override dispatch
+  may choose.
+- **Receivers** whose type is known: `this` and `super` (`Outer.this`,
+  `X.super.m()`), a class, a variable or field with a written type or
+  `var` with a known value, a cast, `new T()`, a method's written result,
+  a type variable a subclass's supertype clauses bind (`class Test
+  extends Base<Real>`), and `<T> T m(T x)` standing alone, which returns
+  its argument's type unless the call writes its type arguments. A type
+  variable's one bound stands for it only on the class's own receiver
+  (an unqualified name, `this`, `super`): an expression's type is read
+  without its type arguments, so `Box<Sub> b; b.get()` names nothing of
+  `T`.
+- **Constructors.** `new Foo(…)` uses the type and calls the
+  constructor its arguments reach, the class's own when it declares none
+  (a record's canonical one); `this(…)` and `super(…)` the same; `Foo::new`
+  is a value. An anonymous class's creation uses its base and, a class,
+  calls the base's constructor its arguments reach.
+- **Never:** a lambda's parameter, a library method's result, a raw
+  type's member through its type variable, an implementation chosen at
+  run time, reflection.
 
 ## 3. Layout
 
@@ -2389,7 +2556,8 @@ the dev server on a local board. G: the score gate, outside the repository
     every card the truth can't anchor, and any request to a host other
     than `api.github.com`, `raw.githubusercontent.com` and
     `cdn.jsdelivr.net`. Then one row per group of request 58 (py42, py8,
-    py17, go76, go11, rust): pull requests, cards, links, strings, right,
+    py17, go76, go11, rust) and of request 66 (java40, java10): pull
+    requests, cards, links, strings, right,
     wrong, right by verdict, unjudged, the `uses` go/types can't judge,
     method-to-own-type pairs dropped, truth links, found, the measure
     against its bar, and seconds; Bun's 41 links among the open's links
@@ -2490,3 +2658,10 @@ the dev server on a local board. G: the score gate, outside the repository
     for every group; hono#5513's and excalidraw#12237's reviews are the
     same to the byte but the PR pin's name, `The PR` (request 60), and
     their plans change by design (3.1).
+34. (T, G) Java (request 66). T: the units, names, reads and rules of
+    2.2.3, 2.2.4 and 2.2.10, each with the case that must make no link; a
+    Java `super(…)` into an unchanged constructor reaches its class's
+    card. G: java40 and java10 pass, no wrong link and 84 % and 78 % of
+    javac's sure calls found; the other groups give the same numbers as
+    before, and hono#5513's and excalidraw#12237's review and plan stay
+    as they were, byte for byte.

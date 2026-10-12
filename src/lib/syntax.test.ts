@@ -11,9 +11,9 @@ beforeAll(async () => {
 });
 
 describe("grammarOf", () => {
-    it("reads TypeScript, TSX, JavaScript, Python, Go and Rust by extension, and nothing else", () => {
-        expect(["a.ts", "a.mts", "a.cts", "a.d.ts", "a.tsx", "a.js", "a.jsx", "a.mjs", "a.cjs", "a.py", "a.go", "a.rs", "a.vue", "a.rb", "a.pyi"].map(grammarOf)).toEqual([
-            "typescript", "typescript", "typescript", "typescript", "tsx", "javascript", "javascript", "javascript", "javascript", "python", "go", "rust", null, null, null,
+    it("reads TypeScript, TSX, JavaScript, Python, Go, Rust and Java by extension, and nothing else", () => {
+        expect(["a.ts", "a.mts", "a.cts", "a.d.ts", "a.tsx", "a.js", "a.jsx", "a.mjs", "a.cjs", "a.py", "a.go", "a.rs", "A.java", "a.vue", "a.rb", "a.pyi", "a.kt", "a.scala"].map(grammarOf)).toEqual([
+            "typescript", "typescript", "typescript", "typescript", "tsx", "javascript", "javascript", "javascript", "javascript", "python", "go", "rust", "java", null, null, null, null, null,
         ]);
     });
 });
@@ -25,7 +25,7 @@ describe("the parser", () => {
         expect(ts.lineStarts).toEqual([0, 27, 43]);
         expect(syntax.parse("a.tsx", "export const A = () => <div>{1}</div>\n")!.errors).toBe(0);
         expect(syntax.parse("a.js", "module.exports = { a() {} }\n")!.errors).toBe(0);
-        expect(["a.py", "a.go", "a.rs"].map((p, i) => syntax.parse(p, ["def a(): pass\n", "package a\nfunc A() {}\n", "fn a() {}\n"][i])!.errors)).toEqual([0, 0, 0]);
+        expect(["a.py", "a.go", "a.rs", "A.java"].map((p, i) => syntax.parse(p, ["def a(): pass\n", "package a\nfunc A() {}\n", "fn a() {}\n", "class A { void a() {} }\n"][i])!.errors)).toEqual([0, 0, 0, 0]);
     });
 
     it("carries what a grammar's own tags.scm defines, and none of what it references", () => {
@@ -36,6 +36,8 @@ describe("the parser", () => {
         expect(defined(go)).toEqual(["definition.type type_spec", "definition.method method_declaration", "definition.function function_declaration"]);
         const rs = syntax.parse("a.rs", "struct S;\nimpl S {\n    fn run(&self) { helper(); }\n}\nfn helper() {}\n")!;
         expect(defined(rs)).toEqual(["definition.class struct_item", "definition.method function_item", "definition.function function_item", "definition.function function_item"]);
+        const java = syntax.parse("A.java", "class A {\n    A() {}\n    void run() { helper(); }\n    interface I {}\n    enum E { X }\n}\n")!;
+        expect(defined(java)).toEqual(["definition.class class_declaration", "definition.method method_declaration", "definition.interface interface_declaration"]);
         expect(syntax.parse("a.ts", "function a() {}\n")!.tags).toBeUndefined();
     });
 
@@ -55,6 +57,6 @@ describe("the parser", () => {
 describe("the tags queries", () => {
     it("are each pinned grammar's tags.scm, unchanged", () => {
         const file = (pkg: string) => readFileSync(join(import.meta.dirname, "../../node_modules", pkg, "queries/tags.scm"), "utf8");
-        expect([TAGS.python, TAGS.go, TAGS.rust]).toEqual([file("tree-sitter-python"), file("tree-sitter-go"), file("tree-sitter-rust")]);
+        expect([TAGS.python, TAGS.go, TAGS.rust, TAGS.java]).toEqual([file("tree-sitter-python"), file("tree-sitter-go"), file("tree-sitter-rust"), file("tree-sitter-java")]);
     });
 });

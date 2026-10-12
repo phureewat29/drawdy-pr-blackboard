@@ -75,6 +75,68 @@ describe("readSources", () => {
         expect([...sources.facts.keys()]).toEqual(expect.arrayContaining(["utils.py", "src/utils.py", "app/models.py"]));
     });
 
+    it("reads for a Java file its imports' files and its package's types it names, java.lang's names among them, src/main's from src/test, and every class's supertypes, round after round; a JDK package is looked for nowhere", async () => {
+        const repo: Record<string, string> = {
+            "src/main/java/org/x/App.java":
+                "package org.x;\n\nimport java.util.List;\nimport org.x.util.Strings;\nimport org.junit.Test;\nimport static org.x.util.Strings.join;\n\nclass App extends Base {\n    Helper h;\n    void run() { Strings.join(\"a\"); new Helper(); String s; }\n}\n",
+            "src/main/java/org/x/Base.java": "package org.x;\n\nclass Base extends Root {}\n",
+            "src/main/java/org/x/Root.java": "package org.x;\n\nclass Root {}\n",
+            "src/main/java/org/x/Helper.java": "package org.x;\n\nclass Helper {}\n",
+            "src/main/java/org/x/Unused.java": "package org.x;\n\nclass Unused {}\n",
+            "src/main/java/org/x/util/Strings.java": "package org.x.util;\n\npublic class Strings {\n    public static String join(String a) { return a; }\n}\n",
+            "src/test/java/org/x/AppTest.java": "package org.x;\n\nclass AppTest {\n    void t() { new App().run(); new Fixture(); }\n}\n",
+            "src/test/java/org/x/Fixture.java": "package org.x;\n\nclass Fixture {}\n",
+        };
+        const asked: string[] = [];
+        const read = async (path: string) => {
+            asked.push(path);
+            return repo[path] ?? null;
+        };
+        const sources = await readSources([changed("src/main/java/org/x/App.java"), changed("src/test/java/org/x/AppTest.java")], read, testParse);
+        expect(new Set(asked).size).toBe(asked.length);
+        expect([...sources.texts.keys()]).toEqual([
+            "src/main/java/org/x/App.java",
+            "src/test/java/org/x/AppTest.java",
+            "src/main/java/org/x/util/Strings.java",
+            "src/main/java/org/x/Base.java",
+            "src/main/java/org/x/Helper.java",
+            "src/test/java/org/x/Fixture.java",
+            "src/main/java/org/x/Root.java",
+        ]);
+        expect(asked).toEqual(expect.arrayContaining(["src/test/java/org/x/App.java", "src/main/java/org/junit/Test.java", "src/main/java/org/x/String.java"]));
+        expect(asked.some((p) => p.includes("java/util") || p.includes("Unused"))).toBe(false);
+    });
+
+    it("reads a Java name in the roots the file sees alone, never another module's nor a package imported on demand, java.lang's names in a declaration's header, and a supertype a nested type of the same name doesn't hide", async () => {
+        const repo: Record<string, string> = {
+            "core/src/main/java/org/x/Core.java": "package org.x;\n\npublic class Core {}\n",
+            "core/src/main/java/org/x/Other.java": "package org.x;\n\npublic class Other {}\n",
+            "core/src/main/java/org/x/util/Tool.java": "package org.x.util;\n\npublic class Tool {}\n",
+            "it/src/main/java/org/x/Builder.java": "package org.x;\n\npublic interface Builder {}\n",
+            "it/src/main/java/org/x/Lib.java": "package org.x;\n\npublic class Lib {\n    public void take(Integer i) {}\n}\n",
+            "it/src/test/java/org/x/UseTest.java":
+                "package org.x;\n\nimport java.util.*;\nimport org.x.util.*;\n\nclass UseTest {\n    void t() { new Core(); new Tool(); List<String> l; new Lib(); }\n}\n",
+            "it/src/test/java/org/x/Made.java": "package org.x;\n\nclass Made implements Builder {\n    static class Builder {}\n}\n",
+        };
+        const asked: string[] = [];
+        const read = async (path: string) => {
+            asked.push(path);
+            return repo[path] ?? null;
+        };
+        const sources = await readSources([changed("core/src/main/java/org/x/Other.java"), changed("it/src/test/java/org/x/UseTest.java"), changed("it/src/test/java/org/x/Made.java")], read, testParse);
+        expect(new Set(asked).size).toBe(asked.length);
+        expect([...sources.texts.keys()].sort()).toEqual([
+            "core/src/main/java/org/x/Other.java",
+            "it/src/main/java/org/x/Builder.java",
+            "it/src/main/java/org/x/Lib.java",
+            "it/src/test/java/org/x/Made.java",
+            "it/src/test/java/org/x/UseTest.java",
+        ]);
+        // UseTest's names in its own roots, test then main; Lib's header's java.lang name in Lib's.
+        expect(asked).toEqual(expect.arrayContaining(["it/src/test/java/org/x/Core.java", "it/src/main/java/org/x/Core.java", "it/src/main/java/org/x/List.java", "it/src/main/java/org/x/String.java", "it/src/main/java/org/x/Integer.java"]));
+        expect(asked.some((p) => p.startsWith("core/src/main/java/org/x/C") || p.includes("/util/") || p.endsWith("/java/util/List.java"))).toBe(false);
+    });
+
     it("parses every changed Python, Go and Rust file it reads, however much there is: only READ.chars leaves a file out", async () => {
         const files = Array.from({ length: 9 }, (_, i): PrFile => ({ path: `src/f${i}.rs`, status: "modified", additions: 100 + i, deletions: 0, patch: "@@ -1,1 +1,1 @@\n+x" }));
         const parsed: string[] = [];
@@ -99,10 +161,10 @@ describe("the files read", () => {
     });
 
     it("take a code file the parser doesn't read only with its patch, but for one added whole, whose every line is new", () => {
-        const added: PrFile = { path: "src/New.java", status: "added", additions: 300, deletions: 0 };
-        const big: PrFile = { path: "src/Big.java", status: "modified", additions: 3000, deletions: 10 };
-        const parsed: PrFile = { path: "src/big.rs", status: "modified", additions: 3000, deletions: 10 };
-        expect(changedSources([added, big, parsed, changed("src/Small.java")]).map((f) => f.path)).toEqual(["src/New.java", "src/big.rs", "src/Small.java"]);
+        const added: PrFile = { path: "src/New.kt", status: "added", additions: 300, deletions: 0 };
+        const big: PrFile = { path: "src/Big.kt", status: "modified", additions: 3000, deletions: 10 };
+        const parsed: PrFile = { path: "src/Big.java", status: "modified", additions: 3000, deletions: 10 };
+        expect(changedSources([added, big, parsed, changed("src/Small.kt")]).map((f) => f.path)).toEqual(["src/New.kt", "src/Big.java", "src/Small.kt"]);
     });
 
     it("on a big pull request, are the largest changes in its main languages, spread across top-level directories, tooling folders aside", () => {

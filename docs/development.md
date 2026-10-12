@@ -47,11 +47,16 @@ worker runs the rest (see below).
    file's imports by module (`a/b.py`, then `a/b/__init__.py`), and one
    hop more where a module read imports the name from another; for Go, the
    `go.mod` nearest each changed file; for Rust nothing more, and no test
-   in a file of its own. Every changed file read is parsed, however much
-   there is.
+   in a file of its own. For Java, in the roots a file sees (its own, and
+   `src/main/java` from a test root), a changed file's single-type and
+   static imports' files and the names it uses that its package may declare
+   (`<root>/<package>/<Name>.java`); in every other file read, the
+   java.lang names its declarations' headers write; and every file's
+   supertypes, round after round until no path is new. Every changed file
+   read is parsed, however much there is.
 3. **Parse** (`syntax.ts`, `facts.ts`, `anyfacts.ts`): tree-sitter
    (web-tree-sitter 0.27.1, vendored in `src/vendor/web-tree-sitter.ts`)
-   with the TypeScript, TSX, JavaScript, Python, Go and Rust grammars. The
+   with the TypeScript, TSX, JavaScript, Python, Go, Rust and Java grammars. The
    driver's `grammars.ts` downloads them from jsDelivr at pinned versions,
    checks each against a SHA-256 written in `PINS` (`sha256.ts`; the
    worker has no `crypto.subtle`), and keeps them in kv-storage as
@@ -62,7 +67,7 @@ worker runs the rest (see below).
    arrays, then `facts.ts` reads each JavaScript or TypeScript file's units
    (the declarations a card can stand for), scopes and bindings, sites
    (every name that refers to something), imports, exports and the
-   members of its classes and objects. Python, Go and Rust go to
+   members of its classes and objects. Python, Go, Rust and Java go to
    `anyfacts.ts`, which takes its units from the definitions in the
    grammar's own `tags.scm` (`tags.ts`), and the rest as the language's
    rule table in `langs/` says.
@@ -90,11 +95,23 @@ worker runs the rest (see below).
    an import that may run after its file changes `sys.path`, a Go file
    another build holds, or an inherent Rust method a trait method of an
    earlier step of the method probe may come before (spec 2.2.10).
+   Java resolves in `langs/java.ts` over the same index, by the JLS's
+   own rules where the files read prove them: a package's types in the
+   roots a file sees, single-type and static imports, member types and
+   fields declared or inherited, the members of a receiver whose type is
+   written, built, or a field's or a method's result, a type variable a
+   subclass binds, protected access, and overloads by their arguments'
+   static types, as javac's three phases pick them. A supertype not read,
+   a class the parser left a gap in, or one Lombok writes into may hold
+   any member, so only what nothing unseen can replace links; the JDK's
+   common supertypes (by reflection) and the packages it exports are known
+   from `langs/jdk.ts`, generated from JDK 21.
 5. **Build the review** (`model.ts`): pins and links. In a parsed file a
    changed line belongs to the innermost unit whose range, from its first
    comment to its last line, holds it; other files keep the line patterns
-   of `symbols.ts`. A method's card is named with its type in Python, Go
-   and Rust (`Store.delete()`, `Server.Start()`, `Request::new()`; a
+   of `symbols.ts`. A method's card is named with its type in Python, Go,
+   Rust and Java (`Store.delete()`, `Server.Start()`, `Request::new()`,
+   `Parser.parse()`, a Java constructor `Parser()`; a
    Python property without `()`, `Dependant.is_gen_callable`; on the
    card, a name too long for its header loses its type from the left,
    never the method, `headerName` in `card.ts`), and a
@@ -106,7 +123,8 @@ worker runs the rest (see below).
    thread gets at most one context card: the first unchanged function in
    the files read whose code references its entry, and isn't
    `@deprecated`. Then every resolved reference makes a link from the
-   innermost card holding it to the card standing for what it names: from
+   innermost card holding it to the card standing for what it names (a
+   Java constructor with no card of its own, its class's): from
    a test card `tests`, from the context card `context` (reading `calls` or
    `uses` by its references), then `calls` for any call, `uses` for any
    other reference, `imports` for imports alone. A file no parser reads
@@ -553,9 +571,10 @@ a fake fetch (API answers from saved `api.json`, raw files from `git
 cat-file` at the head commit, the wasm from `node_modules`) and scores every
 link against TypeScript's references and hand judgments, next to the
 parser prototype's (spec 2.2.9). It then opens request 56's Python and Go
-pull requests, the survey's, and oven-sh/bun#30412 from saved data, and
-scores their links against frozen truths: pyright's definitions for
-Python, go/types for Go, and Bun's 41 hand-checked Rust links. It judges
+pull requests, the survey's, oven-sh/bun#30412 and request 66's 50 Java
+pull requests (java40, and java10 held out) from saved data, and scores
+their links against frozen truths: pyright's definitions for Python,
+go/types for Go, Bun's 41 hand-checked Rust links, and javac's for Java. It judges
 every link in each review, the card limit lifted, lists any link no
 truth covers, and scans every resolved reference for use sites that are
 no use. A link a truth flags counts as wrong until someone reads the code
@@ -579,7 +598,8 @@ src/
                        diff, highlighting, graph, model, cards, Markdown,
                        layout, string curves and colours, camera and Read
                        all placement, guards, helpers
-  lib/langs/           the rule tables of Python, Go and Rust
+  lib/langs/           the rule tables of Python, Go, Rust and Java, and the
+                       JDK types Java's resolver knows (jdk.ts, generated)
   lib/fixtures/        honojs/hono#5513 and excalidraw/excalidraw#12237, saved for tests
   vendor/              marked 18.0.9, unchanged; web-tree-sitter 0.27.1, its
                        Node-only branches removed (see its header)
@@ -602,7 +622,7 @@ use `.ts` extensions, so scripts and tests run on Node 24 without a build step.
 - Run `npm run check`, push, then `drawdy login` and `drawdy submit`. Follow
   progress with `drawdy submissions`. The marketplace scanner flags `fetch(`
   for its reviewer: PR Blackboard fetches only `api.github.com` and
-  `raw.githubusercontent.com` (`src/lib/github.ts`), and the seven pinned
+  `raw.githubusercontent.com` (`src/lib/github.ts`), and the eight pinned
   wasm files from `cdn.jsdelivr.net` (`src/driver/grammars.ts`), each
   checked against its SHA-256.
 
@@ -664,8 +684,8 @@ use `.ts` extensions, so scripts and tests run on Node 24 without a build step.
   would send a few bytes instead.
 - A rebuild's swap is two undo steps, the add and the removal: DDP 1.3
   snapshots history before every scene command.
-- In languages the parser doesn't read (Ruby, Java, Kotlin, Swift, C#,
-  PHP, C and more), declarations are found by their shape, on formatted
+- In languages the parser doesn't read (Ruby, Kotlin, Swift, C#, PHP, C,
+  Scala and more), declarations are found by their shape, on formatted
   code, and draw no string; code that doesn't indent its blocks, or
   declarations it doesn't recognise, fall back to file cards.
 - Python, Go and Rust link only what their rule tables prove. No string
@@ -681,15 +701,39 @@ use `.ts` extensions, so scripts and tests run on Node 24 without a build step.
   `PYTHONPATH`, `importlib`), nor into a Go file whose build the
   source's doesn't imply.
   Rust links only inside a file, until the crate's `mod` tree is read.
+- Java links only what javac would resolve and the files read prove.
+  Nothing into another module: which modules a build puts beside a file,
+  and which copy of a class two modules declare, the files don't say. No
+  type through an on-demand import, which loses to a type of the file's
+  own package the reads may not see (another module's half of a split
+  package, a second class in a file named for another). No string where
+  a supertype isn't read, a library's class or interface or another
+  module's type: there a class's members other than its own, and every
+  type name in its body, which an unseen member type might shadow, stay
+  unknown; the same in a class the parser left a gap in (`T @Nullable ...
+  xs` doesn't parse in tree-sitter-java 0.23.5) or one Lombok writes
+  members into. None through a name a static on-demand import of a class
+  not read may hold (`import static org.junit.Assert.*`), a lambda's
+  parameter, a library method's result (`Optional.get()`, `List.get(0)`),
+  a type variable of an expression's type, a protected member JLS 6.6.2
+  keeps from the site, or an overload the arguments' known types don't
+  settle (a parameter type with type arguments settles one only for an
+  argument of the type written alike, or where its arguments are
+  wildcards or the method's own lone type variables). A type of
+  a package the JDK has is the JDK's, never a stub's in the repository. A
+  call goes to the method javac picks, never to an override chosen at run
+  time.
 - Deleted functions have no card: PR Blackboard reads only head files. Their
   lines show on the neighbouring card or the file's card.
 
 ## Status
 
-Verified with `npm run typecheck` (clean), `npm test` (23 suites, 401
-tests), `npm run check` (all 57 checks; the bundle 792.4 KB unminified,
-541 KB of it the parser worker's script) and the score gate
-(`node SCRATCH/research/gate/run.ts`, `GATE PASS`; spec 2.2.9):
+Verified with `npm run typecheck` (clean), `npm test` (25 suites, 489
+tests), `npm run check` (all 57 checks; the bundle 969.7 KB unminified,
+697 KB of it the parser worker's script) and the score gate
+(`node SCRATCH/research/gate/run.ts`; spec 2.2.9), where every group
+passes but the two Java ones, under their 90 % bar since the link review
+below:
 
 | Pull requests | Links | Wrong | True links found |
 |---|---|---|---|
@@ -700,6 +744,8 @@ tests), `npm run check` (all 57 checks; the bundle 792.4 KB unminified,
 | Go, request 56's 76 | 1,746 | 0 | 1,243 of 1,335 true calls, 93.2 % |
 | Go, the survey's 11 | 295 | 0 | 295 of 316, 93.4 % |
 | Rust, oven-sh/bun#30412 | 56 | 0 | its 41 hand-checked links all among the open's links |
+| Java, request 66's 40 | 998 | 0 | 734 of 870 true calls, 84.5 % |
+| Java, request 66's 10 held out | 124 | 0 | 104 of 132 true calls, 78.8 % |
 
 A link a truth flags counts as wrong until the code is read: 3, 6, 2 and
 24 such links in the Python and Go rows, and Bun's 56, were read and are
@@ -714,6 +760,39 @@ parameter in 253,357 references. The link review's round 1 cost three
 `tests` links on the 42 and the 17, CPython's `Lib/test/test_csv.py`
 into `Lib/csv.py`: `import csv` names the standard library's. Its
 round 2 lost no true link.
+
+Request 66 adds Java (spec 2.2.10). Its whole reviews hold 1,494 and
+144 links, none wrong; 12 are unjudged: 3 are JavaScript links in a
+Jenkins pull request, and the other 9 match javac's own answers, which it
+marks unsure (an argument's or a parameter's type, or a supertype, it
+can't see). A review of the linker then found wrong links the gate's 50
+pull requests never exercise (annotated varargs that don't parse, type
+arguments read by erasure, a class header seeing its own members,
+protected access, a try's resource in its catch, on-demand imports and
+other modules' copies of a class, java.lang names a package declares,
+Lombok); each is closed, with a test. javac, compiling every file of 12
+whole repositories (19,830 files, its unsure rule widened to overloads
+whose parameter types it can't see), now judges the linker's 608,228
+references there: none wrong; where javac's own pick is unsure (632) or
+it finds nothing (1,433), each distinct pair was read by hand and is
+right. The price is recall: the boards link 84.5 % and 78.8 % of javac's
+sure calls, where they linked 91.0 % and 93.5 %. Most misses need a type
+of another module, which the files can't prove (a build may take another
+module's copy of the class), and a class that implements one hides every
+name in its body, since the unseen type may declare a member type of
+that name; the rest are calls through on-demand imports, a library
+supertype, a lambda's parameter or a library method's result.
+JavaScript and TypeScript boards are the same to the byte
+(`SCRATCH/perf/same.ts`), and the Python, Go and Rust gate numbers are
+unchanged. A Java open asks for 245 raw files on average, 185 of them
+404s: a name's file in each root the file sees, and java.lang's names a
+declaration's header writes. Verified live on drawdy.io before the link
+review (a new local board, system Chrome at 1920 × 1080, `SCRATCH/live/harness.mjs` on a fresh
+profile, the build `npm run check` packs served on a private port, 2
+GitHub requests): apache/commons-lang#1244 opened in 6.8 s with 32 cards,
+its methods named `TypeUtils.equals()` and the like, and labelled `calls`
+strings between them; 33 raw reads, 2 jsDelivr downloads (the runtime and
+the Java grammar, each matching its pin), no console errors.
 
 Request 58 changes no JavaScript or TypeScript link: hono#5513's and
 excalidraw#12237's reviews and board plans are the same to the byte as

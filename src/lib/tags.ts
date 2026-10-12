@@ -130,4 +130,26 @@ export const TAGS: Partial<Record<Grammar, string>> = {
     type: (type_identifier) @name
     !trait) @reference.implementation
 `,
+    // tree-sitter-java 0.23.5, queries/tags.scm
+    java: String.raw`(class_declaration
+  name: (identifier) @name) @definition.class
+
+(method_declaration
+  name: (identifier) @name) @definition.method
+
+(method_invocation
+  name: (identifier) @name
+  arguments: (argument_list) @reference.call)
+
+(interface_declaration
+  name: (identifier) @name) @definition.interface
+
+(type_list
+  (type_identifier) @name) @reference.implementation
+
+(object_creation_expression
+  type: (type_identifier) @name) @reference.class
+
+(superclass (type_identifier) @name) @reference.class
+`,
 };

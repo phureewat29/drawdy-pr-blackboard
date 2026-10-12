@@ -17,7 +17,7 @@ type Lang = InstanceType<typeof Language>;
 type ParseTree = InstanceType<typeof Tree>;
 type TagQuery = InstanceType<typeof Query>;
 
-export type Grammar = "typescript" | "tsx" | "javascript" | "python" | "go" | "rust";
+export type Grammar = "typescript" | "tsx" | "javascript" | "python" | "go" | "rust" | "java";
 
 /** A syntax tree as arrays indexed by node id; node 0 is the root. */
 export type Flat = {
@@ -56,6 +56,7 @@ export const grammarOf = (path: string): Grammar | null => {
     if (ext === "py") return "python";
     if (ext === "go") return "go";
     if (ext === "rs") return "rust";
+    if (ext === "java") return "java";
     return null;
 };
 

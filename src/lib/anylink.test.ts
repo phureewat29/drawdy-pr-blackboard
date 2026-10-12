@@ -585,3 +585,608 @@ describe("Rust", () => {
         expect(found.filter((l) => l.includes(" call "))).toEqual(["src/scope.rs:10 call src/scope.rs:6"]);
     });
 });
+
+/** Every Java reference that resolves, as `links` gives them: the files given are all there is, any other path a 404. */
+const javaLinks = (files: Record<string, string>) => linksKnowing(files, (path) => path in files);
+
+/** Java's links as `path:line ref path:line` of the declaration named, where card names alone would be alike; `exists` as the reads answered (every file but these known absent). */
+const javaTargets = async (files: Record<string, string>, exists: (path: string) => boolean | undefined = (path) => path in files): Promise<string[]> => {
+    const parsed: GFile[] = [];
+    for (const [path, text] of Object.entries(files)) {
+        const f = await testParse(path, text);
+        if (f && isGeneric(f)) parsed.push(f);
+    }
+    return resolveAny(parsed, (f) => langOf(f.path)!.resolver, (path) => files[path], exists).flatMap((r) => r.units.map((u) => `${r.path}:${r.line} ${r.ref} ${u.path}:${u.nameLine}`));
+};
+
+describe("Java", () => {
+    it("reads a package's other types beside a file, and src/main's from src/test, never src/test's from src/main", async () => {
+        const found = await javaLinks({
+            "src/main/java/org/x/Util.java": "package org.x;\n\npublic class Util {\n    static int twice(int x) { return x * 2; }\n}\n",
+            "src/main/java/org/x/App.java": "package org.x;\n\nclass App {\n    int run() { return Util.twice(2) + Fixture.make(); }\n}\n",
+            "src/test/java/org/x/Fixture.java": "package org.x;\n\nclass Fixture {\n    static int make() { return Util.twice(1); }\n}\n",
+        });
+        expect(found).toEqual([
+            "src/main/java/org/x/App.java:4 value class Util",
+            "src/main/java/org/x/App.java:4 call Util.twice()",
+            "src/test/java/org/x/Fixture.java:4 value class Util",
+            "src/test/java/org/x/Fixture.java:4 call Util.twice()",
+        ]);
+    });
+
+    it("follows single-type and static imports in the roots a file sees, never into another module's, nor through an on-demand import", async () => {
+        const util = "package org.x.a;\n\npublic class Util {\n    public static int twice(int x) { return x * 2; }\n    public static class Inner { public static int one() { return 1; } }\n}\n";
+        const other = "package org.x.a;\n\npublic class Other {\n    public static int other() { return 0; }\n}\n";
+        const app = "package org.x.b;\n\nimport org.x.a.Util;\nimport org.x.a.Util.Inner;\nimport static org.x.a.Util.twice;\nimport org.x.a.*;\n\nclass App {\n    int run() { return Util.twice(1) + twice(2) + Inner.one() + Other.other(); }\n}\n";
+        const same = await javaLinks({ "src/main/java/org/x/a/Util.java": util, "src/main/java/org/x/a/Other.java": other, "src/main/java/org/x/b/App.java": app });
+        expect(same.filter((l) => l.includes("/b/App.java"))).toEqual([
+            "src/main/java/org/x/b/App.java:9 value class Util",
+            "src/main/java/org/x/b/App.java:9 call Util.twice()",
+            "src/main/java/org/x/b/App.java:9 call Util.twice()",
+            "src/main/java/org/x/b/App.java:9 value class Inner",
+            "src/main/java/org/x/b/App.java:9 call Inner.one()",
+            "src/main/java/org/x/b/App.java:3 import class Util",
+            "src/main/java/org/x/b/App.java:4 import class Inner",
+            "src/main/java/org/x/b/App.java:5 import Util.twice()",
+        ]);
+        // Another module's copy may not be the one the build puts on the classpath, nor the only one.
+        const modules = await javaLinks({ "core/src/main/java/org/x/a/Util.java": util, "core/src/main/java/org/x/a/Other.java": other, "app/src/main/java/org/x/b/App.java": app });
+        expect(modules.filter((l) => l.startsWith("app/"))).toEqual([]);
+    });
+
+    it("names nothing in another root when two roots read hold the type", async () => {
+        const u = "package org.x;\n\npublic class U {\n    public static void u() {}\n}\n";
+        const found = await javaLinks({ "a/src/main/java/org/x/U.java": u, "b/src/main/java/org/x/U.java": u, "c/src/main/java/org/y/C.java": "package org.y;\n\nimport org.x.U;\n\nclass C {\n    void run() { U.u(); }\n}\n" });
+        expect(found.filter((l) => l.startsWith("c/"))).toEqual([]);
+    });
+
+    it("lets a member type of a class around, a local class, or a single-type import shadow the package's type of that name", async () => {
+        const found = await javaTargets({
+            "src/main/java/p/Node.java": "package p;\n\npublic class Node {\n    void top() {}\n}\n",
+            "src/main/java/q/Node.java": "package q;\n\npublic class Node {\n    public void q() {}\n}\n",
+            "src/main/java/p/A.java": "package p;\n\nimport q.Node;\n\nclass A {\n    void run(Node n) { n.q(); }\n}\n",
+            "src/main/java/p/B.java": "package p;\n\nclass B {\n    class Node { void inner() {} }\n    void run(Node n) { n.inner(); }\n}\n",
+            "src/main/java/p/C.java": "package p;\n\nclass C {\n    void run() {\n        class Node { void local() {} }\n        Node n = new Node();\n        n.local();\n    }\n}\n",
+            "src/main/java/p/D.java": "package p;\n\nclass D {\n    void run(Node n) { n.top(); }\n}\n",
+        });
+        expect(found.filter((l) => !l.startsWith("src/main/java/q/") && !/Node.java/.test(l.split(" ")[0]))).toEqual([
+            "src/main/java/p/A.java:6 type src/main/java/q/Node.java:3",
+            "src/main/java/p/A.java:6 call src/main/java/q/Node.java:4",
+            "src/main/java/p/A.java:3 import src/main/java/q/Node.java:3",
+            "src/main/java/p/B.java:5 type src/main/java/p/B.java:4",
+            "src/main/java/p/B.java:5 call src/main/java/p/B.java:4",
+            "src/main/java/p/D.java:4 type src/main/java/p/Node.java:3",
+            "src/main/java/p/D.java:4 call src/main/java/p/Node.java:4",
+        ]);
+    });
+
+    it("reads a variable before a field, a field of the class around before an outer one's, and a parameter's or a local's written type", async () => {
+        const found = await javaLinks({
+            "p/A.java":
+                "package p;\n\nclass A {\n    Helper helper = new Helper();\n    void run(Other helper) {\n        helper.go();\n    }\n    void walk() {\n        helper.help();\n    }\n    class Inner {\n        void x() { helper.help(); walk(); }\n    }\n}\n\nclass Helper {\n    void help() {}\n}\n\nclass Other {\n    void go() {}\n}\n",
+        });
+        expect(found).toEqual([
+            "p/A.java:4 type class Helper",
+            "p/A.java:4 type class Helper",
+            "p/A.java:4 call class Helper",
+            "p/A.java:5 type class Other",
+            "p/A.java:6 call Other.go()",
+            "p/A.java:9 call Helper.help()",
+            "p/A.java:12 call Helper.help()",
+            "p/A.java:12 call A.walk()",
+        ]);
+    });
+
+    it("reads a receiver that is a variable as no use of its type, though a method shares its name (jsoup#2616's `state.read()`)", async () => {
+        const found = await javaLinks({ "p/A.java": "package p;\n\nclass Helper {\n    void go() {}\n}\n\nclass A {\n    Helper state;\n    Helper state() { return state; }\n    void run() { state.go(); state().go(); }\n}\n" });
+        expect(found).toEqual(["p/A.java:8 type class Helper", "p/A.java:9 type class Helper", "p/A.java:10 call Helper.go()", "p/A.java:10 call A.state()", "p/A.java:10 call Helper.go()"]);
+    });
+
+    it("takes an unqualified call to the innermost class with a member of that name, an inherited one first, and to none past a class whose supertype isn't read", async () => {
+        const found = await javaTargets({
+            "src/main/java/p/Base.java": "package p;\n\nclass Base {\n    void m() {}\n    private void n() {}\n}\n",
+            "src/main/java/p/A.java":
+                "package p;\n\nimport lib.External;\n\nclass A {\n    void m() {}\n    void n() {}\n    void k(int x) {}\n    class Inherits extends Base {\n        void run() { m(); n(); }\n    }\n    class Unknown extends External {\n        void run() { m(); k(1); }\n    }\n    class Own extends External {\n        void own() {}\n        void run() { own(); }\n    }\n}\n",
+        });
+        expect(found.filter((l) => l.startsWith("src/main/java/p/A.java"))).toEqual([
+            "src/main/java/p/A.java:9 type src/main/java/p/Base.java:3",
+            "src/main/java/p/A.java:10 call src/main/java/p/Base.java:4",
+            "src/main/java/p/A.java:10 call src/main/java/p/A.java:7",
+            "src/main/java/p/A.java:17 call src/main/java/p/A.java:16",
+        ]);
+    });
+
+    it("links a call only when one method fits its arguments, varargs counted, overloads across a hierarchy among them", async () => {
+        const found = await javaTargets({
+            "p/Base.java": "package p;\n\nclass Base {\n    void f(String s) {}\n    void g(int x) {}\n    void h(int... xs) {}\n    void k() {}\n    void k(int... xs) {}\n}\n",
+            "p/Sub.java":
+                "package p;\n\nclass Sub extends Base {\n    void f(int x) {}\n    void g(int x) {}\n    void run() {\n        f(1);\n        g(1);\n        h();\n        h(1, 2);\n        k();\n        k(1);\n        new Sub().g(2);\n    }\n}\n",
+        });
+        // `f(1)` passes an int, which only `f(int)` takes; `g(1)` is Sub's, which overrides Base's; `k()` the k of no parameter, `k(1)` the varargs one.
+        expect(found.filter((l) => l.startsWith("p/Sub.java"))).toEqual([
+            "p/Sub.java:3 type p/Base.java:3",
+            "p/Sub.java:7 call p/Sub.java:4",
+            "p/Sub.java:8 call p/Sub.java:5",
+            "p/Sub.java:9 call p/Base.java:6",
+            "p/Sub.java:10 call p/Base.java:6",
+            "p/Sub.java:11 call p/Base.java:7",
+            "p/Sub.java:12 call p/Base.java:8",
+            "p/Sub.java:13 type p/Sub.java:3",
+            "p/Sub.java:13 call p/Sub.java:3",
+            "p/Sub.java:13 call p/Sub.java:5",
+        ]);
+    });
+
+    it("tells same-arity overloads apart by their arguments' static types, as javac's phases do, and leaves them where types can't prove one (jsoup's `t.emit('<')`)", async () => {
+        const found = await javaTargets({
+            "p/T.java":
+                "package p;\n\nimport lib.Unknown;\n\nclass Base {}\nclass Sub extends Base {}\nclass Other {}\n\nclass T {\n    void emit(char c) {}\n    void emit(String s) {}\n    void emit(int[] cs) {}\n    void obj(Object o) {}\n    void obj(String s) {}\n    void amb(Integer i) {}\n    void amb(String s) {}\n    void box(long l) {}\n    void box(Integer i) {}\n    void var(String s) {}\n    void var(String... ss) {}\n    void sub(Base b) {}\n    void sub(Other o) {}\n    <X> void gen(X x) {}\n    void gen(String s) {}\n    void run(int[] codes, Unknown u) {\n        emit('<');\n        emit(\"x\" + 1);\n        emit(codes);\n        obj(null);\n        obj(\"s\");\n        amb(null);\n        box(1);\n        var(\"a\");\n        var(\"a\", \"b\");\n        sub(new Sub());\n        emit(u);\n        gen(\"s\");\n    }\n}\n",
+        });
+        // emit: char, String, int[]; obj(null): the most specific, String; amb(null): ambiguous; box(1): widening before boxing; var: fixed before varargs; sub: a subtype.
+        expect(found.filter((l) => / call /.test(l))).toEqual([
+            "p/T.java:26 call p/T.java:10",
+            "p/T.java:27 call p/T.java:11",
+            "p/T.java:28 call p/T.java:12",
+            "p/T.java:29 call p/T.java:14",
+            "p/T.java:30 call p/T.java:14",
+            "p/T.java:32 call p/T.java:17",
+            "p/T.java:33 call p/T.java:19",
+            "p/T.java:34 call p/T.java:20",
+            "p/T.java:35 call p/T.java:21",
+            "p/T.java:35 call p/T.java:6",
+        ]);
+    });
+
+    it("names nothing a supertype not read may hold: a class's own method only with no argument, nothing it may inherit", async () => {
+        const found = await javaLinks({ "p/A.java": "package p;\n\nimport lib.Base;\n\nclass A extends Base {\n    void own() {}\n    void own(int x) {}\n    void run() {\n        own();\n        own(1);\n        this.own();\n        toString();\n        inherited();\n    }\n}\n" });
+        expect(found).toEqual(["p/A.java:9 call A.own()", "p/A.java:11 call A.own()"]);
+    });
+
+    it("reads an anonymous class's base as its supertype: one not read may hold any member; one read, or a JDK type known, lends what it has", async () => {
+        const found = await javaLinks({
+            "p/A.java":
+                "package p;\n\nimport lib.Callback;\n\nclass A {\n    void go() {}\n    Runnable r = new Runnable() {\n        public void run() { go(); helper(); }\n        void helper() {}\n    };\n    Callback c = new Callback() {\n        public void done() { go(); }\n    };\n    Base b = new Base() {\n        void x() { go(); base(); }\n    };\n}\n\nclass Base {\n    void base() {}\n}\n",
+        });
+        // Runnable has no `go`, so the anonymous Runnable's `go()` is A's; Callback, not read, may have one.
+        expect(found).toEqual([
+            "p/A.java:8 call A.go()",
+            "p/A.java:14 type class Base",
+            "p/A.java:14 type class Base",
+            "p/A.java:14 call class Base",
+            "p/A.java:15 call A.go()",
+            "p/A.java:15 call Base.base()",
+        ]);
+    });
+
+    it("takes a static import's method; two single imports that may hold the name name nothing; a static on-demand import gives what the file may use, an on-demand one no type", async () => {
+        const found = await javaLinks({
+            "p/A.java": "package p;\n\npublic class A {\n    public static int max(int a, int b) { return a; }\n}\n",
+            "p/B.java": "package p;\n\npublic class B {\n    public static int max(int a, int b) { return b; }\n    public static int min(int a) { return a; }\n    public static void f() {}\n    static void hidden() {}\n}\n",
+            "q/C.java": "package q;\n\nimport static p.A.max;\nimport static p.B.max;\nimport static p.B.min;\n\nclass C {\n    int run() { return max(1, 2) + min(3); }\n}\n",
+            "q/D.java": "package q;\n\nimport static p.B.*;\nimport p.*;\n\nclass D {\n    void run() { f(); new A(); hidden(); }\n}\n",
+        });
+        expect(found.filter((l) => l.startsWith("q/"))).toEqual([
+            "q/C.java:8 call B.min()",
+            "q/C.java:3 import A.max()",
+            "q/C.java:4 import B.max()",
+            "q/C.java:5 import B.min()",
+            "q/D.java:7 call B.f()",
+        ]);
+    });
+
+    it("names no type an on-demand import may give, as the package may declare the name in a file of another name or another module; its own type and a single import come first", async () => {
+        const found = await javaTargets({
+            "src/main/java/a/Foo.java": "package a;\n\npublic class Foo {\n    public static void foo() {}\n}\n",
+            "src/main/java/a/Fmt.java": "package a;\n\npublic class Fmt {\n    public static void go() {}\n}\n",
+            "src/main/java/b/Both.java": "package b;\n\npublic class Both {\n    public static void both() {}\n}\n",
+            "src/main/java/c/Foo.java": "package c;\n\nclass Foo {\n    static void foo() {}\n}\n",
+            "src/main/java/c/Helpers.java": "package c;\n\nclass Helpers {}\n\nclass Fmt {\n    static void go() {}\n}\n",
+            "src/main/java/c/Use.java": "package c;\n\nimport a.*;\n\nclass Use {\n    void run() { Foo.foo(); Fmt.go(); }\n}\n",
+            "src/main/java/d/Use.java": "package d;\n\nimport a.*;\n\nclass Use {\n    void run() { Foo.foo(); }\n}\n",
+            "src/main/java/e/Use.java": "package e;\n\nimport b.Both;\nimport a.*;\n\nclass Use {\n    void run() { Both.both(); }\n}\n",
+        });
+        expect(found.filter((l) => /\/[cde]\/Use\.java/.test(l))).toEqual([
+            "src/main/java/c/Use.java:6 value src/main/java/c/Foo.java:3",
+            "src/main/java/c/Use.java:6 call src/main/java/c/Foo.java:4",
+            "src/main/java/e/Use.java:7 value src/main/java/b/Both.java:3",
+            "src/main/java/e/Use.java:7 call src/main/java/b/Both.java:4",
+            "src/main/java/e/Use.java:3 import src/main/java/b/Both.java:3",
+        ]);
+    });
+
+    it("takes a static on-demand import's static field, which hides a type of its name, but no member type; a class not read hides every name", async () => {
+        const found = await javaTargets({
+            "p/K.java": "package p;\n\npublic class K {\n    public static final Go X = new Go();\n    public static class Nested { public static void n() {} }\n    public class Inner { public void i() {} }\n}\n",
+            "p/Go.java": "package p;\n\npublic class Go {\n    public void go() {}\n}\n",
+            "q/X.java": "package q;\n\nclass X {\n    static void go() {}\n}\n",
+            "q/Y.java": "package q;\n\nclass Y {\n    static void y() {}\n}\n",
+            "q/Use.java": "package q;\n\nimport static p.K.*;\n\nclass Use {\n    void run() { X.go(); Nested.n(); Y.y(); }\n    void inner(Inner i) { i.i(); }\n}\n",
+            "r/Use.java": "package r;\n\nimport static ext.Lib.*;\n\nclass Use {\n    void run() { Y.y(); }\n}\n",
+            "r/Y.java": "package r;\n\nclass Y {\n    static void y() {}\n}\n",
+        });
+        expect(found.filter((l) => l.startsWith("q/Use") || l.startsWith("r/Use"))).toEqual([
+            "q/Use.java:6 call p/Go.java:4",
+            "q/Use.java:6 value q/Y.java:3",
+            "q/Use.java:6 call q/Y.java:4",
+        ]);
+    });
+
+    it("names nothing of its package in another module's root, whose copy may not be the one the build sees, nor a test fixture's", async () => {
+        const found = await javaTargets({
+            "core/src/main/java/org/x/Core.java": "package org.x;\n\npublic class Core {\n    public void run() {}\n}\n",
+            "core/src/testFixtures/java/org/x/Fixture.java": "package org.x;\n\npublic class Fixture {\n    public static void make() {}\n}\n",
+            "it/src/test/java/org/x/CoreTest.java": "package org.x;\n\nclass CoreTest {\n    void t(Core c) { c.run(); Fixture.make(); }\n}\n",
+        });
+        expect(found.filter((l) => l.startsWith("it/"))).toEqual([]);
+    });
+
+    it("types a call to `<T> T m(T x)` that stands alone as its one argument of type T, and nothing where T is anything else's", async () => {
+        const found = await javaTargets({
+            "p/A.java":
+                "package p;\n\nclass Foo {\n    void bar() {}\n}\n\nclass A {\n    static <T> T id(T x) { return x; }\n    static <T> T first(T a, T b) { return a; }\n    static <T> T make(Class<T> c) { return null; }\n    static <T> T one(T... xs) { return xs[0]; }\n    static <T> java.util.List<T> list(T x) { return null; }\n    void run(Foo foo) {\n        id(foo).bar();\n        first(foo, foo).bar();\n        make(Foo.class).bar();\n        one(foo).bar();\n        var f = id(foo);\n        f.bar();\n    }\n}\n",
+        });
+        expect(found.filter((l) => / call p\/A\.java:4$/.test(l))).toEqual(["p/A.java:14 call p/A.java:4", "p/A.java:19 call p/A.java:4"]);
+    });
+
+    it("never lets a lambda or a method reference stand for a class, nor for an interface of no abstract method, of two, or of another arity", async () => {
+        const found = await javaTargets({
+            "p/A.java":
+                "package p;\n\ninterface Fn0 { Object get(); }\ninterface Fn1 { Object apply(Object x); }\ninterface Two { void a(); void b(); }\ninterface Marker {}\ninterface Half extends Two { default void b() {} }\nclass Box {}\n\nclass A {\n    void run(Fn0 f) {}\n    void run(Fn1 f) {}\n    void take(Box b) {}\n    void take(Fn0 f) {}\n    void pick(Two t) {}\n    void pick(Marker m) {}\n    void pick(Fn1 f) {}\n    void half(Half h) {}\n    void half(Fn0 f) {}\n    void go() {\n        run(() -> 1);\n        run(x -> x);\n        take(() -> 1);\n        take(this::go);\n        pick(x -> x);\n        half(() -> {});\n    }\n}\n",
+        });
+        expect(found.filter((l) => / call /.test(l))).toEqual([
+            "p/A.java:21 call p/A.java:11",
+            "p/A.java:22 call p/A.java:12",
+            "p/A.java:23 call p/A.java:14",
+            "p/A.java:24 call p/A.java:14",
+            "p/A.java:25 call p/A.java:17",
+        ]);
+    });
+
+    it("counts a call's arguments without the comments between them", async () => {
+        const found = await javaTargets({
+            "p/A.java": "package p;\n\nclass A {\n    void f(int a, int b) {}\n    void f(int a, int b, int c) {}\n    void run() {\n        f(1, // one\n            2);\n        f(/* a */ 1, 2, 3);\n    }\n}\n",
+        });
+        expect(found).toEqual(["p/A.java:7 call p/A.java:4", "p/A.java:9 call p/A.java:5"]);
+    });
+
+    it("knows no type but a final class itself, a record or an enum is one, and that only the eight boxes unbox", async () => {
+        const found = await javaTargets({
+            "p/A.java":
+                "package p;\n\nimport lib.Ext;\n\nfinal class Leaf {}\nrecord Point(int x) {}\n\nclass A {\n    void s(String s) {}\n    void s(Ext e) {}\n    void l(Leaf l) {}\n    void l(Ext e) {}\n    void p(Point p) {}\n    void p(Ext e) {}\n    void c(char c) {}\n    void c(String s) {}\n    void run(Ext e) {\n        s(e);\n        l(e);\n        p(e);\n        c(e);\n    }\n}\n",
+        });
+        expect(found.filter((l) => / call /.test(l))).toEqual(["p/A.java:18 call p/A.java:10", "p/A.java:19 call p/A.java:12", "p/A.java:20 call p/A.java:14"]);
+    });
+
+    it("takes methods whose parameters erase alike for one method overridden, a type variable erased to its bound", async () => {
+        const found = await javaTargets({
+            "p/A.java":
+                "package p;\n\ninterface Maker {\n    <T> T make(Class<T> type, T seed);\n    <N extends Number> N num(N n);\n}\n\nclass Real implements Maker {\n    public <T> T make(Class<T> type, T seed) { return seed; }\n    public <N extends Number> N num(N n) { return n; }\n    public Integer num(Integer i) { return i; }\n    void run() {\n        make(String.class, \"s\");\n        num(1);\n    }\n}\n",
+        });
+        expect(found.filter((l) => / call /.test(l))).toEqual(["p/A.java:13 call p/A.java:9"]);
+    });
+
+    it("binds a class's type variable through a subclass's supertype clauses, and a free one to its one bound; a raw or unread binding binds nothing", async () => {
+        const found = await javaTargets({
+            "p/A.java":
+                "package p;\n\ninterface Maker { void make(); }\nclass Real implements Maker {\n    public void make() {}\n    public void extra() {}\n}\nabstract class Base<MM extends Maker> {\n    protected MM maker;\n    MM get() { return maker; }\n    void own() { maker.make(); }\n}\nclass Mid<X extends Maker> extends Base<X> {}\nclass Test extends Base<Real> {\n    void run() {\n        maker.extra();\n        get().extra();\n        this.maker.extra();\n    }\n}\nclass Test2 extends Mid<Real> {\n    void run() { maker.extra(); }\n}\nclass Raw extends Base {\n    void run() { maker.make(); }\n}\nclass Gen {\n    <T extends Real> void use(T t) { t.extra(); }\n    <T extends Real & Runnable> void both(T t) { t.extra(); }\n}\n",
+        });
+        expect(found.filter((l) => / call /.test(l))).toEqual([
+            "p/A.java:11 call p/A.java:3",
+            "p/A.java:16 call p/A.java:6",
+            "p/A.java:17 call p/A.java:10",
+            "p/A.java:17 call p/A.java:6",
+            "p/A.java:18 call p/A.java:6",
+            "p/A.java:22 call p/A.java:6",
+            "p/A.java:28 call p/A.java:6",
+        ]);
+    });
+
+    it("trusts no member list a parse gap may change, nor a call whose arguments may not fit its one candidate (the review's A: `Class<?> @Nullable ... types` doesn't parse)", async () => {
+        const doc = "/**\n" + " * Names of methods, for messages and logs.\n".repeat(40) + " */\n";
+        const found = await javaTargets({
+            "p/Names.java": `package p;\n\n${doc}public class Names {\n    public static String of(Class<?> c, String m, Class<?> @Nullable ... types) { return ""; }\n    public static String of(String c, String m, String types) { return ""; }\n    public static String only(String s) { return s; }\n}\n`,
+            "p/Use.java": "package p;\n\nclass Use {\n    String run(Class<?> c) { return Names.of(c, \"m\", new Class<?>[0]) + Names.only(1); }\n}\n",
+        });
+        expect(found.filter((l) => / call /.test(l))).toEqual([]);
+    });
+
+    it("binds a type variable through a parameterized receiver's arguments nowhere, so a `Box<Sub>` names nothing of its `T`; `this`, `super` and a subclass's supertype clause do (the review's B)", async () => {
+        const base = {
+            "p/Base.java": "package p;\n\npublic class Base {\n    public void m() {}\n    public void k(Object o) {}\n}\n",
+            "p/Sub.java": "package p;\n\npublic class Sub extends Base {\n    @Override\n    public void m() {}\n    public void k(String s) {}\n}\n",
+            "p/Box.java": "package p;\n\npublic class Box<T extends Base> {\n    public T value;\n    public Box() {}\n    public Box(T v) { value = v; }\n    public T get() { return value; }\n    public static <T extends Base> Box<T> of(T x) { return new Box<>(x); }\n    void own() { get().m(); }\n}\n",
+        };
+        const found = await javaTargets({
+            ...base,
+            "p/Use.java":
+                "package p;\n\npublic class Use {\n    void g(Base x) {}\n    void g(Sub x) {}\n    void run(Box<Sub> b, Box<? extends Sub> w, Sub s) {\n        b.get().m();\n        b.value.m();\n        g(b.get());\n        var v = b.get();\n        v.m();\n        w.get().m();\n        new Box<Sub>(s).get().m();\n        Box.of(s).get().m();\n        Util.<Base>id(s).m();\n        Util.id(s).m();\n    }\n}\n",
+            "p/Util.java": "package p;\n\npublic class Util {\n    public static <T> T id(T x) { return x; }\n}\n",
+            "p/SubBox.java": "package p;\n\npublic class SubBox extends Box<Sub> {\n    void run() {\n        super.get().m();\n        get().m();\n        this.value.m();\n        value.m();\n    }\n}\n",
+        });
+        // Box.own: T free, its bound's m; Use: only Util.id(s), whose T is s's Sub; SubBox: T is Sub.
+        expect(found.filter((l) => /call p\/(Base|Sub)\.java:[45]$/.test(l))).toEqual([
+            "p/Box.java:9 call p/Base.java:4",
+            "p/Use.java:16 call p/Sub.java:5",
+            "p/SubBox.java:5 call p/Sub.java:5",
+            "p/SubBox.java:6 call p/Sub.java:5",
+            "p/SubBox.java:7 call p/Sub.java:5",
+            "p/SubBox.java:8 call p/Sub.java:5",
+        ]);
+    });
+
+    it("never calls a parameterized parameter type a sure fit, so `Set<Artifact>` picks neither `Collection<? extends Project>` nor `Iterable<Artifact>` by erasure (the review's C)", async () => {
+        const found = await javaTargets({
+            "p/Artifact.java": "package p;\n\npublic class Artifact {}\n",
+            "p/Project.java": "package p;\n\npublic class Project {}\n",
+            "p/Resolver.java":
+                "package p;\n\nimport java.util.Collection;\nimport java.util.Set;\n\nclass Resolver {\n    void run(Set<Artifact> artifacts, Set raw) { ignorable(artifacts); ignorable(raw); }\n    private int ignorable(Collection<? extends Project> projects) { return 0; }\n    private int ignorable(Iterable<Artifact> artifacts) { return 1; }\n}\n",
+        });
+        expect(found.filter((l) => / call /.test(l))).toEqual([]);
+    });
+
+    it("takes a parameterized parameter type for sure where the argument's type is written alike, or where a lone type variable of the method's takes any (`<T> T fromJson(String, Class<T>)`)", async () => {
+        const found = await javaTargets({
+            "p/Gson.java":
+                "package p;\n\nimport java.lang.reflect.Type;\nimport java.util.List;\nimport java.util.Map;\nimport java.util.Set;\n\nclass Gson {\n    <T> T fromJson(String json, Class<T> c) { return null; }\n    Object fromJson(String json, Type t) { return null; }\n    int count(Class<?> c, Map<String, Integer> m) { return 0; }\n    int count(Type t, Map<String, Integer> m) { return 1; }\n    <T> void both(List<T> a, Set<T> b) {}\n    void both(Iterable<?> a, Iterable<?> b) {}\n}\n",
+            "p/Use.java":
+                "package p;\n\nimport java.util.List;\nimport java.util.Map;\nimport java.util.Set;\n\nclass Use {\n    void run(Gson gson, Map<String, Integer> ints, Map<String, Long> longs, List<String> l, Set<Integer> s) {\n        gson.fromJson(\"{}\", Use.class);\n        gson.count(Use.class, ints);\n        gson.count(Use.class, longs);\n        gson.both(l, s);\n    }\n}\n",
+        });
+        // `longs` isn't `Map<String, Integer>`; `T` of `both` is written twice, so its first overload may not apply.
+        expect(found.filter((l) => / call /.test(l))).toEqual(["p/Use.java:9 call p/Gson.java:9", "p/Use.java:10 call p/Gson.java:11"]);
+    });
+
+    it("keeps a class's members out of its header but a record's components (the review's D)", async () => {
+        const found = await javaTargets({
+            "p/Base.java": "package p;\n\npublic class Base {\n    public interface Listener { void on(); }\n    public static class Node { public void up() {} }\n    public @interface Ann {}\n}\n",
+            "p/Listener.java": "package p;\n\npublic interface Listener {\n    void on();\n}\n",
+            "p/Node.java": "package p;\n\npublic class Node {\n    public void up() {}\n}\n",
+            "p/Ann.java": "package p;\n\npublic @interface Ann {}\n",
+            "p/A.java": "package p;\n\n@Ann\nclass A extends Base implements Listener {\n    public void on() {}\n}\n",
+            "p/T.java": "package p;\n\nclass T extends Node {\n    static class Node {}\n    void run() { up(); }\n}\n",
+            "p/G.java": "package p;\n\nclass G<X extends Node> extends Base {\n    X x;\n    void run() { x.up(); }\n}\n",
+            "p/R.java": "package p;\n\nrecord R(Node n) {\n    static class Node {}\n}\n",
+        });
+        expect(found.filter((l) => /^p\/[ATGR]\.java:[345] /.test(l) && !/p\/Base\.java:3$/.test(l))).toEqual([
+            "p/A.java:3 type p/Ann.java:3",
+            "p/A.java:4 type p/Listener.java:3",
+            "p/T.java:3 type p/Node.java:3",
+            "p/T.java:5 call p/Node.java:4",
+            "p/G.java:3 type p/Node.java:3",
+            "p/G.java:5 call p/Node.java:4",
+            "p/R.java:3 type p/R.java:4",
+        ]);
+    });
+
+    it("lets code of another package reach a protected member only from a subclass, through its own instance or one of its type, and a protected constructor only through super(…) (the review's E)", async () => {
+        const found = await javaTargets({
+            "p/Base.java": "package p;\n\npublic class Base {\n    public Base(Object o) {}\n    protected Base(String s) {}\n    protected void f(String s) {}\n    public void f(Object o) {}\n    protected static void s(String x) {}\n    public static void s(Object x) {}\n}\n",
+            "q/Use.java": "package q;\n\nimport p.Base;\n\nclass Use {\n    void run(Base b) {\n        b.f(\"x\");\n        Base.s(\"x\");\n        new Base(\"x\");\n    }\n}\n",
+            "q/Kid.java": "package q;\n\nimport p.Base;\n\nclass Kid extends Base {\n    Kid() { super(\"x\"); }\n    void run(Base other, Kid self) {\n        other.f(\"x\");\n        self.f(\"x\");\n        f(\"x\");\n        s(\"x\");\n    }\n}\n",
+        });
+        expect(found.filter((l) => / call /.test(l))).toEqual([
+            "q/Use.java:7 call p/Base.java:7",
+            "q/Use.java:8 call p/Base.java:9",
+            "q/Use.java:9 call p/Base.java:4",
+            "q/Kid.java:6 call p/Base.java:5",
+            "q/Kid.java:8 call p/Base.java:7",
+            "q/Kid.java:9 call p/Base.java:6",
+            "q/Kid.java:10 call p/Base.java:6",
+            "q/Kid.java:11 call p/Base.java:8",
+        ]);
+    });
+
+    it("sees a try's resource in its try block alone, never its catch or finally (the review's F)", async () => {
+        const found = await javaTargets({
+            "p/Foo.java": "package p;\n\npublic class Foo implements AutoCloseable {\n    public void m() {}\n    public void close() {}\n}\n",
+            "p/Bar.java": "package p;\n\npublic class Bar {\n    public void m() {}\n}\n",
+            "p/A.java": "package p;\n\nclass A {\n    Bar r = new Bar();\n    void run() {\n        try (Foo r = new Foo()) {\n            r.m();\n        } catch (RuntimeException e) {\n            r.m();\n        } finally {\n            r.m();\n        }\n    }\n}\n",
+        });
+        expect(found.filter((l) => / call p\/(Foo|Bar)\.java:4$/.test(l))).toEqual(["p/A.java:7 call p/Foo.java:4", "p/A.java:9 call p/Bar.java:4", "p/A.java:11 call p/Bar.java:4"]);
+    });
+
+    it("takes a java.lang name for java.lang's only once the package is known to hold no type of it (the review's I)", async () => {
+        const files = {
+            "p/Error.java": "package p;\n\npublic class Error {\n}\n",
+            "p/H.java": "package p;\n\nclass H {\n    static void handle(Throwable t) {}\n    static void handle(Object o) {}\n}\n",
+            "p/Use.java": "package p;\n\nclass Use {\n    void run() { H.handle(new Error()); }\n}\n",
+        };
+        const handle = (l: string) => l.startsWith("p/Use.java:4 call p/H.java");
+        expect((await javaTargets(files)).filter(handle)).toEqual(["p/Use.java:4 call p/H.java:5"]);
+        // Not asked whether p/Throwable.java exists: H's parameter types aren't sure, so neither overload is.
+        expect((await javaTargets(files, (path) => (path in files ? true : undefined))).filter(handle)).toEqual([]);
+    });
+
+    it("takes a type of a package the JDK exports for the JDK's, never a source root's copy of it, whose own names name nothing (netty's `com.sun.nio.sctp` stubs)", async () => {
+        const found = await javaTargets({
+            "src/main/java/com/sun/nio/sctp/SctpChannel.java": "package com.sun.nio.sctp;\n\npublic abstract class SctpChannel {\n    public static SctpChannel open() { return null; }\n    public abstract Association association();\n}\n",
+            "src/main/java/com/sun/nio/sctp/Association.java": "package com.sun.nio.sctp;\n\npublic class Association {\n}\n",
+            "src/main/java/com/sun/jna/Native.java": "package com.sun.jna;\n\npublic class Native {\n    public static void load() {}\n}\n",
+            "src/main/java/io/x/Use.java": "package io.x;\n\nimport com.sun.jna.Native;\nimport com.sun.nio.sctp.SctpChannel;\n\nclass Use {\n    void run() { SctpChannel.open(); Native.load(); }\n}\n",
+        });
+        // com.sun.jna is no package of the JDK's: its type is the repository's. A stub names nothing, not even its own types.
+        expect(found).toEqual(["src/main/java/io/x/Use.java:7 value src/main/java/com/sun/jna/Native.java:3", "src/main/java/io/x/Use.java:7 call src/main/java/com/sun/jna/Native.java:4", "src/main/java/io/x/Use.java:3 import src/main/java/com/sun/jna/Native.java:3"]);
+    });
+
+    it("trusts no member list Lombok writes into: a class of a file that uses `lombok` (the review's J)", async () => {
+        const found = await javaTargets({
+            "p/Named.java": "package p;\n\npublic interface Named {\n    String getName();\n}\n",
+            "p/BaseEntity.java": "package p;\n\npublic abstract class BaseEntity {\n    public Long getId() { return null; }\n}\n",
+            "p/User.java": "package p;\n\nimport lombok.Getter;\n\n@Getter\npublic class User extends BaseEntity implements Named {\n    private String name;\n    private Long id;\n}\n",
+            "p/Use.java": "package p;\n\nclass Use {\n    String run(User u) { u.getId(); return u.getName(); }\n}\n",
+        });
+        expect(found.filter((l) => / call /.test(l))).toEqual([]);
+    });
+
+    it("types a varargs parameter and a C-style array as arrays", async () => {
+        const found = await javaTargets({
+            "p/A.java": "package p;\n\nclass A {\n    void g(String s) {}\n    void g(String[] s) {}\n    void f(String... names) { g(names); }\n    void h(String names[]) { g(names); }\n    void k() { String xs[] = {}; g(xs); }\n}\n",
+        });
+        expect(found).toEqual(["p/A.java:6 call p/A.java:5", "p/A.java:7 call p/A.java:5", "p/A.java:8 call p/A.java:5"]);
+    });
+
+    it("never reads a type parameter as a type, whatever its name, nor a result whose type is one", async () => {
+        const found = await javaLinks({
+            "p/A.java":
+                "package p;\n\nclass T {\n    void t() {}\n}\n\nclass Box<T> {\n    T item;\n    T get() { return item; }\n    void run() { item.t(); get().t(); }\n    <U> U make(T x) { return null; }\n}\n\nclass User {\n    void run(Box<T> b) { b.get().t(); }\n}\n",
+        });
+        expect(found).toEqual(["p/A.java:10 call Box.get()", "p/A.java:15 type class Box", "p/A.java:15 type class T", "p/A.java:15 call Box.get()"]);
+    });
+
+    it("types `var` from a creation or a method's written result", async () => {
+        const found = await javaLinks({
+            "p/A.java": "package p;\n\nclass Foo {\n    void f() {}\n    Foo self() { return this; }\n}\n\nclass A {\n    void run() {\n        var a = new Foo();\n        a.f();\n        var b = a.self();\n        b.self().f();\n    }\n}\n",
+        });
+        expect(found).toEqual(["p/A.java:5 type class Foo", "p/A.java:10 type class Foo", "p/A.java:10 call class Foo", "p/A.java:11 call Foo.f()", "p/A.java:12 call Foo.self()", "p/A.java:13 call Foo.self()", "p/A.java:13 call Foo.f()"]);
+    });
+
+    it("reads an enum's constants as its own type, and its implicit methods as no card's", async () => {
+        const found = await javaLinks({
+            "p/Color.java":
+                "package p;\n\nenum Color {\n    RED { String label() { return \"red\"; } },\n    GREEN;\n    String label() { return name(); }\n    static Color parse(String s) { return valueOf(s); }\n}\n\nclass A {\n    String run(Color c) {\n        return Color.RED.label() + c.label() + Color.parse(\"x\").label() + Color.valueOf(\"RED\").ordinal();\n    }\n}\n",
+        });
+        expect(found).toEqual([
+            "p/Color.java:7 type enum Color",
+            "p/Color.java:11 type enum Color",
+            "p/Color.java:12 value enum Color",
+            "p/Color.java:12 call Color.label()",
+            "p/Color.java:12 call Color.label()",
+            "p/Color.java:12 value enum Color",
+            "p/Color.java:12 call Color.parse()",
+            "p/Color.java:12 call Color.label()",
+            "p/Color.java:12 value enum Color",
+        ]);
+    });
+
+    it("reaches a record's canonical constructor, compact or implicit, its declared accessors, and its implicit ones on its own card", async () => {
+        const found = await javaTargets({
+            "p/Point.java":
+                "package p;\n\nrecord Point(int x, int y) {\n    Point {\n        if (x < 0) throw new IllegalArgumentException();\n    }\n    Point(int x) { this(x, 0); }\n    int sum() { return x + y; }\n    public int y() { return y; }\n}\n\nrecord Pair(String a) {}\n\nclass A {\n    int run() {\n        Point p = new Point(1, 2);\n        Point q = new Point(1);\n        new Pair(\"a\").a();\n        return p.sum() + p.x() + q.y();\n    }\n}\n",
+        });
+        // A creation uses the type and calls the constructor: the compact one, `Point(int x)`, and Pair's implicit one, whose card is Pair's.
+        expect(found).toEqual([
+            "p/Point.java:7 call p/Point.java:4",
+            "p/Point.java:16 type p/Point.java:3",
+            "p/Point.java:16 type p/Point.java:3",
+            "p/Point.java:16 call p/Point.java:4",
+            "p/Point.java:17 type p/Point.java:3",
+            "p/Point.java:17 type p/Point.java:3",
+            "p/Point.java:17 call p/Point.java:7",
+            "p/Point.java:18 type p/Point.java:12",
+            "p/Point.java:18 call p/Point.java:12",
+            "p/Point.java:18 call p/Point.java:12",
+            "p/Point.java:19 call p/Point.java:8",
+            "p/Point.java:19 call p/Point.java:3",
+            "p/Point.java:19 call p/Point.java:9",
+        ]);
+    });
+
+    it("reaches an interface's default method from what implements it, and `I.super.m()`; never an interface's static method through it", async () => {
+        const found = await javaLinks({
+            "p/Greeter.java":
+                "package p;\n\ninterface Greeter {\n    default String greet() { return \"hi\"; }\n    String name();\n    static void s() {}\n}\n\nclass A implements Greeter {\n    public String name() { return greet(); }\n    String both() { return Greeter.super.greet(); }\n}\n\nclass B {\n    String run(A a, Greeter g) { Greeter.s(); return a.greet() + g.name() + a.name(); }\n}\n\nclass Outer {\n    static void s() {}\n    class In implements Greeter {\n        public String name() { s(); return null; }\n    }\n}\n",
+        });
+        expect(found).toEqual([
+            "p/Greeter.java:9 type interface Greeter",
+            "p/Greeter.java:10 call Greeter.greet()",
+            "p/Greeter.java:11 value interface Greeter",
+            "p/Greeter.java:11 call Greeter.greet()",
+            "p/Greeter.java:15 type class A",
+            "p/Greeter.java:15 type interface Greeter",
+            "p/Greeter.java:15 value interface Greeter",
+            "p/Greeter.java:15 call Greeter.s()",
+            "p/Greeter.java:15 call Greeter.greet()",
+            "p/Greeter.java:15 call Greeter.name()",
+            "p/Greeter.java:15 call A.name()",
+            "p/Greeter.java:20 type interface Greeter",
+            "p/Greeter.java:21 call Outer.s()",
+        ]);
+    });
+
+    it("reads a method reference as a value of the one method of its name, and `T::new` as one of the type and its one constructor", async () => {
+        const found = await javaLinks({
+            "p/A.java":
+                "package p;\n\nclass Util {\n    static int twice(int x) { return x; }\n    static String join(String a) { return a; }\n    static String join(String a, String b) { return a; }\n}\n\nclass Foo {\n    Foo() {}\n    Foo(int x) {}\n}\n\nclass Bar {}\n\nclass A {\n    void run() {\n        Object f = Util::twice;\n        Object g = Util::join;\n        Object h = Foo::new;\n        Object i = Bar::new;\n        Runnable j = this::run;\n    }\n}\n",
+        });
+        // A method reference is a value, as javac's tree says; `Foo::new` names Foo, whose two constructors leave the reference unsure.
+        expect(found).toEqual([
+            "p/A.java:18 value class Util",
+            "p/A.java:18 value Util.twice()",
+            "p/A.java:19 value class Util",
+            "p/A.java:20 value class Foo",
+            "p/A.java:21 value class Bar",
+            "p/A.java:21 value class Bar",
+            "p/A.java:22 value A.run()",
+        ]);
+    });
+
+    it("reads `new T(…)` as a use of T and a call to the constructor that fits the arguments; `this(…)` and `super(…)` as calls", async () => {
+        const found = await javaTargets({
+            "p/A.java":
+                "package p;\n\nclass Base {\n    Base(int x) {}\n    Base(String s) {}\n}\n\nclass Sub extends Base {\n    Sub() { this(1); }\n    Sub(int x) { super(x); }\n}\n\nclass A {\n    Object run() { return new Sub(1); }\n}\n",
+        });
+        // `super(x)` passes the int parameter x: `Base(int)`, not `Base(String)`.
+        expect(found).toEqual(["p/A.java:8 type p/A.java:3", "p/A.java:9 call p/A.java:10", "p/A.java:10 call p/A.java:4", "p/A.java:14 type p/A.java:8", "p/A.java:14 call p/A.java:10"]);
+    });
+
+    it("reaches no member code there may not use: a private one outside its top-level class, a package one outside its package (maven#12941's test)", async () => {
+        const found = await javaTargets({
+            "src/main/java/p/Ctx.java":
+                "package p;\n\npublic class Ctx {\n    public Ctx(int a) {}\n    private Ctx(int a, int b) {}\n    Ctx(String s, int b, int c) {}\n    private void secret(int x) {}\n    void pkg(int x) {}\n    Ctx twice() { return new Ctx(1, 2); }\n    class In {\n        void x() { secret(1); }\n    }\n}\n",
+            "src/test/java/p/CtxTest.java": "package p;\n\nclass CtxTest {\n    Object run(Ctx c) { c.pkg(1); c.secret(2); new Ctx(\"x\", 2, 3); return new Ctx(1, 2); }\n}\n",
+            "src/main/java/q/Other.java": "package q;\n\nimport p.Ctx;\n\nclass Other {\n    void run(Ctx c) { c.pkg(1); new Ctx(\"a\", 1, 2); }\n}\n",
+        });
+        expect(found.filter((l) => !/:3 import /.test(l))).toEqual([
+            "src/main/java/p/Ctx.java:9 type src/main/java/p/Ctx.java:3",
+            "src/main/java/p/Ctx.java:9 type src/main/java/p/Ctx.java:3",
+            "src/main/java/p/Ctx.java:9 call src/main/java/p/Ctx.java:5",
+            "src/main/java/p/Ctx.java:11 call src/main/java/p/Ctx.java:7",
+            "src/test/java/p/CtxTest.java:4 type src/main/java/p/Ctx.java:3",
+            "src/test/java/p/CtxTest.java:4 call src/main/java/p/Ctx.java:8",
+            "src/test/java/p/CtxTest.java:4 type src/main/java/p/Ctx.java:3",
+            "src/test/java/p/CtxTest.java:4 call src/main/java/p/Ctx.java:6",
+            "src/test/java/p/CtxTest.java:4 type src/main/java/p/Ctx.java:3",
+            "src/main/java/q/Other.java:6 type src/main/java/p/Ctx.java:3",
+            "src/main/java/q/Other.java:6 type src/main/java/p/Ctx.java:3",
+        ]);
+    });
+
+    it("reads `this.`, `super.`, `Outer.this.` and a field's written type; an annotation type is a use, java.lang's names none", async () => {
+        const found = await javaLinks({
+            "p/A.java":
+                "package p;\n\n@interface Marker {}\n\nclass Base {\n    void b() {}\n}\n\nclass Helper {\n    void help() {}\n}\n\nclass A extends Base {\n    Helper helper;\n    @Marker @Override\n    void b() {}\n    void run() { this.helper.help(); super.b(); this.b(); }\n    class Inner {\n        void x() { A.this.b(); A.this.helper.help(); }\n    }\n}\n",
+        });
+        expect(found).toEqual([
+            "p/A.java:13 type class Base",
+            "p/A.java:14 type class Helper",
+            "p/A.java:15 type @interface Marker",
+            "p/A.java:17 call Helper.help()",
+            "p/A.java:17 call Base.b()",
+            "p/A.java:17 call A.b()",
+            "p/A.java:19 value class A",
+            "p/A.java:19 call A.b()",
+            "p/A.java:19 value class A",
+            "p/A.java:19 call Helper.help()",
+        ]);
+    });
+
+    it("reads a pattern's variable as a local of no known type where its condition flows, but in an arrow case as its type", async () => {
+        const found = await javaLinks({
+            "p/A.java":
+                "package p;\n\nclass Foo {\n    void ok() {}\n}\n\nclass A {\n    Foo f;\n    void run(Object o) {\n        if (!(o instanceof Foo f)) return;\n        f.ok();\n        switch (o) {\n            case Foo g -> g.ok();\n            default -> {}\n        }\n    }\n    void other() { f.ok(); }\n}\n",
+        });
+        expect(found).toEqual(["p/A.java:8 type class Foo", "p/A.java:10 type class Foo", "p/A.java:13 type class Foo", "p/A.java:13 call Foo.ok()", "p/A.java:17 call Foo.ok()"]);
+    });
+
+    it("knows no member type of a class whose supertype isn't read: an inherited one may shadow the package's", async () => {
+        const found = await javaLinks({ "p/A.java": "package p;\n\nimport lib.Base;\n\nclass Node {}\n\nclass A extends Base {\n    Node n;\n}\n\nclass B {\n    Node n;\n}\n" });
+        expect(found).toEqual(["p/A.java:12 type class Node"]);
+    });
+
+    it("reaches a nested type through its outer one, in a type or an expression", async () => {
+        const found = await javaLinks({
+            "p/A.java":
+                "package p;\n\nclass Outer {\n    static class Inner {\n        static Inner make() { return null; }\n        void go() {}\n    }\n}\n\nclass A {\n    void run() {\n        Outer.Inner.make().go();\n        Outer.Inner x = null;\n    }\n}\n",
+        });
+        expect(found).toEqual(["p/A.java:5 type class Inner", "p/A.java:12 value class Outer", "p/A.java:12 value class Inner", "p/A.java:12 call Inner.make()", "p/A.java:12 call Inner.go()", "p/A.java:13 type class Outer", "p/A.java:13 type class Inner"]);
+    });
+});

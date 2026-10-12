@@ -8,10 +8,11 @@
  */
 
 import { indexFile, type GFile, type LangRules } from "../anyfacts.ts";
-import type { Resolver } from "../anylink.ts";
+import type { ModuleContext, Resolver } from "../anylink.ts";
 import { parseFacts, type FileFacts } from "../facts.ts";
 import { grammarOf, type Grammar, type Syntax } from "../syntax.ts";
 import { GO, GO_RESOLVER, goModsAbove } from "./go.ts";
+import { JAVA, JAVA_RESOLVER, javaWants } from "./java.ts";
 import { packageMarkers, PYTHON, PYTHON_RESOLVER } from "./python.ts";
 import { RUST, RUST_RESOLVER } from "./rust.ts";
 
@@ -26,12 +27,20 @@ export type Lang = {
     packageMarkers?: (path: string) => string[];
     /** Names resolve only inside their own file (Rust, whose crate `mod` tree isn't read): a test file of its own links nothing, so isn't read. */
     local?: true;
+    /**
+     * The files the language's names need, given the files of it read and
+     * what the reads found so far (Java's imports, its package's types and
+     * supertypes): asked again after each round of reads, until no path is
+     * new or `READ.imports` is spent. `changed`: whether the PR changes a file.
+     */
+    wants?: (files: readonly GFile[], ctx: ModuleContext, changed: (path: string) => boolean) => string[];
 };
 
 const LANGS: Partial<Record<Grammar, Lang>> = {
     python: { rules: PYTHON, resolver: PYTHON_RESOLVER, isPackage: (path) => /(^|\/)__init__\.py$/.test(path), packageMarkers },
     go: { rules: GO, resolver: GO_RESOLVER, configFiles: (path) => [goModsAbove(path)] },
     rust: { rules: RUST, resolver: RUST_RESOLVER, local: true },
+    java: { rules: JAVA, resolver: JAVA_RESOLVER, wants: javaWants },
 };
 
 /** The rule table that reads a file, or undefined for JavaScript, TypeScript and the languages without one. */

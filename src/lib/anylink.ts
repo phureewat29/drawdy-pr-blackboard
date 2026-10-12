@@ -10,7 +10,7 @@
  * could hold resolve to nothing, and make no link.
  */
 
-import { scopeAround, type GBinding, type GFile, type GImport, type GScope, type GSite, type Members } from "./anyfacts.ts";
+import { scopeAround, type GBinding, type GFile, type GImport, type GScope, type GSite, type Members, type RefKind } from "./anyfacts.ts";
 import type { Unit } from "./facts.ts";
 import type { Ref } from "./linker.ts";
 import { textOf, type Flat } from "./syntax.ts";
@@ -103,15 +103,24 @@ export type Typing = {
 export type ModuleTry = { first?: readonly string[]; files: readonly string[] };
 
 /**
- * What the resolver reads of a file's language: its typing hooks, the files
- * a module names among those read (`moduleFiles`), and what the read tier
- * tries for a module (`moduleTries`), else every file `moduleFiles` may name.
+ * What the generic resolver reads of a file's language: its typing hooks,
+ * the files a module names among those read (`moduleFiles`), and what the
+ * read tier tries for a module (`moduleTries`), else every file
+ * `moduleFiles` may name.
  */
-export type Resolver = {
+export type GenericResolver = {
     typing: Typing;
     moduleFiles: (from: string, spec: string, level: number, ctx: ModuleContext) => string[];
     moduleTries?: (from: string, spec: string, level: number, ctx: ModuleContext) => ModuleTry[];
 };
+
+/** What a site names, by how it names it: `new Foo()` uses the type and calls its constructor, whose class's card stands for it where it has none (`alt`). */
+export type Named = { ref: RefKind; units: Unit[]; alt?: Unit }[];
+
+/** A language that resolves its own files (Java): given them and what the reads found, what each site names. */
+export type OwnResolver = { program: (files: readonly GFile[], ctx: ModuleContext) => (f: GFile, s: GSite) => Named };
+
+export type Resolver = GenericResolver | OwnResolver;
 
 const MAX_DEPTH = 40;
 const CLASSY = new Set(["class", "type"]);
@@ -122,7 +131,7 @@ const push = <K, V>(map: Map<K, V[]>, key: K, value: V) => {
     else map.set(key, [value]);
 };
 
-const createProgram = (files: readonly GFile[], langOf: (f: GFile) => Resolver, text: (path: string) => string | undefined, exists?: (path: string) => boolean | undefined) => {
+const createProgram = (files: readonly GFile[], langOf: (f: GFile) => GenericResolver, text: (path: string) => string | undefined, exists?: (path: string) => boolean | undefined) => {
     const typing = (f: GFile) => langOf(f).typing;
     const byPath = new Map(files.map((f) => [f.path, f]));
     const pkgOf = new Map(files.map((f) => [f, typing(f).packageKey?.(f.path, f.flat) ?? null]));
@@ -727,16 +736,30 @@ const createProgram = (files: readonly GFile[], langOf: (f: GFile) => Resolver, 
 
 /** Every reference in the files given that names a declaration among them. */
 export const resolveAny = (files: readonly GFile[], langOf: (f: GFile) => Resolver, text: (path: string) => string | undefined, exists?: (path: string) => boolean | undefined): Ref[] => {
-    const program = createProgram(files, langOf, text, exists);
+    const generic = files.filter((f) => "typing" in langOf(f));
+    const program = createProgram(generic, (f) => langOf(f) as GenericResolver, text, exists);
     // A site resolves only to a unit of its own name, or through an import's local name: no other site can make a link.
     const names = new Set<string>();
-    for (const f of files) {
+    for (const f of generic) {
         for (const u of f.units) names.add(u.name);
         for (const i of f.imports) if (i.local) names.add(i.local);
     }
+    // A language that resolves its own files gets them all at once.
+    const own = new Map<OwnResolver, (f: GFile, s: GSite) => Named>();
+    const ownOf = (r: OwnResolver) => {
+        let hit = own.get(r);
+        if (!hit) own.set(r, (hit = r.program(files.filter((g) => langOf(g) === r), { known: files.map((g) => g.path), text, ...(exists ? { exists } : {}) })));
+        return hit;
+    };
     const refs: Ref[] = [];
     for (const f of files) {
-        const conversions = langOf(f).typing.conversions;
+        const lang = langOf(f);
+        if (!("typing" in lang)) {
+            const resolve = ownOf(lang);
+            for (const s of f.sites) for (const { ref, units, alt } of resolve(f, s)) if (units.length > 0) refs.push({ path: f.path, start: s.start, line: s.line, ref, units, ...(alt ? { alt } : {}) });
+            continue;
+        }
+        const conversions = lang.typing.conversions;
         for (const s of f.sites) {
             if (!names.has(s.name)) continue;
             const units = program.resolveSite(f, s).filter((u) => !program.ownType(f, s.start, u));

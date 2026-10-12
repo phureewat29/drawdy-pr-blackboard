@@ -2,7 +2,7 @@ import type { Review } from "../lib/model.ts";
 import type { Ddp } from "./ddp.ts";
 
 /** Bump when the shape of a stored review, or how a review is built, changes, so old copies are refetched. */
-const REVIEW_VERSION = 10;
+const REVIEW_VERSION = 11;
 
 export type Store = {
     /** The review last built for a pull request, when it is for this head commit. */

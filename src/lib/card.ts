@@ -398,8 +398,8 @@ const rowWidth = (r: Row): number => CARD.gutter + rowChars(r) * CARD.charWidth 
 export const pinCard = (pin: Pin, review: Pick<Review, "files" | "links"> & Partial<Pick<Review, "pins">>): CardModel => {
     const built = pin.kind === "change" || pin.kind === "context" ? declRows(pin, review) : pin.kind === "test" ? testRows(pin, review) : fileRows(pin, review);
     const header = 220 + (pin.name.length + (pin.path ?? "").length) * 7;
-    // A Python, Go or Rust declaration's card is wide enough for its whole name, as `headerName` measures it: 52 % of the header at 9.2 px a character.
-    const named = (pin.kind === "change" || pin.kind === "context") && TYPED_METHODS.has(languageOf(pin.path ?? "")) ? Math.ceil((pin.name.length * 9.2) / 0.52 + 28) + 1 : 0;
+    // A Python, Go, Rust or Java declaration's card is wide enough for its whole name, as `headerName` measures it: 52 % of the header at 9.2 px a character.
+    const named = (pin.kind === "change" || pin.kind === "context") && typedMethods(pin.path ?? "") ? Math.ceil((pin.name.length * 9.2) / 0.52 + 28) + 1 : 0;
     const width = Math.round(clamp(Math.max(header, named, ...built.map(rowWidth)), CARD.minWidth, CARD.maxWidth));
     // The code column starts after the gutter, 68 on a context card, and keeps 12 clear at its right.
     const room = width - (pin.kind === "context" ? 68 : CARD.gutter) - 12;
@@ -570,8 +570,8 @@ export const whereOf = (pin: Pin): string => {
     return pin.kind === "change" || pin.kind === "context" ? `${pin.path} · ${pin.from}–${pin.to}` : pin.path;
 };
 
-/** Languages whose method cards are named with their type, `Server.Start()` (`labelOf`). */
-const TYPED_METHODS: ReadonlySet<string> = new Set(["py", "go", "rs"]);
+/** Whether a file's method cards are named with their type, `Server.Start()`: Python's, Go's, Rust's and Java's, whose rule tables name them so. */
+const typedMethods = (path: string) => /\.(py|go|rs|java)$/i.test(path);
 
 /**
  * A card's name as its header shows it, `width` wide: 52 % of the header
@@ -584,7 +584,7 @@ const TYPED_METHODS: ReadonlySet<string> = new Set(["py", "go", "rs"]);
 export const headerName = (pin: Pick<Pin, "kind" | "name" | "path">, width: number): string => {
     const room = Math.floor(((width - 28) * 0.52) / 9.2);
     const parts = /^(\S+)(\.|::)([^\s.:()]+(?:\(\))?)$/.exec(pin.name);
-    if (pin.name.length <= room || !parts || (pin.kind !== "change" && pin.kind !== "context") || !TYPED_METHODS.has(languageOf(pin.path ?? ""))) return pin.name;
+    if (pin.name.length <= room || !parts || (pin.kind !== "change" && pin.kind !== "context") || !typedMethods(pin.path ?? "")) return pin.name;
     const [, type, separator, method] = parts;
     const keep = room - 1 - separator.length - method.length;
     return keep >= 8 ? `…${type.slice(type.length - keep)}${separator}${method}` : method;

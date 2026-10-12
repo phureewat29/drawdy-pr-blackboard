@@ -58,8 +58,8 @@ const merge = (...vs: Val[]): Val => {
     };
 };
 
-/** A reference that resolved: where it is, how it refers, and the declarations it names. */
-export type Ref = { path: string; start: number; line: number; ref: Site["ref"]; units: Unit[] };
+/** A reference that resolved: where it is, how it refers, and the declarations it names; `alt`, the one whose card stands for them where they have none (a constructor's class). */
+export type Ref = { path: string; start: number; line: number; ref: Site["ref"]; units: Unit[]; alt?: Unit };
 
 const CODE_EXT = [".ts", ".tsx", ".d.ts", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"];
 const JS_EXT = /\.(js|jsx|mjs|cjs)$/;

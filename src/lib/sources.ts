@@ -12,7 +12,7 @@
  */
 
 import { isGeneric, type GFile } from "./anyfacts.ts";
-import type { ModuleTry } from "./anylink.ts";
+import type { GenericResolver, ModuleContext, ModuleTry } from "./anylink.ts";
 import type { FileFacts } from "./facts.ts";
 import { limiter } from "./fp.ts";
 import type { PrFile } from "./github.ts";
@@ -270,8 +270,13 @@ export const readSources = async (files: readonly PrFile[], read: Read, parse: P
         for (const p of paths) if (await exists(p)) return p;
         return null;
     };
+    /** The resolver of a language whose modules the read tier tries for its imports: every one but Java's, which says what it wants itself. */
+    const moduleResolver = (path: string): GenericResolver | null => {
+        const resolver = langOf(path)?.resolver;
+        return resolver && "typing" in resolver ? resolver : null;
+    };
     const moduleAnswers = async (from: string, spec: string, level: number): Promise<string[]> => {
-        const resolver = langOf(from)!.resolver;
+        const resolver = moduleResolver(from)!;
         const tries: readonly ModuleTry[] = resolver.moduleTries?.(from, spec, level, context) ?? resolver.moduleFiles(from, spec, level, context).map((c) => ({ files: [c] }));
         const out: string[] = [];
         for (const t of tries) {
@@ -298,7 +303,7 @@ export const readSources = async (files: readonly PrFile[], read: Read, parse: P
     };
     const imports = parsedChanged
         .flatMap((c) => facts.get(c.path) ?? [])
-        .flatMap((f): Promise<string | string[] | null>[] => (isGeneric(f) ? [genericImports(f)] : f.specifiers.map((s) => firstAnswer(moduleCandidates(f.path, s.spec, paths(f.path)).candidates))));
+        .flatMap((f): Promise<string | string[] | null>[] => (isGeneric(f) ? (moduleResolver(f.path) ? [genericImports(f)] : []) : f.specifiers.map((s) => firstAnswer(moduleCandidates(f.path, s.spec, paths(f.path)).candidates))));
     let added = 0;
     const taken = new Set([...texts.keys()].filter((p) => !onlyMarkers.has(p)));
     const readAll = async (targets: readonly Promise<string | string[] | null>[]) => {
@@ -318,11 +323,11 @@ export const readSources = async (files: readonly PrFile[], read: Read, parse: P
     const reexports: Promise<string[]>[] = [];
     for (const c of parsedChanged) {
         const f = facts.get(c.path);
-        const lang = langOf(c.path);
-        if (!f || !isGeneric(f) || !lang) continue;
+        const resolver = moduleResolver(c.path);
+        if (!f || !isGeneric(f) || !resolver) continue;
         for (const i of f.imports) {
             if (i.name === null || i.name === "*" || i.unproven) continue;
-            const from = facts.get(lang.resolver.moduleFiles(f.path, i.spec, i.level, context).find((p) => facts.has(p)) ?? "");
+            const from = facts.get(resolver.moduleFiles(f.path, i.spec, i.level, context).find((p) => facts.has(p)) ?? "");
             if (!from || !isGeneric(from)) continue;
             for (const j of from.imports) if (j.local === i.name && !j.unproven) reexports.push(markers(from.path).then(() => moduleAnswers(from.path, j.spec, j.level)));
         }
@@ -331,5 +336,24 @@ export const readSources = async (files: readonly PrFile[], read: Read, parse: P
     // The pull request's files are there at the head, but those it removes or renames away.
     const there = new Map(files.flatMap((f): [string, boolean][] => [[f.path, f.status !== "removed"], ...(f.previousPath && f.previousPath !== f.path ? [[f.previousPath, false] as [string, boolean]] : [])]));
     const existing = (path: string) => (texts.has(path) || found.get(path) === true ? true : (there.get(path) ?? found.get(path)));
+    // What a language wants for its names (Java), asked again of every file of it read after each round, until no path is new or the budget is spent.
+    const changedPaths = new Set(changed.map((f) => f.path));
+    const live: ModuleContext = { known: { [Symbol.iterator]: () => texts.keys() }, text: (path) => texts.get(path), exists: existing };
+    const wanting = [...new Set([...facts.values()].flatMap((f) => (isGeneric(f) && langOf(f.path)?.wants ? [langOf(f.path)!] : [])))];
+    for (const lang of wanting) {
+        for (;;) {
+            const own = [...facts.values()].filter((f): f is GFile => isGeneric(f) && langOf(f.path) === lang);
+            const fresh = [...new Set(lang.wants!(own, live, (path) => changedPaths.has(path)))].filter((path) => !answers.has(path));
+            if (fresh.length === 0 || added >= READ.imports) break;
+            const asked = fresh.map((path) => once(path));
+            for (const [i, path] of fresh.entries()) {
+                const text = await asked[i];
+                if (taken.has(path) || added >= READ.imports || !usable(text)) continue;
+                taken.add(path);
+                added++;
+                await take(path, text);
+            }
+        }
+    }
     return { texts, facts, paths, exists: existing };
 };

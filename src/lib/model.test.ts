@@ -193,6 +193,21 @@ describe("Python, Go and Rust", () => {
         expect(alone.links.filter((l) => l.kind === "calls")).toHaveLength(1);
     });
 
+    it("draw Java's constructor call to its class's card where the constructor has none", async () => {
+        const review = await small(
+            {
+                "src/main/java/p/Base.java": "package p;\n\npublic class Base {\n    long count;\n\n    protected Base(int x) {}\n}\n",
+                "src/main/java/p/Sub.java": "package p;\n\npublic class Sub extends Base {\n    Sub() {\n        super(1);\n    }\n}\n",
+            },
+            {
+                "src/main/java/p/Base.java": "@@ -1,6 +1,6 @@\n package p;\n \n public class Base {\n-    int count;\n+    long count;\n \n     protected Base(int x) {}",
+                "src/main/java/p/Sub.java": "@@ -3,5 +3,5 @@\n public class Sub extends Base {\n     Sub() {\n-        super(0);\n+        super(1);\n     }\n }",
+            }
+        );
+        const name = (id: string) => review.pins.find((p) => p.id === id)!.name;
+        expect(review.links.map((l) => `${l.kind} ${name(l.from)} → ${name(l.to)}`)).toEqual(["calls Sub() → class Base"]);
+    });
+
     it("draw no string in a language without a rule table: its cards come from line patterns", async () => {
         const review = await small(
             { "lib/a.rb": "class A\n  def run\n    helper(1)\n  end\n\n  def helper(x)\n    x\n  end\nend\n" },

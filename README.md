@@ -67,8 +67,8 @@ together, and on a big PR that takes most of the review.
   **Home** takes you back to the examples, and your board stays.
   **Rebuild** reads the PR again after new commits.
 
-Lines are drawn for **JavaScript, TypeScript, Python, Go and Rust**. PRs
-in other languages get a card for every change.
+Lines are drawn for **JavaScript, TypeScript, Python, Go, Rust and Java**.
+PRs in other languages get a card for every change.
 
 ## Try it in 30 seconds
 
@@ -84,10 +84,10 @@ in other languages get a card for every change.
 - Works with public PRs on GitHub. No account or sign-in.
 - GitHub allows 60 requests an hour without signing in. Opening a PR uses
   2, and a very big one more: Bun's 2,188-file rewrite takes 23.
-- The first PR in a language downloads that language's parser, once: 83 KB
-  for the engine, then 38 KB for Go, 49 KB for JavaScript, 64 KB for
-  Python, 114 KB for Rust or 133 KB for TypeScript. It stays on your device
-  after that.
+- The first PR in a language downloads that language's parser, once: 81 KB
+  for the engine, then 37 KB for Go, 46 KB for JavaScript, 48 KB for Java,
+  63 KB for Python, 110 KB for Rust or 128 KB for TypeScript. It stays on
+  your device after that.
 - The board is yours: move the cards, draw on them, add sticky notes.
 - PR Blackboard only reads. It never approves, comments on or changes
   anything on GitHub.

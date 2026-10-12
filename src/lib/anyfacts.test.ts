@@ -60,3 +60,34 @@ describe("Rust's units", () => {
         expect(units(f)).toEqual(["type Request 1-5", "impl Request 7-12", "Request::new() 8-11", "impl Display for Request 14-18", "Request::fmt() 15-17", "helper() 20-20"]);
     });
 });
+
+describe("Java's units", () => {
+    it("are types named by their keyword, methods with their type, constructors `Type()`, and the members of nested types", async () => {
+        const f = await index(
+            "src/main/java/org/x/Box.java",
+            "package org.x;\n\n/** A box. */\n@Deprecated\npublic class Box<T> {\n    Box() {}\n\n    T get() { return null; }\n\n    interface Sink { void put(int x); }\n    enum Color { RED { void m() {} }; void m() {} }\n    record Point(int x) { Point { } int twice() { return x * 2; } }\n    @interface Tag { String value() default \"\"; }\n}\n"
+        );
+        expect(units(f)).toEqual([
+            "class Box 3-14",
+            "Box() 6-6",
+            "Box.get() 8-8",
+            "interface Sink 10-10",
+            "Sink.put() 10-10",
+            "enum Color 11-11",
+            "Color.m() 11-11",
+            "record Point 12-12",
+            "Point() 12-12",
+            "Point.twice() 12-12",
+            "@interface Tag 13-13",
+            "Tag.value() 13-13",
+        ]);
+    });
+
+    it("leave a local or anonymous class's members, and an enum constant's body, to the code around them", async () => {
+        const f = await index(
+            "A.java",
+            "class A {\n    Runnable r = new Runnable() { public void run() { go(); } };\n    void go() {\n        class Local { void inner() {} }\n        Runnable q = () -> { class InLambda { void x() {} } };\n    }\n    static { class Init { void y() {} } }\n}\n"
+        );
+        expect(units(f)).toEqual(["class A 1-8", "A.go() 3-6"]);
+    });
+});
