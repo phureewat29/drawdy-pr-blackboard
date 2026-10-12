@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Lines for Clojure, ClojureScript and `.cljc`: `alias/f`, a namespace's
+  own vars and the vars its `ns` form refers. A `.cljc` line needs every
+  platform to agree. Nothing is drawn through a macro the files can't
+  read, a protocol's method or Java interop; from a `comment` form, which
+  never runs; or where a `require`, `load`, `alias` or `alter-meta!`
+  outside the `ns` form may change what a name means.
+
 ## 1.1.0
 
 - Clear takes the PR's cards and lines off the board. It asks first: the

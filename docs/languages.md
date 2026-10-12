@@ -15,6 +15,7 @@ knows no language. It reads them through two lists and one contract,
 | C# | `csharp/` | parsed | rule table, own resolver |
 | PHP | `php/` | parsed | rule table, own resolver |
 | Elixir | `elixir/` | parsed | rule table, own resolver |
+| Clojure, ClojureScript | `clojure/` | parsed | rule table, own resolver |
 | Kotlin, C, C++, Scala, Haskell | `kotlin/`, `c/`, `cpp/`, `scala/`, `haskell/` | parsed | none: units only |
 | Swift, Ruby | `swift/`, `ruby/` | line patterns | none |
 | CSS, HTML, JSON, YAML, TOML, Markdown, shell, SQL | `formats.ts` | whole files | none |
@@ -32,7 +33,7 @@ driver and the parser worker read.
 | `name` | What the reader is told: "Downloading the Python parser" | `driver/grammars.ts` |
 | `extensions`, `names`, `fences` | Which files are this language, and which Markdown fences | `language.ts` |
 | `grammars` | Each tree-sitter grammar: its name, the extensions it parses, its pin (npm package, version, file, SHA-256), and whether its cards name methods with their type | `language.ts`, `driver/grammars.ts`, `card/` |
-| `highlight` | Keywords, the line comment, block comments; `false` for plain text | `highlight.ts` |
+| `highlight` | Keywords, the line comment, block comments, the characters that open a string; `false` for plain text | `highlight.ts` |
 | `lines` | Line patterns that find declarations where no parser reads the file, and comment lines | `symbols.ts` |
 | `tests`, `cases` | Test file names (`_test.go`), and test case names (`describe("…")`) | `language.ts`, `symbols.ts` |
 | `naming` | How a card joins a member's type to its name: `Store.delete()`, `Request::new()` | `symbols.ts` |
@@ -92,9 +93,10 @@ about 1 KB; a units-only pack 4 to 8 KB, and `units-only.ts` 5 KB; a pack
 with a rule table 20 to 40 KB (Go 23 KB, Rust 33 KB, Python 36 KB); PHP,
 with its own resolver and tables of PHP's functions and PHPUnit's
 assertions, 45 KB; Elixir, which also reads Mix projects and the quotes a
-`use` injects, 53 KB; C#, with its own resolver, 88 KB; Java, with its own
-resolver and the JDK's types, 135 KB; JavaScript and TypeScript, 85 KB. A
-grammar's wasm file is
+`use` injects, 53 KB; Clojure, with its own resolver and every platform a
+`.cljc` file is read for, 68 KB; C#, with its own resolver, 88 KB; Java,
+with its own resolver and the JDK's types, 135 KB; JavaScript and
+TypeScript, 85 KB. A grammar's wasm file is
 downloaded apart, once. The bundle's check is 1 MB.
 
 ## Add a language

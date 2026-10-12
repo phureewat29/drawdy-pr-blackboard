@@ -68,6 +68,8 @@ export type Highlight = {
     blocks?: true;
     /** `false`: a capitalised word is no type name (SQL). */
     types?: false;
+    /** The characters that open a string; `"'\`` by default. */
+    strings?: string;
 };
 
 /** The kinds of declaration a card can stand for. */

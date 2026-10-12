@@ -75,7 +75,7 @@ export const highlightLine = (text: string, lang: Language, state: HighlightStat
             break;
         }
         const ch = text[i];
-        if (ch === '"' || ch === "'" || ch === "`") {
+        if ((look?.strings ?? "\"'`").includes(ch)) {
             const end = stringEnd(text, i);
             out += span("s", text.slice(i, end));
             i = end;

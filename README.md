@@ -67,8 +67,8 @@ order in their head. PR Blackboard draws it for you.
   asks first, your own notes stay, and undo brings the board back.
 
 Lines are drawn for **JavaScript, TypeScript, Python, Go, Rust, Java, C#,
-PHP and Elixir**. **Kotlin, C, C++, Scala and Haskell** are parsed too: a
-card for each changed function or class, no lines yet. PRs in other
+PHP, Elixir and Clojure**. **Kotlin, C, C++, Scala and Haskell** are parsed
+too: a card for each changed function or class, no lines yet. PRs in other
 languages get a card for every change.
 
 ## Try it in 30 seconds
@@ -86,10 +86,11 @@ languages get a card for every change.
 - GitHub allows 60 requests an hour without signing in. Opening a PR uses
   2, and a very big one more: Bun's 2,188-file rewrite takes 23.
 - The first PR in a language downloads that language's parser, once: 81 KB
-  for the engine, then 37 KB for Go, 46 KB for JavaScript, 48 KB for Java,
-  63 KB for C or Python, 92 KB for PHP, 110 KB for Rust, 128 KB for
-  TypeScript, 136 KB for Elixir, about 220 KB for Kotlin, C++ or Haskell,
-  246 KB for C#, or 392 KB for Scala. It stays on your device after that.
+  for the engine, then 17 KB for Clojure, 37 KB for Go, 46 KB for
+  JavaScript, 48 KB for Java, 63 KB for C or Python, 92 KB for PHP, 110 KB
+  for Rust, 128 KB for TypeScript, 136 KB for Elixir, about 220 KB for
+  Kotlin, C++ or Haskell, 246 KB for C#, or 392 KB for Scala. It stays on
+  your device after that.
 - The board is yours: move the cards, draw on them, add sticky notes.
 - PR Blackboard only reads. It never approves, comments on or changes
   anything on GitHub.

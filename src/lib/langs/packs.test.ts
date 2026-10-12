@@ -53,12 +53,13 @@ describe("the linkers", () => {
         for (const l of LINKERS) for (const p of l.packs) expect(PACKS).toContain(p);
     });
 
-    it("query units with each grammar's own tags.scm, unchanged, where its package ships one", () => {
+    it("query units with each grammar's own tags.scm, unchanged, or where the grammar ships none with a query of definition captures named @name", () => {
         for (const l of LINKERS) {
             if (l.kind !== "rules") continue;
             const g = l.packs[0].grammars![0];
             const tags = join(NODE_MODULES, g.package, "queries/tags.scm");
             if (existsSync(tags)) expect([g.name, l.units]).toEqual([g.name, readFileSync(tags, "utf8")]);
+            else expect([g.name, /@definition\.\w+/.test(l.units) && /@name\b/.test(l.units)]).toEqual([g.name, true]);
         }
     });
 
