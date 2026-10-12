@@ -91,17 +91,20 @@ pinned`, leaving out a zero part and using `1 function`, `1 file`.
 
 A string must be a fact. PR Blackboard parses every file it reads in
 TypeScript and JavaScript (`.ts .tsx .mts .cts .js .jsx .mjs .cjs`),
-Python (`.py`), Go (`.go`), Rust (`.rs`) and Java (`.java`) with
+Python (`.py`), Go (`.go`), Rust (`.rs`), Java (`.java`), C# (`.cs`), PHP
+(`.php`), Elixir (`.ex .exs`) and Clojure (`.clj .cljs .cljc`) with
 tree-sitter, and follows each name to the declaration it means: through
 scopes, imports, and members whose receiver it can name. Only a reference
 that resolves makes a link. TypeScript and JavaScript have a linker of
-their own (`langs/javascript/`); Python, Go, Rust and Java share one
-generic file index, a rule table per language over the grammar's own
-`tags.scm`, and Python, Go and Rust its resolver (2.2.10, request 58);
-Java resolves by the JLS's own rules (2.2.10, request 66). Kotlin, C, C++,
-Scala and Haskell are parsed for their cards alone (`units-only.ts`); other
-languages keep their cards from line patterns. Neither draws a string (2.2.7). Nothing
-anywhere links code by its name alone.
+their own (`langs/javascript/`); the other eight share one generic file
+index, a rule table per language over the grammar's own `tags.scm` or a
+query of the pack's own, and Python, Go and Rust its resolver (2.2.10,
+request 58); Java resolves by the JLS's own rules (2.2.10, request 66), and
+C#, PHP, Elixir and Clojure each by a resolver of their own
+(`docs/languages.md`). Kotlin, C, C++, Scala and Haskell are parsed for
+their cards alone (`units-only.ts`); other languages keep their cards from
+line patterns. Neither draws a string (2.2.7). Nothing anywhere links code
+by its name alone.
 
 Measured on the 15 scored pull requests (the operator's research,
 `SCRATCH/research/truth`, `exp-parser` and `holdout`), against
@@ -136,7 +139,7 @@ An uncertain link is neither drawn nor listed.
 | `lib/langs/javascript/resolve.ts` | A's resolver, less its uncertain results (2.2.5): what each site names; in `resolve/`, what each expression, type and member is known to be (`evaluator.ts`, its values in `values.ts`), the files an import may stand for (`paths.ts`) and the builtin rule (`builtins.ts`) | `useEdges`, `referenceRows`, `importEdges` and `mentions` for parsed files |
 | `lib/anyfacts.ts` | The generic file index (2.2.10): per file, the units its `tags.scm` defines, scopes and bindings, sites and imports, as a language's rule table reads its nodes | |
 | `lib/anylink.ts` | The generic resolver (2.2.10): one declaration proven through scopes, imports, a package's files, and the members of a receiver whose type is written, built or a class's own; a language that resolves its own files (Java) gets them all at once | `callEdges`, `callsTo` and `rust.ts`: the name-matched calls of every other language |
-| `lib/langs/<language>/` | A pack each: `index.ts` the pack; for Python, Go, Rust and Java, `linker.ts` (the units query, the rule table, the resolver and the read hints), `rules.ts` (nodes, scopes, card names), what the resolver reads (`typing.ts`; Java's own resolver, `java/resolver.ts`, and read tier, `java/wants.ts`) and how a module names files (`modules.ts`); `java/jdk.ts`, the JDK types Java's resolver knows, generated from JDK 21 by reflection. Kotlin, Swift, Ruby, PHP, C# and C have line patterns alone; `c-family.ts` holds what the C family shares, `formats.ts` the file kinds with no declarations | |
+| `lib/langs/<language>/` | A pack each: `index.ts` the pack; for Python, Go, Rust and Java, `linker.ts` (the units query, the rule table, the resolver and the read hints), `rules.ts` (nodes, scopes, card names), what the resolver reads (`typing.ts`; Java's own resolver, `java/resolver.ts`, and read tier, `java/wants.ts`) and how a module names files (`modules.ts`); `java/jdk.ts`, the JDK types Java's resolver knows, generated from JDK 21 by reflection. C#, PHP, Elixir and Clojure have resolvers of their own (`docs/languages.md`); Kotlin, C, C++, Scala and Haskell parse their units alone (`units-only.ts`); Swift and Ruby have line patterns alone; `c-family.ts` holds what the C family shares, `formats.ts` the file kinds with no declarations | |
 | `lib/sources.ts` | The read tier (2.2.3): what each linker reads beside the changed files (a tsconfig through JavaScript's session, `langs/javascript/tsconfig.ts`; `go.mod`; Python's package markers), import candidates, reading through an injected `read(path)` | the source list in `open.ts` |
 | `lib/model.ts` | Cards and links from A's `board.ts`, in `lib/model/`: line ownership (`changes.ts`), threads and their columns (`threads.ts`), the cards with the context caller and file cards (`cards.ts`), links by region (`links.ts`), where tests and file cards hang (`place.ts`), the card limit (`limit.ts`). `Review`, `Pin` and `Link` keep their shape; a parsed unit becomes a `ChangedSymbol`, id `path:nameLine` | `symbolBoard`, `fileBoard`, `addTests` and the mention block |
 | `lib/symbols.ts` | Cards by line patterns, for files no parser reads (2.2.7), with each pack's patterns; card names (`labelOf`); `testCases` | |
@@ -410,8 +413,8 @@ receiver's type and a Rust impl's code in the type it implements, as a
 Python or Java method is in its class: no string runs from a method to
 its own type.
 
-2.2.7 **Other languages.** Ruby, Kotlin, Swift, C#, PHP, C, Scala, `.vue`
-and `.svelte` (highlighted as JavaScript, not parsed), and a file of a
+2.2.7 **Other languages.** Ruby, Swift, `.vue` and `.svelte` (highlighted
+as JavaScript, not parsed), and a file of a
 parsed language the parser can't read, keep `symbols.ts`: declarations
 found by shape and indentation, as cards with no string. A language gets
 strings when its rule table ships with a measured gate (2.2.10); until
@@ -429,10 +432,8 @@ function past a label at column 0. Test cards of these languages sit in
 the bottom row.
 
 2.2.8 **Tests** (Jest; the grammars come from exact-version
-devDependencies `web-tree-sitter@0.27.1`, `tree-sitter-typescript@0.23.2`,
-`tree-sitter-javascript@0.25.0`, `tree-sitter-python@0.25.0`,
-`tree-sitter-go@0.25.0`, `tree-sitter-rust@0.24.0` and
-`tree-sitter-java@0.23.5`, never at run time):
+devDependencies, `web-tree-sitter@0.27.1` and every grammar a pack pins,
+never at run time):
 
 - `sha256.test.ts`: the standard vectors, Node's own hash at every length
   around a block's padding, and each devDependency `.wasm` hashes to its
@@ -2429,7 +2430,7 @@ the dev server on a local board. G: the score gate, outside the repository
    camera call comes before the add; one overview flight follows it.
 2. (C) The 32-card synthetic board's add payload is under 512 KB. The
    bundle, built unminified as the marketplace builds it, is under 1 MB
-   (about 770 KB, 535 KB of it the parser worker's script), prints its
+   (about 860 KB, 570 KB of it the minified parser worker's script), prints its
    size, and has no bare import but `@drawdy/driver-protocol`. The
    listing icon is a 512 px PNG and the button draws its 64 px copy.
 3. (T, C) Every arrow: both bindings, no `elbowRouting`, no `roughness`;

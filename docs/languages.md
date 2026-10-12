@@ -88,16 +88,12 @@ and generated folders, and when the parser's tree isn't trusted (a leading
 
 A pack's `index.ts` ships twice in the marketplace bundle, in the driver
 and in the parser worker's script, so keep it to data; a linker ships once,
-in the worker's script. Measured in the bundle, a pattern-only pack costs
-about 1 KB; a units-only pack 4 to 8 KB, and `units-only.ts` 5 KB; a pack
-with a rule table 20 to 40 KB (Go 23 KB, Rust 33 KB, Python 36 KB); PHP,
-with its own resolver and tables of PHP's functions and PHPUnit's
-assertions, 45 KB; Elixir, which also reads Mix projects and the quotes a
-`use` injects, 53 KB; Clojure, with its own resolver and every platform a
-`.cljc` file is read for, 68 KB; C#, with its own resolver, 88 KB; Java,
-with its own resolver and the JDK's types, 135 KB; JavaScript and
-TypeScript, 85 KB. A grammar's wasm file is
-downloaded apart, once. The bundle's check is 1 MB.
+minified, in the worker's script. Measured in the bundle, a pattern-only
+pack costs about 1 KB; a units-only pack 3 to 6 KB, and `units-only.ts`
+3 KB; a pack with a rule table 15 to 40 KB (Go 15 KB, Rust 21 KB, Python
+22 KB, PHP 28 KB, Elixir 30 KB, Clojure 39 KB); JavaScript and TypeScript,
+48 KB; C#, 55 KB; Java, with the JDK's types, 98 KB. A grammar's wasm file
+is downloaded apart, once. The bundle's check is 1 MB.
 
 ## Add a language
 
