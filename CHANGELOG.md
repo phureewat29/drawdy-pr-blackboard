@@ -13,4 +13,4 @@ First release.
   only where the parser can prove the link.
 - 14 example PRs to try, from Hono, Vite, Node.js, Svelte, Bun, Prometheus,
   CPython and more.
-- Read only: no account, no sign-in, and nothing is changed on GitHub.
+- Read only: no account, no sign-in.
