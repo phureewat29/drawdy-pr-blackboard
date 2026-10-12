@@ -13,8 +13,9 @@ knows no language. It reads them through two lists and one contract,
 | Rust | `rust/` | parsed | rule table |
 | Java | `java/` | parsed | rule table, own resolver |
 | C# | `csharp/` | parsed | rule table, own resolver |
+| PHP | `php/` | parsed | rule table, own resolver |
 | Kotlin, C, C++, Scala, Haskell | `kotlin/`, `c/`, `cpp/`, `scala/`, `haskell/` | parsed | none: units only |
-| Swift, Ruby, PHP | `swift/` and so on | line patterns | none |
+| Swift, Ruby | `swift/`, `ruby/` | line patterns | none |
 | CSS, HTML, JSON, YAML, TOML, Markdown, shell, SQL | `formats.ts` | whole files | none |
 
 ## The contract
@@ -87,8 +88,10 @@ A pack's `index.ts` ships twice in the marketplace bundle, in the driver
 and in the parser worker's script, so keep it to data; a linker ships once,
 in the worker's script. Measured in the bundle, a pattern-only pack costs
 about 1 KB; a units-only pack 4 to 8 KB, and `units-only.ts` 5 KB; a pack
-with a rule table 20 to 40 KB (Go 23 KB, Rust 33 KB, Python 36 KB); C#,
-with its own resolver, 88 KB; Java, with its own resolver and the JDK's
+with a rule table 20 to 40 KB (Go 23 KB, Rust 33 KB, Python 36 KB); PHP,
+with its own resolver and tables of PHP's functions and PHPUnit's
+assertions, 45 KB; C#, with its own resolver, 88 KB; Java, with its own
+resolver and the JDK's
 types, 135 KB; JavaScript and TypeScript, 85 KB. A grammar's wasm file is
 downloaded apart, once. The bundle's check is 1 MB.
 
