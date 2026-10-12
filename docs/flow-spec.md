@@ -1844,7 +1844,7 @@ and `chevron-right` for Previous and Next, `circle`, `loader-circle`,
 line while a rebuild runs), `x` for Read all's close button (an image of the
 SVG, since a schema has no SVG node, stroked in the pinned theme's ink). The
 extension's own icon is the one exception: a generated image (requests
-43, 45 and 59: a stack of diff cards tied with a red string), `.github/assets/icon.png` for the listing, 512 px,
+43, 45 and 59: a stack of diff cards tied with a red string), `.github/assets/icon-256.png` for the listing, 256 px and under the marketplace's 256 KB limit (the 512 px master is `.github/assets/icon.png`),
 and its 64 px copy as a PNG data URI in an SVG for the 20 px action
 button, which Drawdy draws as an image. `npm run icon -- <listing.png>
 <64px.png>` writes both. Only Next's chevron changes the stroke, to 2.5, so it holds its weight on

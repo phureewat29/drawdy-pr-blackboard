@@ -113,6 +113,7 @@ from `cdn.jsdelivr.net`.
 
 ## The icon
 
-`npm run icon -- <listing.png> <64px.png>` writes the 512 px listing icon to
-`.github/assets/icon.png` and the button's 64 px copy into
-`src/shared/app-icon.ts`.
+`npm run icon -- <512px.png> <256px.png> <64px.png>` writes the 512 px master
+to `.github/assets/icon.png`, the 256 px copy the marketplace lists to
+`.github/assets/icon-256.png` (Drawdy refuses a listing icon over 256 KB),
+and the button's 64 px copy into `src/shared/app-icon.ts`.

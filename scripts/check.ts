@@ -170,9 +170,11 @@ try {
     expectThat(!host.calls.some((c) => c.type.includes("context-menu")), "registers no context menu");
     const listing = readFileSync(join(ROOT, (JSON.parse(manifestText) as { icon: string }).icon));
     const button = String(callsOf("command:dom:create-action-button")[0]?.req.svg ?? "");
+    // Drawdy's marketplace build refuses a listing icon over 256 KB.
+    const side = listing.readUInt32BE(16);
     expectThat(
-        listing.toString("latin1", 1, 4) === "PNG" && listing.readUInt32BE(16) === 512 && listing.readUInt32BE(20) === 512 && /^<svg[^>]* width="20" height="20"[^>]*><image href="data:image\/png;base64,/.test(button),
-        `the listing icon is a 512 px PNG, and the 20 px button draws its 64 px copy (${(button.length / 1024).toFixed(1)} KB)`
+        listing.toString("latin1", 1, 4) === "PNG" && side >= 256 && listing.readUInt32BE(20) === side && listing.length <= 256 * 1024 && /^<svg[^>]* width="20" height="20"[^>]*><image href="data:image\/png;base64,/.test(button),
+        `the listing icon is a ${side} px PNG of ${(listing.length / 1024).toFixed(1)} KB (limit 256 KB), and the 20 px button draws its 64 px copy (${(button.length / 1024).toFixed(1)} KB)`
     );
     const opening = host.calls.length;
     await tell({ type: "open", url: "https://github.com/honojs/hono/pull/5513" }, 3000);
