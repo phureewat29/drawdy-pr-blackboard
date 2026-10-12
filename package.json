@@ -1,7 +1,7 @@
 {
     "name": "pr-blackboard",
     "version": "1.0.0",
-    "description": "Drawdy extension: pin a public GitHub PR to the board as an investigation board of linked code cards",
+    "description": "Drawdy extension that lays a public GitHub PR out as one board of linked code cards, so big PRs are easier to follow",
     "author": "Phureewat A <a.phureewat@gmail.com>",
     "license": "MIT",
     "private": true,

@@ -2,7 +2,7 @@
     "driverId": "a.pr-blackboard",
     "driverName": "PR Blackboard",
     "driverVersion": "1.0.0",
-    "description": "Pin a public GitHub PR to your board like an investigation board: the PR, each changed function, the code that calls it and the tests as cards, joined by labelled lines. Follow the lines, step through in board order, and make notes with Drawdy's own sticky notes and pen.",
+    "description": "Big PRs are hard to follow file by file. PR Blackboard lays a public GitHub PR out as one board: each changed function is a card, with labelled lines to the code it calls and the tests that cover it.",
     "icon": "assets/icon.png",
     "main": "main.js",
     "permissions": ["dom", "scene", "storage"]
