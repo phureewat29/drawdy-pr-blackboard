@@ -113,6 +113,4 @@ no account or tracking.
 
 ## License
 
-MIT licensed. The
-[developer guide](https://github.com/phureewat29/drawdy-pr-blackboard/blob/main/docs/development.md)
-covers building it and how it works.
+MIT licensed.
