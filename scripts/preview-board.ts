@@ -32,6 +32,7 @@ import { themeCss } from "../src/driver/channel.ts";
 import { reviewElements } from "../src/driver/elements.ts";
 import { popoverSchema } from "../src/driver/read-all.ts";
 import { currentCardOf } from "../src/driver/runtime.ts";
+import { warningsOf } from "../src/driver/warnings.ts";
 import { webviewHtml } from "../src/driver/webview-html.ts";
 import { projectColour } from "../src/shared/suggestions.ts";
 import type { PanelView } from "../src/shared/protocol.ts";
@@ -149,6 +150,7 @@ const baseView = (review: Review): Omit<PanelView, "phase"> => {
     const label = `${review.pr.ref.owner}/${review.pr.ref.repo}#${review.pr.ref.number}`;
     return {
         loading: [],
+        annotations: [],
         error: null,
         tag: { label, colour: projectColour(label) },
         pr: { title: segments(review.pr.title), state: review.pr.state, additions: review.pr.additions, deletions: review.pr.deletions },
@@ -176,7 +178,7 @@ const readingView = (built: Built, pin: string, more: Partial<PanelView> = {}): 
         current: step,
         hasPrevious: step > 0,
         hasNext: step < stepsOf(review).length - 1,
-        card: currentCardOf(review, review.pins.find((x) => x.id === pin)!, colourOf),
+        card: currentCardOf(review, review.pins.find((x) => x.id === pin)!, colourOf, pin === "pr" ? warningsOf(review, undefined, null, 0) : []),
         ...more,
     };
 };
@@ -415,9 +417,21 @@ landed("excalidraw-1920-landed-dark", excalidraw, LARGE, "dark");
 
 // The panel's states, dark above light. A state with focus has a page of its own per theme, since one frame in a page can have focus.
 const loadingLines: PanelView["loading"] = [
-    { label: "Reading the PR", state: "done" },
-    { label: "Reading 4 changed files", state: "active" },
-    { label: "Pinning the cards", state: "todo" },
+    { key: "pr", label: "Reading the PR", state: "done", meta: "0.4 s" },
+    {
+        key: "files",
+        label: "Reading 4 changed files",
+        state: "active",
+        meta: "2 / 4",
+        rows: [
+            { label: "src/compose.test.ts", state: "done", file: true },
+            { label: "src/compose.ts", state: "done", file: true },
+            { label: "src/hono-base.ts", state: "active", file: true },
+            { label: "src/hono.test.ts", state: "todo", file: true },
+        ],
+    },
+    { key: "link", label: "Finding the lines", state: "todo" },
+    { key: "pin", label: "Pinning the cards", state: "todo" },
 ];
 const start: PanelView = { ...baseView(hono.light.review), phase: "start", tag: null, pr: null };
 const resize = excalidraw.light.review.pins.find((p) => p.name === "maybeHandleResize()")!.id;

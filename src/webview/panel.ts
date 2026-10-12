@@ -1,4 +1,4 @@
-import type { PanelView, WebviewToDriver } from "../shared/protocol.ts";
+import type { Annotation, LoadStep, PanelView, StepRow, WebviewToDriver } from "../shared/protocol.ts";
 
 export type PanelDeps = {
     post: (message: WebviewToDriver) => void;
@@ -67,20 +67,181 @@ export const createPanel = ({ post, document: doc }: PanelDeps): Panel => {
         el.textContent = v.error ?? "";
     };
 
-    /** A loading step's Lucide mark, from the markup's templates: the panel draws no SVG of its own. */
-    const mark = (state: string) => (byId<HTMLTemplateElement>(`mark-${state}`).content.firstElementChild as Element).cloneNode(true);
+    /** A Lucide mark from the markup's templates, `mark-done` for a step, `row-done` for a row: the panel draws no SVG of its own. */
+    const mark = (id: string) => (byId<HTMLTemplateElement>(id).content.firstElementChild as Element).cloneNode(true);
 
+    /** What a screen reader hears of a step's or a row's state, after its words: the marks differ by shape too. */
+    const STATE_WORDS: Record<string, string> = { todo: "to do", active: "under way", done: "done", warning: "done, with a warning", failed: "failed" };
+
+    const setText = (el: Element, text: string) => {
+        if (el.textContent !== text) el.textContent = text;
+    };
+
+    /**
+     * Brings `list`'s children in line with `items`, by key: an element kept
+     * is changed in place, so a turning mark keeps turning and nothing opens
+     * twice; a new one is made where it belongs, and one gone is removed.
+     */
+    const sync = <T,>(list: Element, items: readonly T[], key: (item: T) => string, make: (item: T) => HTMLElement, paint: (el: HTMLElement, item: T) => void) => {
+        const keys = new Set(items.map(key));
+        for (const el of [...list.children] as HTMLElement[]) if (!keys.has(el.dataset.key ?? "")) el.remove();
+        let next = list.firstElementChild;
+        for (const item of items) {
+            const k = key(item);
+            let el = ([...list.children] as HTMLElement[]).find((c) => c.dataset.key === k);
+            if (!el) {
+                el = make(item);
+                el.dataset.key = k;
+            }
+            if (el === next) next = el.nextElementSibling;
+            else list.insertBefore(el, next);
+            paint(el, item);
+        }
+    };
+
+    /** A step's or a row's mark, swapped only when its state changes. */
+    const paintMark = (el: HTMLElement, prefix: string, state: string) => {
+        if (el.dataset.state === state) return;
+        el.dataset.state = state;
+        el.classList.remove("todo", "active", "done", "warning", "failed");
+        el.classList.add(state);
+        el.firstElementChild!.replaceWith(mark(`${prefix}-${state}`));
+    };
+
+    /** A changed file by its path, its folder muted. */
+    const fileNodes = (path: string) => {
+        const cut = path.lastIndexOf("/") + 1;
+        return h("span", { class: "file", title: path }, h("bdi", {}, cut > 0 ? h("span", { class: "dir" }, path.slice(0, cut)) : null, path.slice(cut)));
+    };
+
+    /**
+     * Cuts a path too long for its row at its start, whole folders at a
+     * time, `…/components/App.tsx`, keeping as many of the file's folders as
+     * fit; a name too long on its own loses its start. Paths are monospace,
+     * so what fits is about a count of characters, and the last character
+     * or two come off until the row holds it. With no layout, as in a test's
+     * document, the path stays.
+     */
+    const fitPath = (file: HTMLElement) => {
+        const over = () => file.scrollWidth > file.clientWidth;
+        if (!over()) return;
+        const dir = file.querySelector(".dir");
+        const name = file.firstElementChild!.lastChild!;
+        const folders = (dir?.textContent ?? "").split("/").filter(Boolean);
+        const named = name.textContent!;
+        const fits = Math.floor(file.clientWidth / (file.scrollWidth / ((dir?.textContent ?? "").length + named.length)));
+        let keep = folders.length;
+        let room = fits;
+        const show = () => {
+            while (keep > 0 && 2 + folders.slice(-keep).join("/").length + 1 + named.length > room) keep--;
+            const whole = keep > 0 || named.length + (dir ? 2 : 0) <= room;
+            if (dir) dir.textContent = keep > 0 ? `…/${folders.slice(-keep).join("/")}/` : whole ? "…/" : "";
+            name.textContent = whole ? named : `…${named.slice(-Math.max(1, room - 1))}`;
+        };
+        show();
+        for (let tries = 0; over() && tries < 4; tries++) {
+            room--;
+            show();
+        }
+    };
+
+    const paintRow = (li: HTMLElement, row: StepRow | { more: number }) => {
+        if ("more" in row) return setText(li, `and ${row.more.toLocaleString("en-US")} more`);
+        paintMark(li, "row", row.state);
+        setText(li.lastElementChild!, `, ${STATE_WORDS[row.state]}`);
+    };
+
+    /** Folds a step's rows away as it ends: at once when they haven't opened yet, a step that ran a moment only, or when motion is reduced. */
+    const closeRows = (wrap: HTMLElement) => {
+        const young = Date.now() - Number(wrap.dataset.at) < 400;
+        if (young || doc.defaultView?.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) return wrap.remove();
+        wrap.classList.add("closing");
+        wrap.addEventListener("animationend", () => wrap.remove(), { once: true });
+        setTimeout(() => wrap.remove(), 400);
+    };
+
+    /** A step's rows, while the driver sends them: at most 10, then a plain row saying how many more. */
+    const paintRows = (li: HTMLElement, step: LoadStep) => {
+        let wrap = li.querySelector<HTMLElement>(":scope > .rows-wrap:not(.closing)");
+        if (!step.rows?.length) {
+            if (wrap) closeRows(wrap);
+            return;
+        }
+        if (!wrap) {
+            wrap = h("div", { class: "rows-wrap" }, h("ul", { class: "rows" }));
+            wrap.dataset.at = String(Date.now());
+            li.append(wrap);
+        }
+        const items: (StepRow | { more: number })[] = [...step.rows, ...(step.more ? [{ more: step.more }] : [])];
+        sync(
+            wrap.firstElementChild!,
+            items,
+            (row) => ("more" in row ? "more" : row.label),
+            (row) => ("more" in row ? h("li", { class: "more" }) : h("li", {}, mark(`row-${row.state}`), row.file ? fileNodes(row.label) : h("span", {}, row.label), h("span", { class: "sr" }))),
+            paintRow
+        );
+        // Each path is fitted once, as its row first shows: a path never changes.
+        for (const file of wrap.querySelectorAll<HTMLElement>(".file:not([data-fit])")) {
+            file.dataset.fit = "";
+            fitPath(file);
+        }
+    };
+
+    const paintStep = (li: HTMLElement, step: LoadStep) => {
+        paintMark(li, "mark", step.state);
+        const [label, note, state] = li.children[1].children;
+        setText(label, step.label);
+        setText(note, step.note ? ` · ${step.note}` : "");
+        setText(state, `, ${STATE_WORDS[step.state]}`);
+        setText(li.children[2], step.meta ?? "");
+        paintRows(li, step);
+    };
+
+    /** CI annotations: a warning's amber triangle, or a failure's red disc, then the title and a plain detail line; the warnings in one frame. */
+    const paintNotes = (box: HTMLElement, notes: readonly Annotation[]) => {
+        for (const [i, level] of (["warning", "failure"] as const).entries()) {
+            const group = box.children[i];
+            if (group)
+                sync(
+                    group,
+                    notes.filter((n) => n.level === level),
+                    (n) => n.title,
+                    () => h("div", { class: `annotation ${level}`, ...(level === "failure" ? { role: "alert" } : {}) }, mark(level === "failure" ? "mark-failed" : "mark-warning"), h("div", {}, h("p", { class: "title" }), h("p", { class: "detail" }))),
+                    (el, n) => {
+                        const [title, detail] = el.children[1].children;
+                        setText(title, n.title);
+                        setText(detail, n.detail);
+                    }
+                );
+        }
+    };
+
+    /**
+     * The loading view, as a CI job: the tag, the steps, then the
+     * annotations. A failed step keeps the view, with Home and Try again
+     * under it; the status line tells a screen reader the step under way.
+     */
     const renderLoading = (v: PanelView) => {
         paintTag(byId("loading-tag"), v.tag);
-        byId("load-steps").replaceChildren(...v.loading.map((s) => h("li", { class: s.state }, mark(s.state), h("span", {}, s.label, s.note ? h("span", { class: "note" }, ` · ${s.note}`) : null))));
+        sync(
+            byId("load-steps"),
+            v.loading,
+            (s) => s.key,
+            () => h("li", {}, h("span"), h("span", {}, h("span"), h("span", { class: "note" }), h("span", { class: "sr" })), h("span", { class: "load-meta" })),
+            paintStep
+        );
+        paintNotes(byId("load-notes"), v.annotations);
+        setText(byId("load-status"), v.loading.filter((s) => s.state === "active").map((s) => s.label).join(", "));
+        byId("load-tools").hidden = !v.loading.some((s) => s.state === "failed");
     };
 
     /**
      * The current card. At the PR card: who opened it and how big it is,
-     * then the whole description, which the driver sends rendered: every
-     * tag one it chose, all text escaped. At a code card: its name and chip,
-     * Read all when the card hides some, its path, and its links by kind,
-     * each name following its link, in its string's colour when it has one.
+     * what the board can't show, as the loading view said it, then the
+     * whole description, which the driver sends rendered: every tag one it
+     * chose, all text escaped. At a code card: its name and chip, Read all
+     * when the card hides some, its path, and its links by kind, each name
+     * following its link, in its line's colour when it has one.
      */
     const renderCard = (v: PanelView) => {
         const card = v.card;
@@ -88,8 +249,10 @@ export const createPanel = ({ post, document: doc }: PanelDeps): Panel => {
         const pr = card !== null && "about" in card;
         for (const id of ["card-head", "path", "links"]) byId(id).hidden = pr;
         for (const id of ["about", "pr-body"]) byId(id).hidden = !pr;
+        byId("pr-notes").hidden = !pr || card.warnings.length === 0;
         if (card && "about" in card) {
             byId("about").replaceChildren(...card.about.flatMap((line, i) => (i > 0 ? [h("br"), line] : [line])));
+            paintNotes(byId("pr-notes"), card.warnings);
             const body = byId("pr-body");
             if (card.description !== description) {
                 body.innerHTML = card.description ?? '<p class="none">No description provided.</p>';
@@ -128,7 +291,7 @@ export const createPanel = ({ post, document: doc }: PanelDeps): Panel => {
         const busy = v.rebuilding !== null;
         if (busy || !v.rebuildCost) held = false;
         const line = byId("tools-line");
-        if (busy) line.replaceChildren(mark("active"), h("span", {}, v.rebuilding ?? ""));
+        if (busy) line.replaceChildren(mark("mark-active"), h("span", {}, v.rebuilding ?? ""));
         else if (held && v.rebuildCost)
             line.replaceChildren(
                 h("span", {}, `Rebuilding reads ${v.rebuildCost.files.toLocaleString("en-US")} files: ${v.rebuildCost.requests} of 60 GitHub requests. Press Rebuild again to start.`)
@@ -211,9 +374,14 @@ export const createPanel = ({ post, document: doc }: PanelDeps): Panel => {
     doc.querySelectorAll<HTMLButtonElement>(".prs button").forEach((button) => button.addEventListener("click", () => open(button.dataset.url ?? "")));
 
     const on = (id: string, message: WebviewToDriver) => byId(id).addEventListener("click", () => act(message));
-    byId("home").addEventListener("click", () => {
-        focusField = true;
-        act({ type: "start" });
+    for (const id of ["home", "load-home"])
+        byId(id).addEventListener("click", () => {
+            focusField = true;
+            act({ type: "start" });
+        });
+    // A failed open's Try again opens the same PR, by the tag it showed.
+    byId("retry").addEventListener("click", () => {
+        if (view?.tag) open(view.tag.label);
     });
     // Rebuild starts at once for the usual 2 requests; past that, the first press holds it and says the cost, the second starts it.
     byId("rebuild").addEventListener("click", () => {

@@ -146,15 +146,19 @@ export const WORKER_SCRIPT = `"use strict";
         ];
       });
     };
-    const files = async (ref, count2) => {
+    const files = async (ref, count2, onPage = () => {
+    }) => {
       const slot = limiter(PAGES_AT_ONCE);
       let failure = null;
       const pageOf = (n) => slot(async () => {
         if (failure) throw failure;
-        return page(ref, n).catch((err2) => {
-          failure ?? (failure = err2);
-          throw err2;
-        });
+        return page(ref, n).then(
+          (got) => (onPage(), got),
+          (err2) => {
+            failure ?? (failure = err2);
+            throw err2;
+          }
+        );
       });
       const pages = await Promise.all(Array.from({ length: pageCount(count2) }, (_2, i2) => pageOf(i2 + 1)));
       return pages.flat();
@@ -12445,6 +12449,12 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
   };
 
   // src/worker/serve.ts
+  var SLICE = Math.min(READ.code, READ.tests);
+  var unreadCount = (files) => {
+    let all2 = 0;
+    for (let i2 = 0; i2 < files.length; i2 += SLICE) all2 += changedSources(files.slice(i2, i2 + SLICE)).length;
+    return all2 - changedSources(files).length;
+  };
   var PARSER = "parser";
   var parserError = (err2) => {
     if (err2 instanceof Error && err2.cause === PARSER) return err2;
@@ -12492,11 +12502,45 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
         return null;
       }
     };
+    const reporting = (id, changed, read) => {
+      const order = new Map(changed.map((path, i2) => [path, i2]));
+      const outcomes = [];
+      let told = 0;
+      let others = 0;
+      const settle = (path, state) => {
+        const i2 = order.get(path);
+        if (i2 === void 0 || outcomes[i2]) return;
+        outcomes[i2] = state;
+        for (; told < changed.length && outcomes[told]; told++) scope.postMessage({ type: "read", id, path: changed[told], state: outcomes[told] });
+      };
+      return {
+        read: async (path) => {
+          const text = await read(path);
+          if (!order.has(path)) {
+            if (text !== null) scope.postMessage({ type: "followed", id, files: ++others });
+          } else if (text === null) settle(path, "missing");
+          else if (text.length > READ.chars) settle(path, "long");
+          return text;
+        },
+        parse: async (path, text) => {
+          const facts = await parse2(path, text);
+          settle(path, "done");
+          return facts;
+        }
+      };
+    };
     const run2 = async ({ id, pr, files }) => {
       try {
-        const grammars = [...new Set(changedSources(files).map((f2) => grammarOf(f2.path)).filter((x2) => x2 !== null))];
+        const changed = changedSources(files);
+        const grammars = [...new Set(changed.map((f2) => grammarOf(f2.path)).filter((x2) => x2 !== null))];
         scope.postMessage({ type: "load", id, grammars });
-        const { review, plan } = await analyse(pr, files, (path) => github.raw(pr.headRepo, pr.headSha, path), parse2);
+        scope.postMessage({ type: "reading", id, paths: changed.map((f2) => f2.path), left: unreadCount(files) });
+        const reads = reporting(
+          id,
+          changed.map((f2) => f2.path),
+          (path) => github.raw(pr.headRepo, pr.headSha, path)
+        );
+        const { review, plan } = await analyse(pr, files, reads.read, reads.parse);
         scope.postMessage({ type: "done", id, review: compact(review), plan });
       } catch (err2) {
         scope.postMessage({ type: "failed", id, message: err2 instanceof Error ? err2.message : String(err2), parser: err2 instanceof Error && err2.cause === PARSER });

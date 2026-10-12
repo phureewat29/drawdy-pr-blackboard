@@ -2,7 +2,6 @@
 
 import type { DrawdyElementSchema } from "@drawdy/driver-protocol";
 import type { Theme } from "../lib/card.ts";
-import { plural } from "../lib/fp.ts";
 import { pageCount, prKey, type Github, type PrFile, type PrInfo, type PrRef } from "../lib/github.ts";
 import { planBoard, shiftPlan, type BoardPlan, type Point } from "../lib/layout.ts";
 import type { Review } from "../lib/model.ts";
@@ -10,14 +9,9 @@ import { viewportOf } from "./camera.ts";
 import type { Ddp } from "./ddp.ts";
 import { reviewElements } from "./elements.ts";
 import type { Parser } from "./parser.ts";
+import type { Progress } from "./progress.ts";
 import { findFreeSpot } from "./space.ts";
 import type { Store } from "./store.ts";
-
-/** The loading view's steps; the parser's shows only while it downloads, beside the files'. */
-export type LoadStep = "pr" | "parser" | "files" | "pin";
-
-/** A step under way or done, renamed to `label` and given a muted `note` when they are known. */
-export type Progress = (step: LoadStep, state: "active" | "done", words?: { label?: string; note?: string }) => void;
 
 /** A review, with its board's plan when it was just built. */
 export type Loaded = { review: Review; plan: BoardPlan | null };
@@ -36,21 +30,24 @@ let lastRead: { key: string; pr: PrInfo; files: PrFile[] } | null = null;
 export const loadReview = async (deps: { github: Github; store: Store; parser: Parser }, ref: PrRef, progress: Progress, fresh = false): Promise<Loaded> => {
     const { github, store, parser } = deps;
     const key = prKey(ref);
-    progress("pr", "active");
+    progress.step("pr", "active");
     const again = !fresh && lastRead?.key === key ? lastRead : null;
     const pr = again?.pr ?? (await github.pr(ref));
     if (!again && !fresh) {
         const kept = await store.review(key, pr.headSha);
         if (kept) return { review: kept, plan: null };
     }
-    const pages = pageCount(pr.changedFiles);
-    progress("pr", "active", pages > 1 ? { note: `${(1 + pages).toLocaleString("en-US")} GitHub requests` } : {});
-    const files = again?.files ?? (await github.files(ref, pr.changedFiles));
+    // A big PR's file list takes a request per 100 files: the step counts them as they come, then says how many it took.
+    const requests = 1 + pageCount(pr.changedFiles);
+    const big = requests > 2;
+    let answered = 1;
+    const count = () => progress.step("pr", "active", { note: "GitHub requests", count: [answered, requests] });
+    if (big) count();
+    const files = again?.files ?? (await github.files(ref, pr.changedFiles, big ? () => (answered++, count()) : undefined));
     lastRead = { key, pr, files };
-    progress("pr", "done");
-    progress("files", "active", { label: `Reading ${plural(pr.changedFiles, "changed file")}` });
-    const { review, plan } = await parser.analyse(pr, files, (state, words) => progress("parser", state, words));
-    progress("files", "done");
+    progress.step("pr", "done", big ? { note: `${requests.toLocaleString("en-US")} GitHub requests` } : {});
+    const { review, plan } = await parser.analyse(pr, files, progress);
+    progress.step("link", "done");
     lastRead = null;
     await store.saveReview(key, review);
     return { review, plan };

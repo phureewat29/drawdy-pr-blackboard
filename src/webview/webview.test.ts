@@ -7,7 +7,7 @@ import { themeCss } from "../driver/channel.ts";
 import { webviewScript } from "../driver/webview-html.ts";
 import { PALETTES } from "../lib/card.ts";
 import { STRING_TEXT } from "../lib/layout.ts";
-import type { CodeCard, PanelView, WebviewToDriver } from "../shared/protocol.ts";
+import type { Annotation, CodeCard, LoadStep, PanelView, WebviewToDriver } from "../shared/protocol.ts";
 import { PANEL_BODY, PANEL_CSS, PANEL_MD_CSS } from "./markup.ts";
 import { createPanel } from "./panel.ts";
 
@@ -32,6 +32,7 @@ describe("webview script", () => {
 const readyView: PanelView = {
     phase: "ready",
     loading: [],
+    annotations: [],
     error: null,
     tag: { label: "honojs/hono#5513", colour: "#E36002" },
     pr: { title: [{ text: "fix(hono): handle non-Error throws with onError", code: false }], state: "merged", additions: 202, deletions: 11 },
@@ -56,7 +57,28 @@ const readyView: PanelView = {
 };
 const startView: PanelView = { ...readyView, phase: "start", tag: null, pr: null, card: null, current: -1 };
 const NOT_GITHUB = "Only GitHub PR links work, like github.com/owner/repo/pull/123.";
-const prCard: PanelView["card"] = { pin: "pr", about: ["usualoma · 4 files"], description: "<p>A value thrown.</p><h3>Behavior change</h3><details><summary>More</summary><p>Hidden.</p></details>" };
+const prCard: PanelView["card"] = { pin: "pr", about: ["usualoma · 4 files"], warnings: [], description: "<p>A value thrown.</p><h3>Behavior change</h3><details><summary>More</summary><p>Hidden.</p></details>" };
+const CARD_LIMIT: Annotation = { level: "warning", title: "Card limit reached", detail: "The board holds 32 cards: 7,758 functions and 2,151 files not pinned." };
+const NOT_READ: Annotation = { level: "warning", title: "1,517 files not read", detail: "PR Blackboard reads up to 40 code and 40 test files, so some cards have no lines." };
+const RATE_LIMITED: Annotation = { level: "failure", title: "GitHub rate limit reached", detail: "This network has used GitHub's 60 requests for this hour. Try again in 12 minutes." };
+/** hono#5513 a moment into reading its changed files. */
+const reading: LoadStep[] = [
+    { key: "pr", label: "Reading the PR", state: "done", meta: "0.4 s" },
+    {
+        key: "files",
+        label: "Reading 4 changed files",
+        state: "active",
+        meta: "1 / 4",
+        rows: [
+            { label: "src/compose.ts", state: "done", file: true },
+            { label: "src/hono-base.ts", state: "active", file: true },
+            { label: "src/compose.test.ts", state: "todo", file: true },
+            { label: "README.md", state: "todo", file: true },
+        ],
+    },
+    { key: "link", label: "Finding the lines", state: "todo" },
+    { key: "pin", label: "Pinning the cards", state: "todo" },
+];
 const codeCard = readyView.card as CodeCard;
 
 describe("panel", () => {
@@ -161,39 +183,113 @@ describe("panel", () => {
         expect($("error").hidden).toBe(false);
     });
 
-    it("shows the pull request's tag while loading, then the steps", () => {
-        panel.show({ ...readyView, phase: "loading", loading: [{ label: "Reading the PR", state: "done" }, { label: "Reading 4 changed files", state: "active" }, { label: "Pinning the cards", state: "todo" }] });
+    it("shows the pull request's tag while loading, then the steps as a CI job lists them: a mark for each state, and the time each took or its count", () => {
+        panel.show({ ...readyView, phase: "loading", loading: reading });
         expect([$("loading-tag").textContent, $("loading-tag").className, $("loading-tag").style.getPropertyValue("--c")]).toEqual(["honojs/hono#5513", "tag hue", "#E36002"]);
-        expect([...document.querySelectorAll("#load-steps li")].map((li) => `${li.className} ${li.textContent}`)).toEqual(["done Reading the PR", "active Reading 4 changed files", "todo Pinning the cards"]);
-        // Lucide marks: circle-check done, loader-circle turning, circle to do.
-        expect([...document.querySelectorAll("#load-steps li")].map((li) => li.firstElementChild!.innerHTML)).toEqual([
+        const steps = [...document.querySelectorAll("#load-steps > li")];
+        expect($("load-steps").tagName).toBe("OL");
+        expect(steps.map((li) => [li.className, li.children[1].firstElementChild!.textContent, li.children[2].textContent])).toEqual([
+            ["done", "Reading the PR", "0.4 s"],
+            ["active", "Reading 4 changed files", "1 / 4"],
+            ["todo", "Finding the lines", ""],
+            ["todo", "Pinning the cards", ""],
+        ]);
+        // Lucide marks: circle-check done, loader-circle turning, circle to do; triangle-alert a warning, circle-x failed.
+        expect(steps.map((li) => li.firstElementChild!.innerHTML)).toEqual([
             '<circle cx="12" cy="12" r="10"></circle><path d="m16 9-5.5 5.5L8 12"></path>',
             '<path d="M21 12a9 9 0 1 1-6.219-8.56"></path>',
             '<circle cx="12" cy="12" r="10"></circle>',
+            '<circle cx="12" cy="12" r="10"></circle>',
+        ]);
+        panel.show({ ...readyView, phase: "loading", loading: [{ ...reading[0], state: "warning" }, { ...reading[1], state: "failed", rows: undefined }] });
+        expect([...document.querySelectorAll("#load-steps > li")].map((li) => li.firstElementChild!.firstElementChild!.getAttribute("d") ?? li.firstElementChild!.innerHTML)).toEqual([
+            "m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3",
+            '<circle cx="12" cy="12" r="10"></circle><path d="m15 9-6 6"></path><path d="m9 9 6 6"></path>',
         ]);
         panel.show({ ...readyView, phase: "loading", tag: { label: "someone/else#1", colour: null }, loading: [] });
         expect([$("loading-tag").className, $("loading-tag").style.getPropertyValue("--c")]).toEqual(["tag", ""]);
     });
 
-    it("shows a first open's download step beside the reads, its note muted", () => {
-        panel.show({
-            ...readyView,
-            phase: "loading",
-            loading: [
-                { label: "Reading the PR", state: "done" },
-                { label: "Downloading the TypeScript parser", note: "first time only", state: "active" },
-                { label: "Reading 4 changed files", state: "active" },
-                { label: "Pinning the cards", state: "todo" },
-            ],
-        });
-        const steps = [...document.querySelectorAll("#load-steps li")];
-        expect(steps.map((li) => `${li.className} ${li.textContent}`)).toEqual([
-            "done Reading the PR",
-            "active Downloading the TypeScript parser · first time only",
-            "active Reading 4 changed files",
-            "todo Pinning the cards",
+    it("lists the rows of a step under way under its words: each file by its path, its folder muted, at most 10, then a plain row of how many more", () => {
+        const rows = (n: number) => Array.from({ length: n }, (_, i) => ({ label: `packages/excalidraw/components/F${i}.tsx`, state: "todo" as const, file: true as const }));
+        panel.show({ ...readyView, phase: "loading", loading: reading });
+        const list = document.querySelectorAll("#load-steps > li")[1].querySelector(".rows")!;
+        expect([...list.children].map((li) => `${li.className} ${li.textContent}`)).toEqual([
+            "done src/compose.ts, done",
+            "active src/hono-base.ts, under way",
+            "todo src/compose.test.ts, to do",
+            "todo README.md, to do",
         ]);
-        expect(steps[1].querySelector(".note")!.textContent).toBe(" · first time only");
+        expect(list.children[1].querySelector(".file")!.innerHTML).toBe('<bdi><span class="dir">src/</span>hono-base.ts</bdi>');
+        expect(list.children[3].querySelector(".file")!.innerHTML).toBe("<bdi>README.md</bdi>");
+        // Row marks are lighter, and still: only the step's turns. A check, a circle-dot for the one under way, a circle.
+        expect([...list.children].map((li) => li.firstElementChild!.innerHTML)).toEqual([
+            '<path d="M20 6 9 17l-5-5"></path>',
+            '<circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="1"></circle>',
+            '<circle cx="12" cy="12" r="10"></circle>',
+            '<circle cx="12" cy="12" r="10"></circle>',
+        ]);
+        expect(css).toContain(".steps .active > svg, .line svg { color: var(--turning); animation: spin .8s linear infinite; }");
+        expect(css).not.toMatch(/\.rows [^{]*\{[^}]*animation: spin/);
+        panel.show({ ...readyView, phase: "loading", loading: [reading[0], { ...reading[1], label: "Reading 40 changed files", rows: rows(10), more: 2030 }] });
+        const more = document.querySelectorAll("#load-steps > li")[1].querySelector(".rows")!.lastElementChild!;
+        expect([more.className, more.textContent, more.querySelector("button, a, [tabindex]")]).toEqual(["more", "and 2,030 more", null]);
+        expect(document.querySelectorAll(".rows > li:not(.more)")).toHaveLength(10);
+        // A language's parser is a row of plain words.
+        panel.show({ ...readyView, phase: "loading", loading: [reading[0], { key: "parser", label: "Downloading 2 parsers", state: "active", rows: [{ label: "TypeScript", state: "done" }, { label: "JavaScript", state: "active" }] }] });
+        expect([...document.querySelectorAll(".rows > li")].map((li) => `${li.className} ${li.children[1].outerHTML}`)).toEqual(["done <span>TypeScript</span>", "active <span>JavaScript</span>"]);
+    });
+
+    it("changes a step in place from view to view, so a turning mark keeps turning, and folds its rows away as it ends", () => {
+        panel.show({ ...readyView, phase: "loading", loading: reading });
+        const [pr, files] = [...document.querySelectorAll<HTMLElement>("#load-steps > li")];
+        const [prMark, filesMark, row] = [pr.firstElementChild, files.firstElementChild, files.querySelector(".rows > li")];
+        panel.show({ ...readyView, phase: "loading", loading: [reading[0], { ...reading[1], meta: "2 / 4" }, ...reading.slice(2)] });
+        const again = [...document.querySelectorAll<HTMLElement>("#load-steps > li")];
+        expect([again[0] === pr, again[1] === files, pr.firstElementChild === prMark, files.firstElementChild === filesMark, files.querySelector(".rows > li") === row]).toEqual([true, true, true, true, true]);
+        expect(files.children[2].textContent).toBe("2 / 4");
+        // A step that starts takes its place among the others, and the parser's comes between reading the PR and the files.
+        panel.show({ ...readyView, phase: "loading", loading: [reading[0], { key: "parser", label: "Downloading the parser", state: "active", rows: [{ label: "TypeScript", state: "active" }] }, ...reading.slice(1)] });
+        const withParser = [...document.querySelectorAll<HTMLElement>("#load-steps > li")];
+        expect([withParser.map((li) => li.dataset.key), withParser[2] === files]).toEqual([["pr", "parser", "files", "link", "pin"], true]);
+        // Ended, its rows fold away; in a document with no motion, at once.
+        panel.show({ ...readyView, phase: "loading", loading: [reading[0], { ...reading[1], state: "done", meta: "0.3 s", rows: undefined }, { ...reading[2], state: "active" }, reading[3]] });
+        expect(files.querySelector(".rows-wrap")).toBeNull();
+        expect(css).toMatch(/\.rows-wrap \{ animation: open \.18s ease-out \.2s both; \}/);
+        expect(css).toContain("@media (prefers-reduced-motion: reduce)");
+    });
+
+    it("shows the warnings under the steps as CI annotations in one frame, each its title and a plain line", () => {
+        panel.show({ ...readyView, phase: "loading", loading: reading, annotations: [NOT_READ, CARD_LIMIT] });
+        const notes = [...document.querySelectorAll("#load-notes .warnings .annotation")];
+        expect(notes.map((n) => [n.className, n.querySelector(".title")!.textContent, n.querySelector(".detail")!.textContent, n.getAttribute("role")])).toEqual([
+            ["annotation warning", "1,517 files not read", NOT_READ.detail, null],
+            ["annotation warning", "Card limit reached", CARD_LIMIT.detail, null],
+        ]);
+        // Lucide triangle-alert, an amber triangle with a dark mark.
+        expect(notes[0].firstElementChild!.firstElementChild!.getAttribute("d")).toBe("m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3");
+        expect($("load-notes").getAttribute("aria-live")).toBe("polite");
+        expect($("load-tools").hidden).toBe(true);
+    });
+
+    it("keeps a failed open on the loading view, its failed step and why in the error box, with Home and Try again, which opens the PR again", () => {
+        panel.show({ ...readyView, phase: "loading", tag: { label: "oven-sh/bun#30412", colour: "#A67F38" }, loading: [{ key: "pr", label: "Reading the PR", note: "23 GitHub requests", state: "failed", meta: "1.2 s" }, reading[2], reading[3]], annotations: [RATE_LIMITED] });
+        const failure = document.querySelector("#load-notes .failures .annotation")!;
+        expect([failure.className, failure.getAttribute("role"), failure.querySelector(".title")!.textContent, failure.querySelector(".detail")!.textContent]).toEqual(["annotation failure", "alert", RATE_LIMITED.title, RATE_LIMITED.detail]);
+        expect([$("load-tools").hidden, $("retry").textContent, $("load-home").getAttribute("aria-label")]).toEqual([false, "Try again", "Home"]);
+        $("retry").click();
+        $("load-home").click();
+        expect(post.mock.calls.map(([m]) => m)).toEqual([{ type: "open", url: "oven-sh/bun#30412" }, { type: "start" }]);
+        // The next open's view hides the toolbar again.
+        panel.show({ ...readyView, phase: "loading", loading: reading });
+        expect([$("load-tools").hidden, document.querySelector("#load-notes .annotation")]).toEqual([true, null]);
+    });
+
+    it("tells a screen reader each step's state in words, and the step under way politely", () => {
+        panel.show({ ...readyView, phase: "loading", loading: reading });
+        expect([...document.querySelectorAll("#load-steps > li")].map((li) => li.children[1].textContent)).toEqual(["Reading the PR, done", "Reading 4 changed files, under way", "Finding the lines, to do", "Pinning the cards, to do"]);
+        expect([$("load-status").textContent, $("load-status").getAttribute("aria-live"), $("load-status").className]).toEqual(["Reading 4 changed files", "polite", "sr"]);
+        expect([...document.querySelectorAll("#load-steps svg")].every((svg) => svg.getAttribute("aria-hidden") === "true")).toBe(true);
     });
 
     it("heads the reading view with the plain tag, the counts and the state, wrapping instead of cutting the tag", () => {
@@ -256,14 +352,22 @@ describe("panel", () => {
         panel.show(readyView);
         panel.show({ ...readyView, current: -1, card: prCard });
         expect($("pr-body").scrollTop).toBe(0);
-        panel.show({ ...readyView, current: -1, card: { pin: "pr", about: ["someone · 1 file", "13 functions and 5 files not pinned"], description: null } });
-        expect([$("about").innerHTML, $("pr-body").innerHTML]).toEqual(["someone · 1 file<br>13 functions and 5 files not pinned", '<p class="none">No description provided.</p>']);
+        panel.show({ ...readyView, current: -1, card: { pin: "pr", about: ["someone · 1 file"], warnings: [], description: null } });
+        expect([$("about").innerHTML, $("pr-body").innerHTML, $("pr-notes").hidden]).toEqual(["someone · 1 file", '<p class="none">No description provided.</p>', true]);
         expect(PANEL_MD_CSS).toContain("#pr-body pre { padding: 8px 12px; overflow-x: auto;");
+    });
+
+    it("keeps what the board can't show at the PR card, as the loading view said it, between who opened it and the description", () => {
+        panel.show({ ...readyView, current: -1, card: { ...(prCard as Exclude<PanelView["card"], CodeCard | null>), warnings: [CARD_LIMIT, NOT_READ] } });
+        expect([$("pr-notes").hidden, [...$("pr-notes").querySelectorAll(".title")].map((t) => t.textContent)]).toEqual([false, ["Card limit reached", "1,517 files not read"]]);
+        expect([...$("card").children].map((c) => c.id).filter((id) => ["about", "pr-notes", "pr-body"].includes(id))).toEqual(["about", "pr-notes", "pr-body"]);
+        panel.show(readyView);
+        expect($("pr-notes").hidden).toBe(true);
     });
 
     it("ends the reading view in one toolbar: Home, Rebuild, a rule, Overview, Description, then Previous, the position and Next", () => {
         panel.show(readyView);
-        const bar = document.querySelector(".tools .bar")!;
+        const bar = document.querySelector("#ready .tools .bar")!;
         expect([...bar.children].map((c) => c.id || c.className)).toEqual(["home", "rebuild", "sep", "overview", "description", "spacer", "previous", "position", "next"]);
         expect([...bar.querySelectorAll("button")].map((b) => [b.id, b.getAttribute("aria-label"), b.dataset.tip, b.title])).toEqual([
             ["home", "Home", "Home: open another PR", ""],
@@ -360,7 +464,7 @@ describe("panel", () => {
         panel.show({ ...readyView, rebuilding: "Reading 4 changed files" });
         expect([$("tools-line").hidden, $("tools-line").textContent, $("tools-line").getAttribute("role"), $<HTMLButtonElement>("rebuild").disabled]).toEqual([false, "Reading 4 changed files", "status", true]);
         expect($("tools-line").querySelector("svg path")!.getAttribute("d")).toBe("M21 12a9 9 0 1 1-6.219-8.56");
-        expect(css).toContain("#load-steps .active svg, .line svg { color: var(--drawdy-primary); animation: spin .8s linear infinite; }");
+        expect(css).toContain(".steps .active > svg, .line svg { color: var(--turning); animation: spin .8s linear infinite; }");
         const limited = "This network has used GitHub's 60 requests for this hour. Try again in 12 minutes.";
         panel.show({ ...readyView, error: limited });
         expect([$("tools-line").hidden, $("tools-error").hidden, $("tools-error").textContent, $("tools-error").getAttribute("role"), $("error").hidden]).toEqual([true, false, limited, "alert", true]);
@@ -409,7 +513,7 @@ describe("panel", () => {
 
     it("leaves ← and → to the description and the links while focus is in them, so a wide code block or table scrolls sideways", () => {
         const wide = '<pre><code><div class="l">const wide = 1;</div></code></pre><table><tr><td>a</td></tr></table>';
-        panel.show({ ...readyView, current: -1, card: { pin: "pr", about: ["usualoma · 4 files"], description: wide } });
+        panel.show({ ...readyView, current: -1, card: { pin: "pr", about: ["usualoma · 4 files"], warnings: [], description: wide } });
         const key = (el: Element, k: string) => el.dispatchEvent(new KeyboardEvent("keydown", { key: k, bubbles: true }));
         key(document.querySelector("#pr-body pre")!, "ArrowRight");
         key(document.querySelector("#pr-body table")!, "ArrowLeft");

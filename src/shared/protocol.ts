@@ -11,8 +11,26 @@ import * as g from "../lib/guard.ts";
 import type { PrState } from "../lib/github.ts";
 import type { Segment } from "../lib/markdown.ts";
 
-/** A loading step: its words, a muted note after them (`first time only`), and how far it is. */
-export type LoadStep = { label: string; note?: string; state: "done" | "active" | "todo" };
+/** How far a loading step, or a row under one, has got: to do, under way, done, done with a warning, or failed. */
+export type StepState = "todo" | "active" | "done" | "warning" | "failed";
+
+/** A row under a loading step: one language's parser (`Rust`), or a changed file by its path (`file`), which the panel shows with its folder muted, cut at the start to fit. */
+export type StepRow = { label: string; state: StepState; file?: true };
+
+/**
+ * A loading step, as a CI job lists it: what it is (`key`), its words and a
+ * muted note after them (`23 GitHub requests`), how far it is, and at its
+ * right a count while it runs (`12 / 40`) or the time it took (`1.2 s`).
+ * While it runs it lists its rows: at most 10, then how many more there are.
+ */
+export type LoadStep = { key: string; label: string; note?: string; state: StepState; meta?: string; rows?: StepRow[]; more?: number };
+
+/**
+ * A note on a PR, as a CI annotation: a short title and a plain detail
+ * line. A warning says what the board can't show; a failure, why an open
+ * failed.
+ */
+export type Annotation = { level: "warning" | "failure"; title: string; detail: string };
 
 /**
  * One kind of the current card's links, `called by`, and the cards it names,
@@ -34,14 +52,16 @@ export type CodeCard = {
     canReadAll: boolean;
 };
 
-/** The PR card: who opened it and how big it is, what the board leaves off, and the whole description as HTML, or null when there is none. */
-export type PrCardView = { pin: "pr"; about: string[]; description: string | null };
+/** The PR card: who opened it and how big it is, what the board can't show, and the whole description as HTML, or null when there is none. */
+export type PrCardView = { pin: "pr"; about: string[]; warnings: Annotation[]; description: string | null };
 
 export type CurrentCard = CodeCard | PrCardView;
 
 export type PanelView = {
     phase: "start" | "loading" | "ready";
     loading: LoadStep[];
+    /** The loading view's warnings so far, and why the open failed when it did: then a step shows `failed`, and the loading view stays. */
+    annotations: Annotation[];
     /** Why the last attempt failed, in words for the reader, shown in the view on screen: under the field, or on the toolbar's line. */
     error: string | null;
     /** The pull request being read, or loaded: its `owner/repo#number` and its project's tag colour, if it has one. */

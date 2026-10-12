@@ -55,6 +55,7 @@ const DESCRIPTION = [
 const base: PanelView = {
     phase: "ready",
     loading: [],
+    annotations: [],
     error: null,
     tag: { label: "prometheus/prometheus#18564", colour: "#E6522C" },
     pr: { title: segments("promql: support native histograms with smoothed/anchored rate"), state: "merged", additions: 667, deletions: 36 },
@@ -62,7 +63,7 @@ const base: PanelView = {
     current: -1,
     hasPrevious: false,
     hasNext: true,
-    card: { pin: "pr", about: ["roidelapluie · 4 files"], description: markdownHtml(lexMarkdown(DESCRIPTION), "page") },
+    card: { pin: "pr", about: ["roidelapluie · 4 files"], warnings: [], description: markdownHtml(lexMarkdown(DESCRIPTION), "page") },
     rebuildCost: null,
     rebuilding: null,
 };
@@ -84,6 +85,33 @@ const VIEWS: Record<string, PanelView> = {
             canReadAll: true,
         },
     },
+    loading: {
+        ...base,
+        phase: "loading",
+        card: null,
+        loading: [
+            { key: "pr", label: "Reading the PR", note: "23 GitHub requests", state: "done", meta: "12.3 s" },
+            {
+                key: "files",
+                label: "Reading 1,234 changed files",
+                state: "active",
+                meta: "1,233 / 1,234",
+                rows: [
+                    { label: "packages/excalidraw/components/App.selectionTool.ts", state: "done", file: true },
+                    { label: "packages/astro/src/vite-plugin-astro-server/plugin.ts", state: "warning", file: true },
+                    { label: `src/${"averyveryverylongfolder/".repeat(2)}${"generated_types_".repeat(4)}module.rs`, state: "active", file: true },
+                    { label: "src/a.ts", state: "todo", file: true },
+                    { label: "README.md", state: "todo", file: true },
+                ],
+                more: 1229,
+            },
+            { key: "link", label: "Finding the lines", state: "todo" },
+        ],
+        annotations: [
+            { level: "warning", title: "1,517 files not read", detail: "PR Blackboard reads up to 40 code and 40 test files, so some cards have no lines." },
+            { level: "failure", title: "GitHub rate limit reached", detail: "This network has used GitHub's 60 requests for this hour. Try again in 12 minutes." },
+        ],
+    },
 };
 
 type Box = { left: number; right: number; width: number };
@@ -94,8 +122,10 @@ type Measure = {
     codeScrolls: boolean | null;
     tableScrolls: boolean | null;
     link: { lines: number; right: number } | null;
-    /** The right edges of the card's name, path and link names. */
+    /** The right edges of the card's name, path and link names; in the loading view, of its steps, rows and annotations. */
     rights: number[];
+    /** Each file row's text as shown, and whether its text overflows its row. */
+    files: { text: string; over: boolean }[];
 };
 
 /**
@@ -113,14 +143,15 @@ const measure = (): Record<string, Measure> => {
         parent.postMessage({ id: ${JSON.stringify(id)}, width: document.documentElement.scrollWidth, next: box(document.getElementById("next")),
             codeScrolls: shown(pre) ? pre.scrollWidth > pre.clientWidth : null, tableScrolls: shown(table) ? table.scrollWidth > table.clientWidth : null,
             link: shown(link) ? { lines: link.getClientRects().length, right: Math.max(...[...link.getClientRects()].map((r) => r.right)) } : null,
-            rights: ["name", "path"].map((i) => document.getElementById(i)).concat([...document.querySelectorAll("#links button")]).filter(shown).map((el) => el.getBoundingClientRect().right) }, "*");
+            rights: ["name", "path"].map((i) => document.getElementById(i)).concat([...document.querySelectorAll("#links button, #load-steps li, .annotation, #load-tools button")]).filter(shown).map((el) => el.getBoundingClientRect().right),
+            files: [...document.querySelectorAll(".file")].map((f) => ({ text: f.textContent, over: f.scrollWidth > f.clientWidth })) }, "*");
     }, 300));`;
     const frames = Object.entries(VIEWS).map(([id, view]) => {
         const api = `window.acquireDrawdyApi = () => ({ postMessage() {}, onMessage(f) { setTimeout(() => f({ type: "view", view: ${JSON.stringify(view).replace(/</g, "\\u003c")} })); return () => {}; } });`;
         const html = webviewHtml(themeCss(DARK)).replace('<script type="module">', `<script>${api}${probe(id)}</script><script type="module">`);
         return `<iframe srcdoc="${attr(html)}" style="width:${PANEL.width}px;height:${PANEL.height}px;border:0"></iframe>`;
     });
-    const page = `<!doctype html><body><pre id="out"></pre>${frames.join("")}<script>
+    const page = `<!doctype html><meta charset="utf-8"><body><pre id="out"></pre>${frames.join("")}<script>
         const got = {};
         addEventListener("message", (e) => { got[e.data.id] = e.data; document.getElementById("out").textContent = JSON.stringify(got); });
     </script></body>`;
@@ -154,6 +185,19 @@ const measure = (): Record<string, Measure> => {
         expect(m.tableScrolls).toBe(true);
         expect(m.link?.lines).toBeGreaterThan(1);
         expect(m.link?.right).toBeLessThanOrEqual(PANEL.width);
+    });
+
+    it("keeps its width loading a big PR: long paths cut at the start a folder at a time, the file's name whole, and nothing past the panel's edge", () => {
+        const m = got.loading;
+        expect(m.width).toBe(PANEL.width);
+        for (const right of m.rights) expect(right).toBeLessThanOrEqual(PANEL.width);
+        expect(m.rights.length).toBeGreaterThan(10);
+        expect(m.files.map((f) => f.over)).toEqual([false, false, false, false, false]);
+        const [cut, plugin, long, short, root] = m.files.map((f) => f.text);
+        expect(cut).toBe("…/components/App.selectionTool.ts");
+        expect(plugin).toBe("…/plugin.ts");
+        expect(long).toMatch(/^…[a-z_]+types_module\.rs$/);
+        expect([short, root]).toEqual(["src/a.ts", "README.md"]);
     });
 
     it("keeps its width with a very long name, path and link names on a code card", () => {

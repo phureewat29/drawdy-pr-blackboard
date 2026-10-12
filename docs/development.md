@@ -426,15 +426,21 @@ sandbox has no `allow-forms`): a paste opens at once and so does Enter;
 only the driver's `parsePrUrl` decides what is a GitHub pull request, and
 answers anything else with `Only GitHub PR links work, like
 github.com/owner/repo/pull/123.` The reader sees "PR", never "pull
-request" (request 60). An open's error shows under the field, with the
-link kept; an action's in the reading view shows on the toolbar's line.
+request" (request 60). A link that isn't a PR says so under the field,
+the link kept; an open that fails on the way stays on the loading view at
+its failed step; an action's error in the reading view shows on the
+toolbar's line.
 The start view lists the 15 examples under the field, no heading, each
 its tag in its project's colour (`SUGGESTIONS` ships label, title, colour
 and changed-file count; `projectColour` colours any pull request of those
 repositories), then its title; a row that costs more than the usual 2
 GitHub requests says so after its tag (`23 of 60 GitHub requests`, only
-Bun's rewrite). Loading shows the tag, then the steps, the parser's
-download beside the reads with a muted `· first time only`. The reading
+Bun's rewrite). Loading shows the tag, then the steps as a CI job lists
+them (`driver/progress.ts`): a mark per state, a count while a step runs
+or the time it took, a row per parser downloading and per changed file
+read (10 at most, then `and N more`), and the warnings found so far as CI
+annotations (`driver/warnings.ts`); a failed open stays there, at its
+failed step, with Home and Try again. The reading
 view is three rows: the header (tag, `+additions −deletions`, state,
 title); the card area, which scrolls: at a code card its name and chip,
 `Read all` only when the card hides code, its plain path and its links by

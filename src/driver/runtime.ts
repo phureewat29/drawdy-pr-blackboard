@@ -1,5 +1,5 @@
 import type { DriverModule, DriverSubscriptionEvent } from "@drawdy/driver-protocol";
-import { chipOf, foldsOf, linkGroups, pinCard, unpinnedText, whereOf } from "../lib/card.ts";
+import { chipOf, foldsOf, linkGroups, pinCard, whereOf } from "../lib/card.ts";
 import { plural, serial } from "../lib/fp.ts";
 import { createGithub, explainGithub, githubFailure, pageCount, parsePrUrl, prKey, prLabel } from "../lib/github.ts";
 import { stepsOf } from "../lib/layout.ts";
@@ -7,17 +7,20 @@ import { lexMarkdown, markdownHtml, segments } from "../lib/markdown.ts";
 import type { Pin, Review } from "../lib/model.ts";
 import { appIcon } from "../shared/app-icon.ts";
 import { projectColour } from "../shared/suggestions.ts";
-import type { CurrentCard, LoadStep, PanelView } from "../shared/protocol.ts";
+import type { Annotation, CurrentCard, PanelView } from "../shared/protocol.ts";
 import { pinnedAt, readBoard, rectsOf } from "./board.ts";
 import { createChannel } from "./channel.ts";
 import { createDdp, protocolError } from "./ddp.ts";
 import { markOf } from "./elements.ts";
 import { createNavigator, indexOf } from "./navigator.ts";
-import { layOut, loadReview, type LoadStep as Step, type Progress } from "./open.ts";
+import { layOut, loadReview } from "./open.ts";
 import { createParser } from "./parser.ts";
+import { createJob, quiet, type Job, type Progress, type StepKey, type Unread } from "./progress.ts";
+import { watchQuota } from "./quota.ts";
 import { CLOSE_BUTTON, DRAG_HANDLE, createPopover } from "./read-all.ts";
 import { createStore } from "./store.ts";
-import { inWords, isInWords } from "./words.ts";
+import { cardLimit, listCut, noDiff, quotaLow, warningsOf } from "./warnings.ts";
+import { inWords, isInWords, titleOf } from "./words.ts";
 
 const ACTION_BUTTON_ID = "pr-blackboard:open";
 const ACTION_BUTTON_SVG = appIcon(20);
@@ -36,13 +39,9 @@ const PIN_FAILED = "Couldn't pin the board. Try again.";
 const NOT_A_PR = "Only GitHub PR links work, like github.com/owner/repo/pull/123.";
 const GONE = "GitHub can't find this PR any more.";
 
-/** The loading view's steps, in the order they show, with their words before counts are known. */
-const STEPS: { step: Step; label: string }[] = [
-    { step: "pr", label: "Reading the PR" },
-    { step: "parser", label: "Downloading the parser" },
-    { step: "files", label: "Reading the changed files" },
-    { step: "pin", label: "Pinning the cards" },
-];
+/** How often at most the panel gets a view while a PR loads: its rows change many times a second. */
+const PROGRESS_MS = 50;
+
 /** Runs `step`, reporting whether it worked; failures are logged, not thrown. */
 const attempt = (label: string, step: () => Promise<unknown>): Promise<boolean> =>
     step().then(
@@ -62,6 +61,31 @@ export const explain = (err: unknown): string => {
     return `Something went wrong: ${err instanceof Error ? err.message : String(err)}`;
 };
 
+/** A failed step's title, when its error has none of its own. */
+const STEP_FAILED: Record<StepKey, string> = { pr: "Couldn't read the PR", parser: "Download failed", files: "Reading failed", link: "Couldn't find the lines", pin: "Pinning failed" };
+
+/**
+ * Why an open failed at `step`, as a CI annotation under it: what went
+ * wrong in a few words, then the words for the reader.
+ */
+export const failureOf = (err: unknown, step?: StepKey): Annotation => {
+    const failure = (title: string, detail: string): Annotation => ({ level: "failure", title, detail });
+    const github = githubFailure(err);
+    switch (github?.kind) {
+        case "rate-limited":
+            return failure("GitHub rate limit reached", explainGithub(github));
+        case "not-found":
+            return failure("PR not found", "Check the link: PR Blackboard opens public PRs only.");
+        case "network":
+            return failure("Can't reach GitHub", "Check your connection and try again.");
+        case "http":
+            return failure(`GitHub error ${github.status}`, "Try again in a moment.");
+    }
+    if (protocolError(err)?.type === "unauthorized") return failure("Permission needed", "Turn it on in Extensions › PR Blackboard › Manage permissions.");
+    if (!isInWords(err)) return failure("Something went wrong", err instanceof Error ? err.message : String(err));
+    return failure(titleOf(err) ?? (step ? STEP_FAILED[step] : "Couldn't open the PR"), err.message);
+};
+
 /** A pull request's tag for the panel: its label and its project's colour. */
 const tagOf = (label: string | null): PanelView["tag"] => (label ? { label, colour: projectColour(label) } : null);
 
@@ -78,17 +102,22 @@ const descriptionOf = (review: Review): string | null => {
     return descriptions.get(review)!;
 };
 
+/** What this session's reads left out of each review it built: none for a stored copy, which was read before. */
+const unreadOf = new WeakMap<Review, Unread>();
+
 /**
  * What the panel says about the current card. At the PR card: who opened
- * it and how big it is, what the board leaves off, and the whole
- * description. At a code card: its name, chip and place, and its links by
- * kind, each named in its string's colour (`colourOf`), when it has one.
+ * it and how big it is, what the board can't show (`warnings`), and the
+ * whole description. At a code card: its name, chip and place, and its
+ * links by kind, each named in its line's colour (`colourOf`), when it has
+ * one.
  */
-export const currentCardOf = (review: Review, pin: Pin, colourOf: (link: string) => number | null = () => null): CurrentCard =>
+export const currentCardOf = (review: Review, pin: Pin, colourOf: (link: string) => number | null = () => null, warnings: Annotation[] = []): CurrentCard =>
     pin.kind === "pr"
         ? {
               pin: "pr",
-              about: [`${review.pr.author} · ${plural(review.pr.changedFiles, "file")}`, unpinnedText(review.unpinned)].filter((line): line is string => line !== null),
+              about: [`${review.pr.author} · ${plural(review.pr.changedFiles, "file")}`],
+              warnings,
               description: descriptionOf(review),
           }
         : {
@@ -103,109 +132,147 @@ export const currentCardOf = (review: Review, pin: Pin, colourOf: (link: string)
 export const createRuntime = (args: Parameters<DriverModule["activate"]>[0]): Runtime => {
     const ddp = createDdp(args.issueCommand, args.manifest.driverId);
     let styling = args.styling;
-    const github = createGithub((url, init) => fetch(url, init));
+    const net = watchQuota((url, init) => fetch(url, init));
+    const github = createGithub(net.fetch);
     const store = createStore(ddp);
     const parser = createParser({ ddp, fetch: (url, init) => fetch(url, init) });
     const channel = createChannel({ ddp, styling: () => styling });
     const popover = createPopover({ ddp });
 
     let phase: PanelView["phase"] = "start";
-    let loading: (LoadStep & { step: Step })[] = [];
+    /** The open the loading view shows: its steps, and why it failed when it did. */
+    let job: Job = createJob();
     let error: string | null = null;
     /** The pull request being loaded, while the panel shows its loading lines. */
     let opening: string | null = null;
     /**
      * The one rebuild that may run, from the moment it is asked for: its
-     * board, its own steps (an open or a board click meanwhile has
-     * `loading`), and when it ends.
+     * board, its own steps (an open or a board click meanwhile has `job`),
+     * and when it ends.
      */
-    let rebuilding: { key: string; label: string; steps: (LoadStep & { step: Step })[]; done: Promise<void> } | null = null;
+    let rebuilding: { key: string; label: string; job: Job; done: Promise<void> } | null = null;
     /** The elements a rebuild took off the board itself: their removal is no reader's. */
     const swept = new Set<string>();
 
-    /**
-     * The words of the step a rebuild has reached: the one under way, else
-     * the last one done. Seen from another board, they name the rebuild's.
-     */
-    const rebuildLine = (job: NonNullable<typeof rebuilding>, shown: string | undefined): string => {
-        const step = (job.steps.find((l) => l.state === "active") ?? [...job.steps].reverse().find((l) => l.state === "done") ?? STEPS[0]).label;
-        return shown === job.key ? step : `${job.label} · ${step}`;
-    };
+    /** The words of the step a rebuild has reached. Seen from another board, they name the rebuild's. */
+    const rebuildLine = (r: NonNullable<typeof rebuilding>, on: string | undefined): string => (on === r.key ? r.job.current() : `${r.label} · ${r.job.current()}`);
 
     const view = (): PanelView => {
         const review = guide.review();
         const pinId = guide.currentPin();
         const pin = pinId ? review?.pins.find((p) => p.id === pinId) : undefined;
+        const loading = phase === "loading";
         return {
             phase: phase === "ready" && !review ? "start" : phase,
-            loading: loading.map(({ label, note, state }) => ({ label, ...(note ? { note } : {}), state })),
+            loading: loading ? job.steps() : [],
+            annotations: loading ? job.annotations() : [],
             error,
-            tag: tagOf(phase === "loading" && opening ? opening : review ? prLabel(review.pr.ref) : null),
+            tag: tagOf(loading && opening ? opening : review ? prLabel(review.pr.ref) : null),
             pr: review ? { title: segments(review.pr.title), state: review.pr.state, additions: review.pr.additions, deletions: review.pr.deletions } : null,
             total: review ? stepsOf(review).length : 0,
             current: guide.current(),
             hasPrevious: guide.hasPrevious(),
             hasNext: guide.hasNext(),
-            card: review && pin ? currentCardOf(review, pin, guide.colourOf) : null,
+            // The loading view shows no card, and gets many views a second: the card is worked out only for the others.
+            card: review && pin && !loading ? currentCardOf(review, pin, guide.colourOf, pin.kind === "pr" ? warningsOf(review, unreadOf.get(review), net.quota(), Date.now()) : []) : null,
             rebuildCost: review ? rebuildCostOf(review.pr.changedFiles) : null,
             rebuilding: rebuilding ? rebuildLine(rebuilding, guide.board()?.key) : null,
         };
     };
-    const push = () => channel.post({ type: "view", view: view() });
+    let pending: ReturnType<typeof setTimeout> | null = null;
+    let pushed = 0;
+    const push = () => {
+        if (pending) clearTimeout(pending);
+        pending = null;
+        pushed = Date.now();
+        channel.post({ type: "view", view: view() });
+    };
+    /** `push` for a loading step's progress: at most once every `PROGRESS_MS`, the last change always sent. */
+    const pushSoon = () => {
+        if (pending) return;
+        const wait = pushed + PROGRESS_MS - Date.now();
+        if (wait <= 0) push();
+        else pending = setTimeout(push, wait);
+    };
+
+    /**
+     * `j` as an open's progress, each change shown on the panel: a step's or
+     * a parser's at once, a file's at most every `PROGRESS_MS`, or never for
+     * a rebuild, whose line names the step only (`files`). `first` runs
+     * before the first. Once the PR is read, a quota running low is a
+     * warning on its step.
+     */
+    const shown = (j: Job, first = () => {}, files: () => void = pushSoon): Progress => {
+        let started = false;
+        const on =
+            <A extends unknown[]>(report: (...args: A) => void, show = files) =>
+            (...args: A) => {
+                if (!started) first();
+                started = true;
+                report(...args);
+                show();
+            };
+        return {
+            step: on((step, state, words) => {
+                j.step(step, state, words);
+                if (step === "pr" && state === "done") j.warn("pr", quotaLow(net.quota(), Date.now()));
+            }, push),
+            reading: on(j.reading, push),
+            read: on(j.read),
+            followed: on(j.followed),
+            parser: on(j.parser, push),
+        };
+    };
+
+    /** Warnings a review gives its open: the files past GitHub's list, the diffs GitHub left out, and the card limit. */
+    const warnBuilt = (j: Job, review: Review) => {
+        j.warn("pr", listCut(review));
+        j.warn("files", noDiff(review));
+        j.warn("pin", cardLimit(review.unpinned));
+    };
 
     /**
      * A pinned board's review at its head commit: this device's copy, else
-     * GitHub's, reporting each loading step to `onProgress`. Rejects in
-     * words when the pull request has new commits since.
+     * GitHub's, reporting each loading step to `progress`. Rejects in words
+     * when the pull request has new commits since.
      */
-    const reviewAt = async (key: string, sha: string, onProgress: Progress = () => undefined): Promise<Review> => {
+    const reviewAt = async (key: string, sha: string, progress: Progress = quiet): Promise<Review> => {
         const kept = await store.review(key, sha);
         if (kept) return kept;
         // A key is `owner/repo#123`, which reads as a pull request reference.
         const ref = parsePrUrl(key);
         if (!ref) throw inWords(`PR Blackboard can't tell which PR ${key} is.`);
-        const { review } = await loadReview({ github, store, parser }, ref, onProgress);
-        if (review.pr.headSha !== sha) throw inWords(`${prLabel(ref)} has new commits since it was laid out here. Open it again to lay out the latest version.`);
+        const { review } = await loadReview({ github, store, parser }, ref, progress);
+        if (review.pr.headSha !== sha) throw inWords(`${prLabel(ref)} has new commits since it was laid out here. Open it again to lay out the latest version.`, "New commits");
         return review;
     };
 
     const guide = createNavigator({ ddp, popover, styling: () => styling, changed: push, loadReview: reviewAt, explain });
 
-    /**
-     * `steps` with one step under way or done. Starting a step finishes the
-     * ones before it, but the parser's, which shows only while it downloads,
-     * runs beside the files' and finishes on its own.
-     */
-    const advance = (steps: (LoadStep & { step: Step })[], ...[step, state, words = {}]: Parameters<Progress>): (LoadStep & { step: Step })[] => {
-        if (step === "parser" && state === "done" && !steps.some((l) => l.step === "parser")) return steps;
-        const order = STEPS.map((s) => s.step);
-        const shown = new Set([...steps.map((l) => l.step), step]);
-        return STEPS.filter((s) => shown.has(s.step)).map((s) => {
-            const l = steps.find((x) => x.step === s.step) ?? { step: s.step, label: s.label, state: "todo" as const };
-            if (s.step === step) return { ...l, ...words, state };
-            if (state === "active" && step !== "parser" && s.step !== "parser" && order.indexOf(s.step) < order.indexOf(step)) return { ...l, state: "done" as const };
-            return l;
-        });
-    };
-    /** An open's step, on the loading view. */
-    const progress: Progress = (...args) => {
-        loading = advance(loading, ...args);
+    /** The open on the loading view failed: its failed step and why stay there, with Home and Try again. */
+    const failed = (j: Job, err: unknown) => {
+        console.error("[pr-blackboard]", err);
+        j.fail(failureOf(err, j.at()));
+        phase = "loading";
         push();
     };
-    /** The steps every open shows, before any has started. */
-    const fresh = (): (LoadStep & { step: Step })[] => STEPS.filter((s) => s.step !== "parser").map((s) => ({ step: s.step, label: s.label, state: "todo" }));
 
-    /** `reviewAt` for the panel, which shows the loading lines while GitHub is read; the caller sets the phase after. */
+    /**
+     * `reviewAt` for the panel, which shows the loading view while GitHub is
+     * read, and keeps it when that fails; the caller sets the phase after a
+     * success.
+     */
     const reviewForPanel = async (key: string, sha: string): Promise<Review> => {
-        loading = fresh();
+        const j = (job = createJob());
         opening = key;
         try {
-            return await reviewAt(key, sha, (step, state, words) => {
-                phase = "loading";
-                progress(step, state, words);
-            });
-        } finally {
+            const review = await reviewAt(key, sha, shown(j, () => (phase = "loading")));
+            if (phase === "loading") unreadOf.set(review, j.unread());
             phase = "start";
+            return review;
+        } catch (err) {
+            if (phase === "loading" && job === j) failed(j, err);
+            throw err;
         }
     };
 
@@ -246,11 +313,11 @@ export const createRuntime = (args: Parameters<DriverModule["activate"]>[0]): Ru
     const openPanel = async () => {
         await channel.open();
         if (guide.review()) phase = "ready";
-        // The board is on the canvas but can't be picked up: the start view says why.
+        // The board is on the canvas but can't be picked up: the loading view says why, or the start view when it never showed.
         else
             await pickUp().catch((err: unknown) => {
                 console.warn("[pr-blackboard] could not pick up the board", err);
-                error = explain(err);
+                if (phase !== "loading") error = explain(err);
             });
         push();
     };
@@ -258,26 +325,29 @@ export const createRuntime = (args: Parameters<DriverModule["activate"]>[0]): Ru
     /**
      * Opens a pull request: one `add-drawdy-elements` call for the whole
      * board (one undo step), then one flight to the overview with the PR
-     * card current. Nothing moves before the board is added. A failure goes
-     * back to the start view, with why under the field.
+     * card current. Nothing moves before the board is added. A link that
+     * isn't a PR stays in the start view, with why under the field; a
+     * failure on the way stays in the loading view, at its failed step.
      */
     const openPr = async (url: string) => {
         const ref = parsePrUrl(url);
-        const fail = (why: string) => {
+        if (!ref) {
             phase = "start";
-            error = why;
-            push();
-        };
-        if (!ref) return fail(NOT_A_PR);
+            error = NOT_A_PR;
+            return push();
+        }
         error = null;
         phase = "loading";
-        loading = fresh();
+        const j = (job = createJob());
         opening = prLabel(ref);
-        progress("pr", "active");
+        const progress = shown(j);
+        progress.step("pr", "active");
         try {
             // The board being rebuilt opens once the rebuild has landed: two boards of one pull request at once would be one board of twice the cards.
             if (rebuilding?.key === prKey(ref)) await rebuilding.done;
             const { review, plan } = await loadReview({ github, store, parser }, ref, progress);
+            if (plan) unreadOf.set(review, j.unread());
+            warnBuilt(j, review);
             const key = prKey(ref);
             const onBoard = (await readBoard(ddp)).get(key) ?? [];
             if (pinnedAt(onBoard, review.pr.headSha)) {
@@ -287,21 +357,21 @@ export const createRuntime = (args: Parameters<DriverModule["activate"]>[0]): Ru
                 await guide.overview();
                 return;
             }
-            progress("pin", "active", { label: `Pinning ${plural(review.pins.length, "card")}` });
+            progress.step("pin", "active", { label: `Pinning ${plural(review.pins.length, "card")}` });
             const elements = await layOut({ ddp, generateId: args.generateId }, review, styling.theme, plan ?? undefined);
             try {
                 await ddp.call("command:scene:add-drawdy-elements", { elements });
             } catch (err) {
                 console.error("[pr-blackboard]", err);
-                return fail(PIN_FAILED);
+                return failed(j, inWords(PIN_FAILED));
             }
+            j.step("pin", "done");
             guide.set(indexOf(key, review.pr.headSha, (await readBoard(ddp)).get(key) ?? []), review);
             phase = "ready";
             await guide.focus("pr");
             await guide.overview();
         } catch (err) {
-            console.error("[pr-blackboard]", err);
-            fail(explain(err));
+            failed(j, err);
         }
     };
 
@@ -326,22 +396,20 @@ export const createRuntime = (args: Parameters<DriverModule["activate"]>[0]): Ru
         // Refused: the view goes again, so the panel's Rebuild, turned off at the press, shows what holds.
         if (!on || !ref || rebuilding) return push();
         let landed = () => {};
-        const job = { key: on.key, label: prLabel(ref), steps: fresh(), done: new Promise<void>((resolve) => (landed = resolve)) };
-        rebuilding = job;
+        const run = { key: on.key, label: prLabel(ref), job: createJob(), done: new Promise<void>((resolve) => (landed = resolve)) };
+        rebuilding = run;
         error = null;
         push();
         const reading = () => phase === "ready" && guide.board()?.key === on.key;
-        const step: Progress = (...args) => {
-            job.steps = advance(job.steps, ...args);
-            push();
-        };
+        const progress = shown(run.job, undefined, () => {});
         try {
             await guide.closePopover();
-            const { review, plan } = await loadReview({ github, store, parser }, ref, step, true);
+            const { review, plan } = await loadReview({ github, store, parser }, ref, progress, true);
+            unreadOf.set(review, run.job.unread());
             const old = ((await readBoard(ddp)).get(on.key) ?? []).filter((e) => e.mark.sha === on.sha);
             const card = old.find((e) => e.mark.part === "pr");
             const corner = card ? (await rectsOf(ddp, [card.id])).get(card.id) : undefined;
-            step("pin", "active", { label: `Pinning ${plural(review.pins.length, "card")}` });
+            progress.step("pin", "active", { label: `Pinning ${plural(review.pins.length, "card")}` });
             const elements = await layOut({ ddp, generateId: args.generateId }, review, styling.theme, plan ?? undefined, corner);
             try {
                 await ddp.call("command:scene:add-drawdy-elements", { elements });
@@ -367,9 +435,9 @@ export const createRuntime = (args: Parameters<DriverModule["activate"]>[0]): Ru
             console.error("[pr-blackboard]", err);
             const why = githubFailure(err)?.kind === "not-found" ? GONE : explain(err);
             // Away from that board, the reader's line names it, until their next action.
-            error = reading() ? why : `${job.label} · failed: ${why}`;
+            error = reading() ? why : `${run.label} · failed: ${why}`;
         } finally {
-            if (rebuilding === job) rebuilding = null;
+            if (rebuilding === run) rebuilding = null;
             landed();
             push();
         }

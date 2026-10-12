@@ -93,6 +93,9 @@ in other languages get a card for every change.
 - PR Blackboard only reads. It never approves, comments on or changes
   anything on GitHub.
 - Links inside the description can't be opened from the board yet.
+- A board holds 32 cards, and PR Blackboard reads up to 40 code and 40 test
+  files of a PR. When a PR has more, or GitHub's requests run low, the
+  panel warns while it loads and keeps the warning on the PR card.
 
 ## Permissions
 

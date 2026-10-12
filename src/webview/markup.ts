@@ -12,6 +12,11 @@ html, body { margin: 0; height: 100%; }
 body {
     --hover: color-mix(in srgb, var(--drawdy-foreground) 7%, transparent);
     --shade: color-mix(in srgb, var(--drawdy-foreground) 16%, transparent);
+    /* Drawdy's lime for what turns, drawn toward the text colour so it reads on white too (3.1:1), and stays lime on dark. */
+    --turning: color-mix(in oklab, var(--drawdy-primary) 70%, var(--drawdy-foreground));
+    /* Drawdy's warning amber fills a warning's mark; drawn toward the text colour, it strokes one that reads on white (3.3:1). */
+    --amber: var(--drawdy-warning);
+    --amber-ink: color-mix(in oklab, var(--drawdy-warning) 80%, var(--drawdy-foreground));
     display: flex; flex-direction: column; overflow: hidden;
     font: 13px/18px ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
     background: var(--drawdy-background); color: var(--drawdy-foreground);
@@ -57,19 +62,58 @@ code { padding: 0 3px; border-radius: 4px; font-size: 11.5px; line-height: 1; ba
 
 #start { padding: 14px 14px 0; gap: 10px; }
 
-#loading { padding: 14px; gap: 14px; }
-#loading > .tag { align-self: flex-start; }
-#load-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
-#load-steps li { display: flex; align-items: center; gap: 10px; color: var(--drawdy-muted-foreground); }
-#load-steps li.done, #load-steps li.active { color: var(--drawdy-foreground); }
-#load-steps .note { font-size: inherit; line-height: inherit; }
-/* Lucide marks: circle to do, loader-circle turning, circle-check done, filled as a lime disc with a dark tick. */
-#load-steps svg { flex: none; width: 16px; height: 16px; color: var(--drawdy-border); }
-#load-steps .active svg, .line svg { color: var(--drawdy-primary); animation: spin .8s linear infinite; }
-#load-steps .done svg { color: var(--drawdy-primary-foreground); }
-#load-steps .done svg circle { fill: var(--drawdy-primary); stroke: var(--drawdy-primary); }
+/* Loading, as a CI job: the tag, the steps, then the annotations, scrolling when they outgrow the panel. On a failure the toolbar comes, Home and Try again. */
+.load-body { flex: 1; min-height: 0; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 14px; }
+.load-body > .tag { align-self: flex-start; }
+/* A step: its mark, its words (a muted note after them), and at its right a count or the time it took; its rows under its words. */
+.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.steps > li { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; column-gap: 10px; color: var(--drawdy-muted-foreground); }
+.steps > li:not(.todo) { color: var(--drawdy-foreground); }
+.steps .note { font-size: inherit; line-height: inherit; }
+.load-meta { padding-left: 4px; font-size: 11.5px; color: var(--drawdy-muted-foreground); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rows-wrap { grid-column: 2 / -1; display: grid; grid-template-rows: 1fr; }
+.rows { min-height: 0; overflow: hidden; list-style: none; margin: 0; padding: 0; }
+.rows > li { display: grid; grid-template-columns: 12px minmax(0, 1fr); column-gap: 8px; align-items: center; margin-top: 4px; font-size: 12px; line-height: 16px; color: var(--drawdy-muted-foreground); }
+.rows > li.done, .rows > li.active, .rows > li.warning, .rows > li.failed { color: var(--drawdy-foreground); }
+/* A file by its path, its folder muted: the panel cuts a path too long for the row at its start (fitPath), so the file's name stays whole. */
+.file { min-width: 0; overflow: hidden; white-space: nowrap; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11.5px; }
+.file .dir, .rows > li.todo .file { color: var(--drawdy-muted-foreground); }
+.rows > li.more { display: block; padding-left: 20px; }
+/* Lucide marks. A step's: circle to do, loader-circle turning, circle-check done (a lime disc, a dark tick), triangle-alert done with a warning (an amber triangle, a dark mark), circle-x failed (a red disc, a white cross). A row's are lighter and still, only its step turns: circle, circle-dot under way, check, triangle-alert and x, stroked. */
+.steps svg { width: 16px; height: 16px; margin-top: 1px; color: var(--drawdy-border); }
+.rows svg { width: 12px; height: 12px; margin: 0; }
+.steps .active > svg, .line svg { color: var(--turning); animation: spin .8s linear infinite; }
+.rows .active > svg { color: var(--turning); }
+.rows .active > svg circle + circle { fill: currentColor; }
+.steps .done > svg { color: var(--drawdy-primary-foreground); }
+.steps .done > svg circle { fill: var(--drawdy-primary); stroke: var(--drawdy-primary); }
+.steps .warning > svg, .annotation.warning svg { color: #090909; }
+.steps .warning > svg path:first-child, .annotation.warning svg path:first-child { fill: var(--amber); stroke: var(--amber); }
+.steps .failed > svg, .annotation.failure svg { color: #fff; }
+.steps .failed > svg circle, .annotation.failure svg circle { fill: var(--drawdy-destructive); stroke: var(--drawdy-destructive); }
+.rows .done > svg { color: var(--drawdy-muted-foreground); }
+.rows .warning > svg { color: var(--amber-ink); }
+.rows .failed > svg { color: var(--drawdy-destructive); }
+/* CI annotations: each a mark, a short title and a plain detail line. Warnings share one frame, a rule between them; a failure is the open's error box. */
+.annotations { display: grid; gap: 8px; }
+.annotations > div:empty { display: none; }
+.warnings { border: 1px solid var(--drawdy-border); border-radius: var(--drawdy-radius-md); }
+.annotation { display: grid; grid-template-columns: 16px minmax(0, 1fr); column-gap: 10px; padding: 8px 10px; }
+.annotation + .annotation { border-top: 1px solid var(--drawdy-border); }
+.annotation.failure { border-radius: var(--drawdy-radius-md); background: color-mix(in srgb, var(--drawdy-destructive) 14%, transparent); }
+.annotation svg { width: 16px; height: 16px; margin-top: 1px; }
+.annotation p { margin: 0; }
+.annotation .title { font-weight: 600; }
+.annotation .detail { font-size: 12px; line-height: 17px; color: var(--drawdy-muted-foreground); }
+.annotation .detail:empty { display: none; }
+/* A step's rows slide open as it starts, once it has run a moment, and shut as it ends: their height only, never a fade, which a busy board can leave half drawn. */
+.rows-wrap { animation: open .18s ease-out .2s both; }
+.rows-wrap.closing { animation: shut .14s ease-in both; }
+@keyframes open { from { grid-template-rows: 0fr; } }
+@keyframes shut { to { grid-template-rows: 0fr; } }
 @keyframes spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { #load-steps .active svg, .line svg { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .steps svg, .line svg, .rows-wrap { animation: none !important; } }
+.sr { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
 /* Reading: the pull request, the current card (it scrolls), then the toolbar with every control. The one column never grows past the panel, whatever the description holds. */
 #ready { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; grid-template-columns: minmax(0, 1fr); }
@@ -111,6 +155,8 @@ code { padding: 0 3px; border-radius: 4px; font-size: 11.5px; line-height: 1; ba
 #links button:hover { text-decoration-color: currentColor; }
 /* At the PR card: who opened it and how big it is, then the whole description, which scrolls like the links. */
 .about { flex: none; margin: 0; font-size: 11.5px; line-height: 16px; color: var(--drawdy-muted-foreground); }
+/* What the board can't show, as the loading view said it: kept at the PR card. */
+#pr-notes { flex: none; margin-top: 10px; }
 /* A long URL or word wraps; code blocks and tables scroll sideways on their own. */
 #pr-body { flex: 0 1 auto; min-height: 0; overflow-y: auto; margin: 8px -14px 0; padding: 0 14px 14px; overflow-wrap: anywhere; }
 #pr-body .none { color: var(--drawdy-muted-foreground); font-style: italic; }
@@ -174,11 +220,29 @@ export const PANEL_BODY = `
     <ul id="try" class="prs scroll" aria-label="Examples">${exampleRows}</ul>
 </section>
 <section id="loading" hidden>
-    <span id="loading-tag" class="tag"></span>
-    <ol id="load-steps"></ol>
+    <div class="load-body scroll">
+        <span id="loading-tag" class="tag"></span>
+        <ol id="load-steps" class="steps" aria-label="Steps"></ol>
+        <div id="load-notes" class="annotations" aria-live="polite"><div class="warnings"></div><div class="failures"></div></div>
+    </div>
+    <p id="load-status" class="sr" aria-live="polite"></p>
+    <div id="load-tools" class="tools" hidden>
+        <nav class="bar" aria-label="PR">
+            <button id="load-home" class="icon" type="button" aria-label="Home" data-tip="Home: open another PR">${icon("house", 16)}</button>
+            <span class="spacer"></span>
+            <button id="retry" class="btn" type="button">Try again</button>
+        </nav>
+    </div>
     <template id="mark-todo">${icon("circle", 16)}</template>
     <template id="mark-active">${icon("loader-circle", 16)}</template>
     <template id="mark-done">${icon("circle-check", 16)}</template>
+    <template id="mark-warning">${icon("triangle-alert", 16)}</template>
+    <template id="mark-failed">${icon("circle-x", 16)}</template>
+    <template id="row-todo">${icon("circle", 12)}</template>
+    <template id="row-active">${icon("circle-dot", 12)}</template>
+    <template id="row-done">${icon("check", 12)}</template>
+    <template id="row-warning">${icon("triangle-alert", 12)}</template>
+    <template id="row-failed">${icon("x", 12)}</template>
 </section>
 <section id="ready" hidden>
     <div id="pr" class="pr">
@@ -190,6 +254,7 @@ export const PANEL_BODY = `
         <div id="path" class="path mono"></div>
         <div id="links" class="scroll"></div>
         <p id="about" class="about"></p>
+        <div id="pr-notes" class="annotations"><div class="warnings"></div></div>
         <div id="pr-body" class="md scroll"></div>
     </div>
     <div class="tools">

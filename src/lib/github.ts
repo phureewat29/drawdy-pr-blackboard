@@ -137,8 +137,8 @@ const fileShape = g.object({
 
 export type Github = {
     pr: (ref: PrRef) => Promise<PrInfo>;
-    /** Every changed file, one request per 100 files. */
-    files: (ref: PrRef, count: number) => Promise<PrFile[]>;
+    /** Every changed file, one request per 100 files; `onPage` hears of each page as it comes. */
+    files: (ref: PrRef, count: number, onPage?: () => void) => Promise<PrFile[]>;
     /** A file's text at a commit, or null when it can't be read. Costs no API quota. */
     raw: (repo: string, sha: string, path: string) => Promise<string | null>;
 };
@@ -204,17 +204,20 @@ export const createGithub = (fetch: Fetch): Github => {
         });
     };
 
-    const files = async (ref: PrRef, count: number): Promise<PrFile[]> => {
+    const files = async (ref: PrRef, count: number, onPage = () => {}): Promise<PrFile[]> => {
         const slot = limiter(PAGES_AT_ONCE);
         // After a failure no other page is asked for: each would cost a request.
         let failure: unknown = null;
         const pageOf = (n: number) =>
             slot(async () => {
                 if (failure) throw failure;
-                return page(ref, n).catch((err: unknown) => {
-                    failure ??= err;
-                    throw err;
-                });
+                return page(ref, n).then(
+                    (got) => (onPage(), got),
+                    (err: unknown) => {
+                        failure ??= err;
+                        throw err;
+                    }
+                );
             });
         const pages = await Promise.all(Array.from({ length: pageCount(count) }, (_, i) => pageOf(i + 1)));
         return pages.flat();

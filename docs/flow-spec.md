@@ -1267,8 +1267,8 @@ that hides code from one button, going back to the start view (Home),
 rebuilding the board, loading progress and errors. Opening the panel
 picks the board up (4.3) if no review is loaded yet. When it can't (a
 teammate with no stored copy whom GitHub is limiting, or no network), the
-start view shows why under the field, in the same words and slot as any
-other error; the rate-limit line says when to try again.
+loading view stays at its failed step and says why (7.2.6); the rate-limit
+failure says when to try again.
 
 ### 6.4 Camera on a step or a follow
 
@@ -1453,8 +1453,9 @@ has no `allow-forms`).
 
 7.2.2 **Error,** where its action was taken: an open's in one slot under
 the field, padding 8 10, radius md, `--drawdy-destructive` at 14 %,
-12.5/17; a failed open goes to the start view with the link kept; typing
-hides the error; success clears the field. A failure in the reading view
+12.5/17; a link that isn't a pull request stays there, the link kept, and
+an open that fails on the way stays on the loading view at its failed step
+(7.2.6); typing hides the error; success clears the field. A failure in the reading view
 (a rebuild, a step, a follow, Read all) shows in the same box on the
 toolbar's line (7.3.4), and the reading view stays. The words: `Only
 GitHub PR links work, like github.com/owner/repo/pull/123.`, `GitHub can't
@@ -1557,58 +1558,122 @@ which also differ in lightness) or 0.11 apart in OKLab (ky and
 excalidraw, as before). Only neighbours are held apart: cpython's blue is
 ky's hue, three rows up.
 
-7.2.6 **Loading:** padding 14, gap 14: the tag of the pull request being
-opened (known from the link), then the steps 10 apart, each with a 16 px
-Lucide mark: `circle` in `--drawdy-border` to do, `loader-circle` in lime
-turning (still under reduced motion), `circle-check` done, its circle
-filled lime and its tick in `--drawdy-primary-foreground`, so the tick
-reads on lime in both themes. The marks come from `<template>`s in the
-markup, since the serialized panel script draws no SVG of its own.
+7.2.6 **Loading** (request 61), as a CI job: padding 14, gap 14: the tag
+of the pull request being opened (known from the link), the steps 10
+apart, then the warnings found so far. Each step: a 16 px Lucide mark, its
+words with a muted note after them, and at its right, 11.5 muted in
+tabular figures, a count while it runs (`9 / 23`) or the time it took once
+it ended (`2.8 s`, a tenth of a second at least). The marks: `circle` in
+`--drawdy-border` to do; `loader-circle` turning in `--turning`, Drawdy's
+lime drawn 30 % toward the text colour (3.1:1 on white, still lime on
+dark), still under reduced motion; `circle-check` done, a lime disc with a
+dark tick; `triangle-alert` done with a warning, an amber
+(`--drawdy-warning`) triangle with a dark mark; `circle-x` failed, a red
+disc with a white cross. They come from `<template>`s in the markup, since
+the serialized panel script draws no SVG of its own.
 
 ```
- first open of a TypeScript pull request      every later open
-┌──────────────────────────────────────────┐  ┌──────────────────────────────┐
-│ [honojs/hono#5513]                       │  │ [honojs/hono#5513]           │
-│ ✓ Reading the PR                         │  │ ✓ Reading the PR             │
-│ ◌ Downloading the TypeScript parser      │  │ ◌ Reading 4 changed files    │
-│   · first time only                      │  │ ○ Pinning 10 cards           │
-│ ◌ Reading 4 changed files                │  └──────────────────────────────┘
-│ ○ Pinning 10 cards                       │
-└──────────────────────────────────────────┘
+ Bun's rewrite, its first open                      its file list cut short by the limit
+┌────────────────────────────────────────────────┐  ┌────────────────────────────────────────────────┐
+│ [oven-sh/bun#30412]                            │  │ [oven-sh/bun#30412]                            │
+│ ✓ Reading the PR · 23 GitHub requests    3.3 s │  │ ✕ Reading the PR · GitHub requests      9 / 23 │
+│ ◌ Downloading 3 parsers                        │  │ ○ Reading the changed files                    │
+│     ⊙ Rust                                     │  │ ○ Finding the lines                            │
+│     ✓ JavaScript                               │  │ ○ Pinning the cards                            │
+│     ⊙ TypeScript                               │  │ ┌────────────────────────────────────────────┐ │
+│ ◌ Reading 66 changed files              0 / 66 │  │ │✕ GitHub rate limit reached                 │ │
+│     ⊙ …/src/main.rs                            │  │ │  This network has used GitHub's 60         │ │
+│     ○ src/bun_core/fmt.rs                      │  │ │  requests for this hour. Try again in      │ │
+│       … 10 rows                                │  │ │  12 minutes.                               │ │
+│       and 56 more                              │  │ └────────────────────────────────────────────┘ │
+│ ○ Finding the lines                            │  │                                                │
+│ ○ Pinning the cards                            │  ├────────────────────────────────────────────────┤
+│                                                │  │ ⌂                                  [Try again] │
+└────────────────────────────────────────────────┘  └────────────────────────────────────────────────┘
 ```
 
-1. `Reading the PR`. When the file list takes more than one
-   page, a muted suffix gives the cost once the pull request has said how
-   many files it has: `· 23 GitHub requests` (request 40; oven-sh/bun#30412
-   is the one example this applies to, and its row says so before the
-   open, 7.2.4).
-2. `Downloading the TypeScript parser`, then a muted `· first time only`,
-   only when bytes come over the network: the first pull request in each
-   language, or after a pin changes. The parser's name follows 7.2.2
-   (`JavaScript parser`, `TypeScript and JavaScript parsers`). No size: the
-   step's job is to say why this open is slower, once; the README gives
-   the size. It starts when the file list is known and runs beside step 3,
-   so both can turn at once; each is done on its own. A stored copy's check
-   (8 to 30 ms) shows nothing.
-3. `Reading 4 changed files`, turning for the whole step, imported files
-   and parsing included. No counter: excalidraw#12237's 230 raw requests
-   take about 3 s. If a live check of a shipped example passes 5 s, the
-   step gains a muted count of files read so far, `· 120 files`; the
-   total is not known ahead, since imports are found as files arrive.
-4. `Pinning 10 cards`.
+1. `Reading the PR`. A pull request whose file list takes more than one
+   page counts its GitHub requests as they come, `· GitHub requests 9 /
+   23`, then says what it took: `· 23 GitHub requests 2.8 s` (request 40;
+   its example row says the cost before the open, 7.2.4). It ends with a
+   warning when this network's GitHub requests run low, 10 left or fewer,
+   or GitHub lists fewer files than the pull request has (3,000 at most).
+2. `Downloading the parser`, or `Downloading 3 parsers`, only when bytes
+   come over the network; under it a row per language, `TypeScript`,
+   under way while its grammar or the runtime every language needs
+   downloads, done, or failed. No `first time only` (request 61). It
+   starts when the worker knows what the changed files need and runs
+   beside step 3; a language an import needs later opens it again. A
+   stored copy's check (8 to 30 ms) shows nothing.
+3. `Reading 66 changed files`: the files read whole, code then tests, in
+   the order they are read and parsed, one row each: its path, the folder
+   muted, cut at the start a folder at a time when the row is too narrow,
+   so the name stays whole (`…/components/App.tsx`); at most 10 rows, then
+   a plain `and 56 more`. Nothing in it is clickable (request 62). The
+   next file to read is under way (`circle-dot`, still: only steps turn),
+   one read is done (`check`), one too long to use or not found has a
+   warning (`triangle-alert`). Its count is `23 / 66`. It ends with a
+   warning when the read limits leave changed files unread, or a file was
+   too long or not found.
+4. `Finding the lines`: the imports followed and the references resolved;
+   it counts the files it reads, `12 files`.
+5. `Pinning 32 cards`, with a warning when the card limit leaves some off.
 
-A failure ends the loading view: the start view comes back with the link
-kept and the error under the field (7.2.2). A teammate's Read all that has
-to build the review (6.3) shows only `Reading the PR…` in its
+A step lists its rows while it runs, or after it failed. They open 0.2 s
+after it starts, so a quick step shows none, and fold away as it ends. A
+step that never ran is dropped: a stored review is pinned without reading
+or linking. The driver sends a view at once for a step or a parser, and
+for a file at most every 50 ms; the panel changes each step and row in
+place, so a turning mark keeps turning.
+
+**Warnings** (request 61), as CI annotations in one frame (1 px
+`--drawdy-border`, radius md, a rule between them), each an amber
+`triangle-alert`, a short title, 13 semibold, and a plain detail line,
+12/17 muted, numbers grouped:
+
+| Title | Detail | Its step |
+|---|---|---|
+| `Card limit reached` | `The board holds 32 cards: 7,758 functions and 2,151 files not pinned.` | 5 |
+| `4 GitHub requests left` | `GitHub allows this network 60 an hour. Resets at 2:05 PM.` | 1 |
+| `GitHub lists 3,000 of 4,512 files` | `The other 1,512 aren't on the board.` | 1 |
+| `1,517 files not read` | `PR Blackboard reads up to 40 code and 40 test files, so some cards have no lines.` | 3 |
+| `4 files too long to read` | `Over 400,000 characters, so their cards have no lines.` | 3 |
+| `2 files not found` | `GitHub didn't send them, so their cards have no lines.` | 3 |
+| `No diff for 3 files` | `GitHub leaves out diffs too large to show.` | 3 |
+
+They come in this order, the card limit first, whenever each is found,
+and the PR card keeps them so in the reading view (7.3.1). What reading
+left out (not read, too long, not found) is kept for the reviews this
+session read; a stored review shows the rest.
+
+**A failure** keeps the loading view (request 61): the step it failed on
+shows `circle-x` (a counted step, where it stopped: `9 / 23`), what ran
+beside it goes back to to-do, and why goes under the steps in the error
+box (`--drawdy-destructive` at 14 %, `role="alert"`): a red disc, a title
+(`GitHub rate limit reached`, `PR not found`, `Can't reach GitHub`,
+`GitHub error 502`, `Permission needed`, or the step's: `Download failed`,
+`Parser failed`, `Pinning failed`), then the words of 7.2.2. A toolbar
+comes under the view, as the reading view's: Home at its left, `Try
+again` at its right, which opens the pull request again by its tag; a
+retry after the parser failed costs no GitHub request. A link that isn't
+a pull request stays in the start view (7.2.2). A teammate's Read all
+that has to build the review (6.3) shows only `Reading the PR…` in its
 popover, download or not.
+
+The steps are an `<ol>`. Each step and row ends in words for a screen
+reader (`, done`, `, under way`, `, done, with a warning`), a polite
+status line says the step under way, the warnings are a polite live
+region, and the marks are `aria-hidden` and differ in shape, so colour is
+never the only signal.
 
 7.2.7 **Icons** (request 41): every icon is Lucide 1.53.0 (ISC), inlined
 from `src/shared/icons.ts` on Lucide's 24-unit grid with its 2-unit
 stroke: `link` in the field, `house`, `refresh-cw`, `scan` and
 `file-text` for Home, Rebuild, Overview and Description, `chevron-left`
-and `chevron-right` for Previous and Next, `circle`, `loader-circle` and
-`circle-check` while loading (`loader-circle` also on the toolbar's line
-while a rebuild runs), `x` for Read all's close button (an image of the
+and `chevron-right` for Previous and Next, `circle`, `loader-circle`,
+`circle-check`, `triangle-alert` and `circle-x` for the loading steps, and
+`circle`, `circle-dot`, `check`, `triangle-alert` and `x` for their rows
+(`loader-circle` also on the toolbar's line while a rebuild runs), `x` for Read all's close button (an image of the
 SVG, since a schema has no SVG node, stroked in the pinned theme's ink). The
 extension's own icon is the one exception: a generated image (requests
 43, 45 and 59: a stack of diff cards tied with a red string), `assets/icon.png` for the listing, 512 px,
@@ -1689,9 +1754,9 @@ panel's theme, and gives the panel, from the cards' palette, `--add`,
 `--n`, `--c`, `--f` and `--t`.
 
 The **PR card** (request 55), current wherever a board lands: an
-`.about` line, 11.5/16 muted, `usualoma · 4 files`, and under it the
-not-pinned line when the board leaves cards off (`13 functions and 5
-files not pinned`). Then the whole description, as GitHub-like Markdown
+`.about` line, 11.5/16 muted, `usualoma · 4 files`, and under it, 10
+below, what the board can't show, the loading view's warnings in their
+frame (7.2.6), the card limit first (request 61). Then the whole description, as GitHub-like Markdown
 (`markdownHtml(…, "page")`, rendered once per review by the driver): 13/20
 text, h1 16 and h2 15 with the bottom rule, h3 14; blocks 12 apart;
 headings 16 above, 8 below; lists 1.5em in; code blocks 11.5/17 mono and
@@ -1715,7 +1780,10 @@ area is never empty.
 │ feat(editor): alt-click to … │
 ├──────────────────────────────┤
 │ dwelle · 11 files            │ about
-│ 13 functions and 5 files not │ the not-pinned line
+│ ┌──────────────────────────┐ │ the warnings, when the board
+│ │⚠ Card limit reached      │ │ can't show the whole PR
+│ │  The board holds 32 ca…  │ │
+│ └──────────────────────────┘ │
 │ • Alt+click on the selected  │ the whole description,
 │   element (or group) selects │ scrolling
 │   …                          │
@@ -2334,16 +2402,15 @@ the dev server on a local board. G: the score gate, outside the repository
     link with its evidence lines. It ends `GATE PASS`
     or `GATE FAIL` with the reasons, and exits non-zero on a failure.
 26. (T, L) The parser as the reader sees it. T: with nothing stored, the
-    loading view shows `Downloading the TypeScript parser · first time
-    only` between the first and the reading step, and both can turn at
-    once; with the files stored, it never shows; a JavaScript-only pull
-    request names the `JavaScript parser`, and a pull request in several
-    languages names each, `Python, Go and Rust parsers`. A failed
-    download and a wrong hash each end in the start view with `Couldn't
-    download the
-    TypeScript parser from cdn.jsdelivr.net. Try again.`, the link kept,
-    nothing pinned and nothing stored; a parser that won't run ends with
-    `Couldn't parse this PR's TypeScript.`; a retry in the same
+    loading view shows `Downloading the parser` between the first and the
+    reading step, a `TypeScript` row under it, and both steps can turn at
+    once; with the files stored, it never shows; a pull request in several
+    languages shows `Downloading 3 parsers` and a row for each. A failed
+    download and a wrong hash each stay on the loading view, the parser's
+    step and row failed and `Download failed` above `Couldn't download
+    the TypeScript parser from cdn.jsdelivr.net. Try again.`, nothing
+    pinned and nothing stored; a parser that won't run ends with `Parser
+    failed` above `Couldn't parse this PR's TypeScript.`; a retry in the same
     session makes no GitHub request. One file the parser can't read is
     no error. L: on a new local board with the parser not yet stored, the
     first JS or TS example opened shows the download step once; a second

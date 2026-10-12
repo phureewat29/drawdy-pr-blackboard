@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { projectColour } from "../shared/suggestions.ts";
 import { parse } from "../lib/guard.ts";
-import { webviewToDriver, type CodeCard, type PanelView } from "../shared/protocol.ts";
+import { webviewToDriver, type CodeCard, type LoadStep, type PanelView } from "../shared/protocol.ts";
 import { fakeFetch } from "../test/fake-fetch.ts";
 import { fakeHost } from "../test/fake-host.ts";
 import { STRING_COLOURS } from "../lib/layout.ts";
@@ -83,28 +83,38 @@ describe("the runtime on hono#5513", () => {
     });
 
     it("pins the board in one call, moves the camera only after it, once, and makes the PR card current", async () => {
+        // jsDelivr takes a moment, as over a network, so the download shows beside the reads.
+        globalThis.fetch = (async (url: string) => {
+            if (url.startsWith("https://cdn.jsdelivr.net/")) await wait(60);
+            return fakeGithub(url);
+        }) as typeof fetch;
         const { host, message, view } = await boot();
         const from = host.calls.length;
         await message({ type: "open", url: "https://github.com/honojs/hono/pull/5513" });
         await until(() => host.calls.some((c) => c.type === "command:camera:fly-to-rect"));
+        globalThis.fetch = fakeGithub as typeof fetch;
         const types = host.calls.slice(from).map((c) => c.type);
         const add = types.indexOf("command:scene:add-drawdy-elements");
         expect(types.filter((t) => t === "command:scene:add-drawdy-elements")).toHaveLength(1);
         expect(types.slice(0, add)).not.toContain("command:camera:fly-to-rect");
         expect(types.slice(add).filter((t) => t === "command:camera:fly-to-rect")).toHaveLength(1);
         // The board lands with the description in the panel: not a step, so – / 8, Previous off, Next on.
-        expect(view()).toMatchObject({ phase: "ready", current: -1, total: 8, hasPrevious: false, hasNext: true, card: { pin: "pr", about: ["usualoma · 4 files"] } });
+        expect(view()).toMatchObject({ phase: "ready", current: -1, total: 8, hasPrevious: false, hasNext: true, card: { pin: "pr", about: ["usualoma · 4 files"], warnings: [] } });
         expect(view().card).toHaveProperty("description", expect.stringContaining("<h3>Behavior change</h3>"));
         // Cards take the theme Drawdy shows the reader who pins them.
         const pinned = host.calls.find((c) => c.type === "command:scene:add-drawdy-elements")!.req.elements;
         const cards = pinned.filter((e: any) => e.type === "component").map((e: any) => e.schema.children[0].child.srcDoc as string);
         expect(cards.every((html: string) => html.includes("color-scheme: dark;"))).toBe(true);
         expect(pinned.find((e: any) => e.meta.prBlackboard.part === "pr").meta.prBlackboard.theme).toBe("dark");
-        const views = host.calls.filter((c) => c.type === "command:webview:post-message" && c.req.message.view?.phase === "loading").map((c) => c.req.message.view.loading);
-        const words = (l: { label: string; note?: string }) => (l.note ? `${l.label} · ${l.note}` : l.label);
-        expect(views.pop().map(words)).toEqual(["Reading the PR", "Downloading the TypeScript parser · first time only", "Reading 4 changed files", "Pinning 10 cards"]);
-        // The download runs beside the reads: both steps turn at once.
-        expect(views.some((steps: { state: string }[]) => steps[1].state === "active" && steps[2].state === "active")).toBe(true);
+        const views: LoadStep[][] = host.calls.filter((c) => c.type === "command:webview:post-message" && c.req.message.view?.phase === "loading").map((c) => c.req.message.view.loading);
+        // As a CI job: every step ended, each with the time it took, and no `first time only`; pinning showed under way before.
+        expect(views.at(-1)!.map((l) => `${l.state} ${l.label}${l.note ? ` · ${l.note}` : ""}`)).toEqual(["done Reading the PR", "done Downloading the parser", "done Reading 4 changed files", "done Finding the lines", "done Pinning 10 cards"]);
+        expect(views.at(-1)!.every((l) => /^\d+\.\d s$/.test(l.meta ?? ""))).toBe(true);
+        expect(views.some((steps) => steps.at(-1)!.state === "active" && steps.at(-1)!.label === "Pinning 10 cards")).toBe(true);
+        // The download runs beside the reads, a row for TypeScript, while the changed files are listed under theirs.
+        const beside = views.find((steps) => steps[1].key === "parser" && steps[1].state === "active" && steps[2].state === "active")!;
+        expect(beside[1].rows).toEqual([{ label: "TypeScript", state: "active" }]);
+        expect(beside[2].rows!.map((r) => r.label)).toEqual(["src/compose.ts", "src/hono-base.ts", "src/compose.test.ts", "src/hono.test.ts"]);
     });
 
     it("picks up a board already pinned with the PR card current, as after pinning", async () => {
@@ -299,7 +309,7 @@ describe("the runtime and GitHub", () => {
         expect(view()).toMatchObject({ phase: "ready", current: 2, card: { name: "compose()" } });
     });
 
-    it("says why in the start view when the panel opens on a board it can't pick up", async () => {
+    it("says why on the loading view, at its failed step, when the panel opens on a board it can't pick up", async () => {
         const first = await boot();
         await first.message({ type: "open", url: "https://github.com/honojs/hono/pull/5513" });
         await until(() => first.host.calls.some((c) => c.type === "command:camera:fly-to-rect"));
@@ -309,8 +319,59 @@ describe("the runtime and GitHub", () => {
             const { host, openPanel, view } = await boot({ panel: false });
             for (const [id, e] of first.host.elements) host.elements.set(id, e);
             await openPanel();
-            await until(() => view().error !== null);
-            expect(view()).toMatchObject({ phase: "start", error: "GitHub is limiting requests from this network. Try again in a few minutes." });
+            await until(() => view().annotations.length > 0);
+            expect(view()).toMatchObject({
+                phase: "loading",
+                tag: { label: "honojs/hono#5513" },
+                annotations: [{ level: "failure", title: "GitHub rate limit reached", detail: "GitHub is limiting requests from this network. Try again in a few minutes." }],
+            });
+            expect(view().loading.map((l) => `${l.key} ${l.state}`)).toEqual(["pr failed", "files todo", "link todo", "pin todo"]);
+        } finally {
+            globalThis.fetch = fakeGithub as typeof fetch;
+        }
+    });
+
+    it("keeps a failed open on the loading view at the step it failed on, why under the steps, until Home; Try again opens it, reusing the PR read", async () => {
+        const net = fakeFetch("hono-5513.json");
+        globalThis.fetch = (async (url: string) => (url.startsWith("https://cdn.jsdelivr.net/") ? new Response("", { status: 503 }) : net.fetch(url))) as typeof fetch;
+        try {
+            const { host, message, view } = await boot();
+            await message({ type: "open", url: "https://github.com/honojs/hono/pull/5513" });
+            await until(() => view().annotations.some((a) => a.level === "failure"));
+            expect(view()).toMatchObject({ phase: "loading", error: null, annotations: [{ level: "failure", title: "Download failed", detail: "Couldn't download the TypeScript parser from cdn.jsdelivr.net. Try again." }] });
+            expect(view().loading.map((l) => `${l.key} ${l.state}`)).toEqual(["pr done", "parser failed", "files todo", "link todo", "pin todo"]);
+            expect(view().loading[1].rows).toEqual([{ label: "TypeScript", state: "failed" }]);
+            await message({ type: "start" });
+            expect(view()).toMatchObject({ phase: "start", error: null, loading: [], annotations: [] });
+            // Try again sends the tag's `owner/repo#number`, and the PR and its files read before cost nothing more.
+            globalThis.fetch = net.fetch as typeof fetch;
+            const asked = net.requests.length;
+            await message({ type: "open", url: "honojs/hono#5513" });
+            await until(() => host.calls.some((c) => c.type === "command:camera:fly-to-rect"), 20_000);
+            expect(view()).toMatchObject({ phase: "ready", card: { pin: "pr" } });
+            expect(net.requests.slice(asked).filter((url) => url.startsWith("https://api.github.com/"))).toEqual([]);
+        } finally {
+            globalThis.fetch = fakeGithub as typeof fetch;
+        }
+    }, 30_000);
+
+    it("warns on the loading view and at the PR card when this network's GitHub requests run low, until they reset", async () => {
+        const net = fakeFetch("hono-5513.json");
+        const reset = Math.ceil(Date.now() / 1000) + 38 * 60;
+        globalThis.fetch = (async (url: string) => {
+            const res = await net.fetch(url);
+            if (!url.startsWith("https://api.github.com/")) return res;
+            return new Response(await res.text(), { headers: { "x-ratelimit-limit": "60", "x-ratelimit-remaining": url.includes("/files") ? "3" : "4", "x-ratelimit-reset": String(reset) } });
+        }) as typeof fetch;
+        try {
+            const { host, message, view } = await boot();
+            await message({ type: "open", url: "https://github.com/honojs/hono/pull/5513" });
+            await until(() => host.calls.some((c) => c.type === "command:camera:fly-to-rect"));
+            const loading: PanelView[] = host.calls.filter((c) => c.type === "command:webview:post-message" && c.req.message.view?.phase === "loading").map((c) => c.req.message.view);
+            const warned = loading.find((v) => v.annotations.length > 0)!;
+            expect(warned.annotations.map((a) => a.title)).toEqual(["3 GitHub requests left"]);
+            expect(warned.loading[0]).toMatchObject({ key: "pr", state: "warning" });
+            expect((view().card as { warnings: { title: string }[] }).warnings.map((w) => w.title)).toEqual(["3 GitHub requests left"]);
         } finally {
             globalThis.fetch = fakeGithub as typeof fetch;
         }

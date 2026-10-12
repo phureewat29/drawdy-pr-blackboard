@@ -12,9 +12,10 @@ import type { Fetch, PrFile, PrInfo } from "../lib/github.ts";
 import type { Built } from "../lib/model.ts";
 import type { Grammar } from "../lib/syntax.ts";
 import { WORKER_SCRIPT } from "../worker/script.ts";
-import type { FromWorker, ToWorker, WorkerScope } from "../worker/serve.ts";
+import type { FromWorker, ParserFile, ToWorker, WorkerScope } from "../worker/serve.ts";
 import type { Ddp } from "./ddp.ts";
 import { createGrammars, languagesOf } from "./grammars.ts";
+import type { Progress } from "./progress.ts";
 import { inWords } from "./words.ts";
 
 /** The driver's end of a channel to the worker's side; `close` ends a real worker. */
@@ -26,12 +27,12 @@ export type Port = { post: (message: ToWorker) => void; close?: () => void };
  */
 export type Connect = (fetch: Fetch, receive: (message: FromWorker) => void, broken: (err: unknown) => void) => Port;
 
-/** The parser step of the loading view: a download under way, in words, or done. */
-export type ParserStep = (state: "active" | "done", words?: { label: string; note: string }) => void;
+/** What the parser tells the loading view: each language's parser downloading, the changed files it reads and each as it is read, and the files read to follow imports. */
+export type ParserProgress = Pick<Progress, "parser" | "reading" | "read" | "followed">;
 
 export type Parser = {
     /** The review of a pull request and its board's plan, from its files at the head commit. Rejects in words. */
-    analyse: (pr: PrInfo, files: readonly PrFile[], step: ParserStep) => Promise<Built>;
+    analyse: (pr: PrInfo, files: readonly PrFile[], progress: ParserProgress) => Promise<Built>;
 };
 
 /** How long an idle worker lives. Drawdy tells a driver nothing when it unloads, so a reloaded driver's worker ends on its own. */
@@ -89,16 +90,22 @@ export const connectWorker: Connect = (fetch, receive, broken) => {
 
 type Job = {
     request: Extract<ToWorker, { type: "analyse" }>;
-    step: ParserStep;
+    progress: ParserProgress;
     grammars: Grammar[];
     /** The parser's files the changed files need, loading beside the reads. */
     loading: Promise<unknown>;
     /** The first file that couldn't be had, in words. */
     failure: unknown;
-    told: boolean;
+    /** Each parser file this open downloads, and how far: files from storage are not here. */
+    downloads: Map<ParserFile, "active" | "done" | "failed">;
+    /** Each language's row as last told. */
+    rows: Map<string, "active" | "done" | "failed">;
     done: (built: Built) => void;
     fail: (err: unknown) => void;
 };
+
+/** The worse of two download states: a failure outweighs one under way, which outweighs one done. */
+const worse = (a: "active" | "done" | "failed" | undefined, b: "active" | "done" | "failed") => (a === "failed" || b === "failed" ? "failed" : a === "active" || b === "active" ? "active" : "done");
 
 /** `connect` starts the worker's side: a worker by default, the module itself in the tests and the score gate. */
 export const createParser = (deps: { ddp: Ddp; fetch: Fetch; connect?: Connect }): Parser => {
@@ -113,10 +120,40 @@ export const createParser = (deps: { ddp: Ddp; fetch: Fetch; connect?: Connect }
     let idle: ReturnType<typeof setTimeout> | null = null;
     let job: Job | null = null;
 
-    const tell = (j: Job) => () => {
-        if (j.told) return;
-        j.told = true;
-        j.step("active", { label: `Downloading the ${languagesOf(j.grammars).parser}`, note: "first time only" });
+    /**
+     * The parser step's rows: a language is a row while one of its files
+     * downloads, its grammar or the runtime every language needs; it is done
+     * when they are, and failed when one failed.
+     */
+    const report = (j: Job) => {
+        const rows = new Map<string, "active" | "done" | "failed">();
+        for (const [name, state] of j.downloads) {
+            const served = name === "runtime" ? j.grammars : [name];
+            for (const language of served.map((g) => languagesOf([g]).code)) rows.set(language, worse(rows.get(language), state));
+        }
+        for (const [language, state] of rows) {
+            if (j.rows.get(language) === state) continue;
+            j.rows.set(language, state);
+            j.progress.parser(language, state);
+        }
+    };
+
+    /** A parser file for `j`: from storage, else downloaded, which the parser step shows. */
+    const fileFor = (j: Job, name: ParserFile): Promise<Uint8Array> => {
+        const got = grammars.bytes(name, languagesOf(j.grammars).parser, () => {
+            j.downloads.set(name, "active");
+            report(j);
+        });
+        const settle = (state: "done" | "failed") => {
+            if (!j.downloads.has(name)) return;
+            j.downloads.set(name, state);
+            report(j);
+        };
+        got.then(
+            () => settle("done"),
+            () => settle("failed")
+        );
+        return got;
     };
 
     const receive = (to: Port, message: FromWorker) => {
@@ -126,13 +163,12 @@ export const createParser = (deps: { ddp: Ddp; fetch: Fetch; connect?: Connect }
             case "load": {
                 j.grammars = message.grammars;
                 if (message.grammars.length === 0) return;
-                const words = languagesOf(message.grammars).parser;
-                j.loading = Promise.all((["runtime", ...message.grammars] as const).map((name) => grammars.bytes(name, words, tell(j)))).then(() => j.step("done"));
+                j.loading = Promise.all((["runtime", ...message.grammars] as const).map((name) => fileFor(j, name)));
                 j.loading.catch((err: unknown) => (j.failure ??= err));
                 return;
             }
             case "file":
-                grammars.bytes(message.name, languagesOf(j.grammars).parser, tell(j)).then(
+                fileFor(j, message.name).then(
                     (bytes) => to.post({ type: "file", ask: message.ask, bytes }),
                     (err: unknown) => {
                         j.failure ??= err;
@@ -140,13 +176,22 @@ export const createParser = (deps: { ddp: Ddp; fetch: Fetch; connect?: Connect }
                     }
                 );
                 return;
+            case "reading":
+                if (message.id === j.request.id) j.progress.reading(message.paths, message.left);
+                return;
+            case "read":
+                if (message.id === j.request.id) j.progress.read(message.path, message.state);
+                return;
+            case "followed":
+                if (message.id === j.request.id) j.progress.followed(message.files);
+                return;
             case "done":
                 if (message.id === j.request.id) j.done({ review: message.review, plan: message.plan });
                 return;
             case "failed":
                 if (message.id !== j.request.id) return;
                 if (j.failure) j.fail(j.failure);
-                else if (message.parser) j.fail(inWords(`Couldn't parse this PR's ${languagesOf(j.grammars).code}.`));
+                else if (message.parser) j.fail(inWords(`Couldn't parse this PR's ${languagesOf(j.grammars).code}.`, "Parser failed"));
                 else j.fail(new Error(message.message));
                 return;
         }
@@ -172,12 +217,12 @@ export const createParser = (deps: { ddp: Ddp; fetch: Fetch; connect?: Connect }
 
     let ids = 0;
     return {
-        analyse: (pr, files, step) =>
+        analyse: (pr, files, progress) =>
             queue(async () => {
                 if (idle) clearTimeout(idle);
                 try {
                     const built = await new Promise<Built>((done, fail) => {
-                        job = { request: { type: "analyse", id: ids++, pr, files: [...files] }, step, grammars: [], loading: Promise.resolve(), failure: null, told: false, done, fail };
+                        job = { request: { type: "analyse", id: ids++, pr, files: [...files] }, progress, grammars: [], loading: Promise.resolve(), failure: null, downloads: new Map(), rows: new Map(), done, fail };
                         port ??= open();
                         port.post(job.request);
                     });
