@@ -106,19 +106,13 @@ PRs in other languages get a card for every change.
 
 ## Privacy
 
-PR Blackboard talks to GitHub, to read the PR and its files, and to
-jsDelivr, to download the language parsers, each checked against a
-fingerprint before it runs. It sends nothing anywhere else: no account, no
-tracking.
+PR Blackboard reads the PR and its files from GitHub and downloads the
+language parsers from jsDelivr. Each parser must match a pinned SHA-256
+hash before it runs. Apart from those requests it sends nothing, and it has
+no account or tracking.
 
-## Credits
+## License
 
-Code is read with [tree-sitter](https://tree-sitter.github.io/) and its
-grammars, descriptions are rendered with [marked](https://marked.js.org/),
-and the icons are [Lucide](https://lucide.dev/). The test fixtures use
-code from [Hono](https://github.com/honojs/hono) and
-[Excalidraw](https://github.com/excalidraw/excalidraw), both MIT licensed.
-Building or curious how it works? See the
-[developer guide](https://github.com/phureewat29/drawdy-pr-blackboard/blob/main/docs/development.md).
-
-MIT licensed.
+MIT licensed. The
+[developer guide](https://github.com/phureewat29/drawdy-pr-blackboard/blob/main/docs/development.md)
+covers building it and how it works.
