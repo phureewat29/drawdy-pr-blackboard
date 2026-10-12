@@ -13,6 +13,7 @@
 import type { Emit, GImport, LangRules, Role } from "../../anyfacts.ts";
 import { labelOf } from "../../symbols.ts";
 import { child, namedChildren, perTree, textOf, type Flat } from "../../syntax.ts";
+import { PYTHON } from "./index.ts";
 import { annotationName, classOfMethod, decorators, inClassBody, isOverload, PATTERNS, targets } from "./nodes.ts";
 import { firstPathChange } from "./sys-path.ts";
 
@@ -246,7 +247,7 @@ const unit: LangRules["unit"] = (t, capture, node) => {
     return null;
 };
 
-export const PYTHON: LangRules = {
+export const PYTHON_RULES: LangRules = {
     unit,
     // `type X = ...` (PEP 695) declares a type, though `tags.scm` predates it.
     extraUnits: (t) => {
@@ -262,7 +263,7 @@ export const PYTHON: LangRules = {
     },
     // A property reads as a value, so its card drops the `()`: `Dependant.is_gen_callable`.
     label: (t, u, parent) => {
-        const label = labelOf({ name: u.name, kind: u.kind, ...(parent ? { parent: parent.name } : {}) }, "py");
+        const label = labelOf({ name: u.name, kind: u.kind, ...(parent ? { parent: parent.name } : {}) }, PYTHON.id);
         return u.kind === "method" && decorators(t, u.node).some((d) => PROPERTIES.has(d)) ? label.replace(/\(\)$/, "") : label;
     },
     scope: (t, n) => {

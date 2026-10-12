@@ -6,8 +6,8 @@
  * body belong to the outer unit.
  */
 
-import type { Unit, UnitKind } from "../facts.ts";
-import { child, childOfType, children, hasToken, lineOf, namedChildren, prevSibling, textOf, type Flat } from "../syntax.ts";
+import { child, childOfType, children, hasToken, lineOf, namedChildren, prevSibling, textOf, type Flat } from "../../../syntax.ts";
+import type { Unit, UnitKind } from "../../pack.ts";
 import { assignmentIn, fieldName, isFn, objectOf, propName, unwrap } from "./nodes.ts";
 
 const OVERLOADABLE = new Set(["function_declaration", "generator_function_declaration", "function_signature", "method_definition", "method_signature", "abstract_method_signature"]);

@@ -1,6 +1,7 @@
 /** What the linker knows an expression to be, and the few ways values combine. */
 
-import type { FileFacts, Shape, Unit } from "../facts.ts";
+import type { Unit } from "../../pack.ts";
+import type { FileFacts, Shape } from "../facts.ts";
 
 /** A class or constructor function has two sides: itself (static) and what it builds (instance). */
 export type Side = "static" | "instance";

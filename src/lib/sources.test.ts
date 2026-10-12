@@ -28,7 +28,6 @@ describe("readSources", () => {
         expect(asked.filter((p) => p.startsWith("src/dir"))).toEqual(["src/dir.ts", "src/dir.tsx", "src/dir.d.ts", "src/dir.mts", "src/dir.cts", "src/dir.js", "src/dir.jsx", "src/dir.mjs", "src/dir.cjs", "src/dir/index.ts"]);
         expect(asked.filter((p) => p.endsWith("config.json"))).toEqual(["src/tsconfig.json", "src/jsconfig.json", "tsconfig.json"]);
         expect(asked.some((p) => p.includes("react"))).toBe(false);
-        expect(sources.paths("src/app.ts")).toEqual([{ pattern: "@lib/*", targets: ["lib/*"] }]);
     });
 
     it("reads the go.mod above a Go file, and for a Python file the `__init__.py` above it and its imports: the module's file, a package's submodule, and where a package takes a name from", async () => {

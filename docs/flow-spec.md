@@ -95,7 +95,7 @@ Python (`.py`), Go (`.go`), Rust (`.rs`) and Java (`.java`) with
 tree-sitter, and follows each name to the declaration it means: through
 scopes, imports, and members whose receiver it can name. Only a reference
 that resolves makes a link. TypeScript and JavaScript have a linker of
-their own (`facts.ts`, `linker.ts`); Python, Go, Rust and Java share one
+their own (`langs/javascript/`); Python, Go, Rust and Java share one
 generic file index, a rule table per language over the grammar's own
 `tags.scm`, and Python, Go and Rust its resolver (2.2.10, request 58);
 Java resolves by the JLS's own rules (2.2.10, request 66). Other languages
@@ -124,19 +124,22 @@ An uncertain link is neither drawn nor listed.
 
 | Module | What it does | Replaces |
 |---|---|---|
-| `vendor/web-tree-sitter.ts` | web-tree-sitter 0.27.1's `web-tree-sitter.js` (MIT), vendored as `marked` is, with three patches: its Node-only branches go (`import("module")`, `import("fs/promises")`, the `fs` loader) and `import.meta.url` reads `undefined`. Unpatched, the marketplace build refuses the bare imports `module` and `fs/promises`. Header: version, the npm file's SHA-256 (`7c49e3c1…4b8110`), the patches, `// @ts-nocheck` | |
+| `vendor/web-tree-sitter.ts` | web-tree-sitter 0.27.1's `web-tree-sitter.js` (MIT), vendored as `marked` is, with its patches: its Node-only branches go (`import("module")`, `import("fs/promises")`, the `fs` loader), `import.meta.url` reads `undefined`, and the doc comments esbuild would keep in the bundle are gone (24 KB). Unpatched, the marketplace build refuses the bare imports `module` and `fs/promises`. Header: version, the npm file's SHA-256 (`7c49e3c1…4b8110`), the patches, `// @ts-nocheck` | |
 | `lib/sha256.ts` | SHA-256 in plain TypeScript; the driver's worker has no `crypto.subtle` | |
-| `lib/syntax.ts` | A's: grammar by extension, `createSyntax(runtimeBytes)` (`Parser.init` with `wasmBinary` and a `locateFile`, which the bundle needs since it has no module URL), the tree flattened into typed arrays, the call-signature repair for tree-sitter-typescript 0.23.2; for Python, Go, Rust and Java, the definitions of the grammar's `tags.scm`, its other patterns turned off, moved onto the flat tree | the JS patterns in `findDecls` for parsed files |
-| `lib/tags.ts` | The `tags.scm` of tree-sitter-python 0.25.0, tree-sitter-go 0.25.0, tree-sitter-rust 0.24.0 and tree-sitter-java 0.23.5, copied unchanged from the pinned packages | |
-| `lib/facts.ts` | A's: per file, the declarations a card can stand for (units), scopes and bindings, every identifier that refers to something (sites), imports, exports, class and object shapes; each part in `lib/facts/` (`units.ts`, `scopes.ts`, `modules.ts`, `sites.ts`, `shapes.ts`, and `nodes.ts`, the syntax helpers they share) | |
-| `lib/linker.ts` | A's resolver, less its uncertain results (2.2.5): what each site names; in `lib/linker/`, what each expression, type and member is known to be (`evaluator.ts`, its values in `values.ts`), the files an import may stand for (`paths.ts`) and the builtin rule (`builtins.ts`) | `useEdges`, `referenceRows`, `importEdges` and `mentions` for parsed files |
+| `lib/syntax.ts` | A's: `createSyntax(runtimeBytes)` (`Parser.init` with `wasmBinary` and a `locateFile`, which the bundle needs since it has no module URL), each grammar loaded with what its linker asks: a text repair (tree-sitter-typescript 0.23.2's call signatures) and a units query (the grammar's `tags.scm`, its definitions only, moved onto the flat tree); the tree flattened into typed arrays | the JS patterns in `findDecls` for parsed files |
+| `lib/langs/pack.ts` | The contract between the core and the languages ([languages.md](languages.md)): a `LanguagePack` (extensions, grammar pins, colours, line patterns, test names, card names) that the driver and the worker read, and a `Linker` (a rule table for the shared linker, or a linker of its own) that only the worker reads | |
+| `lib/langs/index.ts`, `linkers.ts` | Every pack (`PACKS`) and every linker (`LINKERS`), one line each | |
+| `lib/language.ts` | A file's pack, grammar and role, from its name | |
+| `lib/linking.ts` | The linker that reads a file, a parsed file's facts, and every reference a PR's linkers resolve | |
+| `lib/langs/javascript/facts.ts` | A's: per file, the declarations a card can stand for (units), scopes and bindings, every identifier that refers to something (sites), imports, exports, class and object shapes; each part in `facts/` (`units.ts`, `scopes.ts`, `modules.ts`, `sites.ts`, `shapes.ts`, and `nodes.ts`, the syntax helpers they share) | |
+| `lib/langs/javascript/resolve.ts` | A's resolver, less its uncertain results (2.2.5): what each site names; in `resolve/`, what each expression, type and member is known to be (`evaluator.ts`, its values in `values.ts`), the files an import may stand for (`paths.ts`) and the builtin rule (`builtins.ts`) | `useEdges`, `referenceRows`, `importEdges` and `mentions` for parsed files |
 | `lib/anyfacts.ts` | The generic file index (2.2.10): per file, the units its `tags.scm` defines, scopes and bindings, sites and imports, as a language's rule table reads its nodes | |
 | `lib/anylink.ts` | The generic resolver (2.2.10): one declaration proven through scopes, imports, a package's files, and the members of a receiver whose type is written, built or a class's own; a language that resolves its own files (Java) gets them all at once | `callEdges`, `callsTo` and `rust.ts`: the name-matched calls of every other language |
-| `lib/langs/` | The rule tables of Python, Go, Rust and Java, a folder each (`python/`, `go/`, `rust/`, `java/`): `rules.ts` (nodes, scopes, card names), what the resolver reads (`typing.ts`; Java's own resolver, `java/resolver.ts`, and read tier, `java/wants.ts`), how a module names files (`modules.ts`); `java/jdk.ts`, the JDK types Java's resolver knows, generated from JDK 21 by reflection; `index.ts` picks a table by grammar and parses a file with it | |
-| `lib/sources.ts` | The read tier (2.2.3): tsconfig paths (`sources/tsconfig.ts`), import candidates, reading through an injected `read(path)` | the source list in `open.ts` |
+| `lib/langs/<language>/` | A pack each: `index.ts` the pack; for Python, Go, Rust and Java, `linker.ts` (the units query, the rule table, the resolver and the read hints), `rules.ts` (nodes, scopes, card names), what the resolver reads (`typing.ts`; Java's own resolver, `java/resolver.ts`, and read tier, `java/wants.ts`) and how a module names files (`modules.ts`); `java/jdk.ts`, the JDK types Java's resolver knows, generated from JDK 21 by reflection. Kotlin, Swift, Ruby, PHP, C# and C have line patterns alone; `c-family.ts` holds what the C family shares, `formats.ts` the file kinds with no declarations | |
+| `lib/sources.ts` | The read tier (2.2.3): what each linker reads beside the changed files (a tsconfig through JavaScript's session, `langs/javascript/tsconfig.ts`; `go.mod`; Python's package markers), import candidates, reading through an injected `read(path)` | the source list in `open.ts` |
 | `lib/model.ts` | Cards and links from A's `board.ts`, in `lib/model/`: line ownership (`changes.ts`), threads and their columns (`threads.ts`), the cards with the context caller and file cards (`cards.ts`), links by region (`links.ts`), where tests and file cards hang (`place.ts`), the card limit (`limit.ts`). `Review`, `Pin` and `Link` keep their shape; a parsed unit becomes a `ChangedSymbol`, id `path:nameLine` | `symbolBoard`, `fileBoard`, `addTests` and the mention block |
-| `lib/symbols.ts` | Cards by line patterns, for files no parser reads (2.2.7); card names (`labelOf`); `testCases` | |
-| `driver/grammars.ts` | The parser's files: the pins, the download, kv-storage, the SHA-256 check (2.2.2) | |
+| `lib/symbols.ts` | Cards by line patterns, for files no parser reads (2.2.7), with each pack's patterns; card names (`labelOf`); `testCases` | |
+| `driver/grammars.ts` | The parser's files: the pins (the runtime's, and each pack's grammars), the download, kv-storage, the SHA-256 check (2.2.2) | |
 | `worker/serve.ts` | The parser worker (2.2.2): the read tier, the parse, the links and the review with its board's plan, asking the driver for the parser's files | |
 | `worker/script.ts` | `serve` and all it uses, bundled by `npm run worker` into one script kept as text; a test and `npm run check` fail while it is behind its sources | |
 | `driver/parser.ts` | Starts the worker from that script, or runs the script on the driver's thread where no worker starts; answers its asks for files; reports the download | |
@@ -440,10 +443,13 @@ devDependencies `web-tree-sitter@0.27.1`, `tree-sitter-typescript@0.23.2`,
   nothing; a stored copy that isn't the pin downloads again; a runtime that
   won't start fails with `Couldn't parse this PR's TypeScript.`
 - `syntax.test.ts`: the seven grammars parse; Python, Go, Rust and Java carry
-  their `tags.scm` definitions and none of its references; `tags.ts` holds
-  each pinned package's `tags.scm` unchanged; hono's generic call
-  signature parses without an error after the repair; a `@flow` file and
-  one over the error line go to the line patterns.
+  their `tags.scm` definitions and none of its references; hono's generic
+  call signature parses without an error after the repair; a `@flow` file
+  and one over the error line go to the line patterns.
+- `langs/packs.test.ts`: every pack's id, extensions and fence names its
+  own; every grammar pinned to an exact devDependency and its wasm's
+  SHA-256; one linker for every pack with a grammar, none for the rest;
+  each rule table's units query its package's `tags.scm` unchanged.
 - `anyfacts.test.ts`: Python's, Go's and Rust's units and card names,
   `def new` and `def delete`, a joined `@overload` group and property, a
   property named without `()`, a PEP 695 alias, a Go label at column 0,

@@ -1,11 +1,11 @@
 /**
  * What a PR's board reads, all from raw.githubusercontent.com at the head
- * commit, which costs no GitHub API quota: the changed files, the
- * `tsconfig.json` or `jsconfig.json` above each JavaScript or TypeScript one
- * (for `paths`), the typings a config names, the `go.mod` above each Go file,
- * and each changed file's direct imports (and for Python, the module an
- * imported module takes an imported name from). Nothing further: a module
- * not read names nothing, so it makes no link.
+ * commit, which costs no GitHub API quota: the changed files, what each
+ * one's linker reads beside it (the `tsconfig.json` above a TypeScript file
+ * and the typings it names, the `go.mod` above a Go file, the `__init__.py`
+ * files above a Python one), and each changed file's direct imports (and for
+ * Python, the module an imported module takes an imported name from).
+ * Nothing further: a module not read names nothing, so it makes no link.
  *
  * Reading goes through an injected `read`, so the driver fetches, and the
  * tests and the score gate serve saved files. Each path is read at most once.
@@ -13,30 +13,28 @@
 
 import { isGeneric, type GFile } from "./anyfacts.ts";
 import type { GenericResolver, ModuleContext, ModuleTry } from "./anylink.ts";
-import type { FileFacts } from "./facts.ts";
 import { groupBy, limiter, mapValues, sortBy, sumBy } from "./fp.ts";
 import type { PrFile } from "./github.ts";
-import { languageOf, roleOf } from "./language.ts";
-import { langOf } from "./langs/index.ts";
-import { dirOf, moduleCandidates, type PathMapping } from "./linker/paths.ts";
-import { tsconfigs } from "./sources/tsconfig.ts";
-import { grammarOf } from "./syntax.ts";
+import { LINKERS } from "./langs/linkers.ts";
+import type { Facts, OwnLinker, OwnSession } from "./langs/pack.ts";
+import { grammarOf, languageOf, roleOf } from "./language.ts";
+import { linkerOf, rulesOf } from "./linking.ts";
 
 /** A file's text at the head commit, or null when there is none. */
 export type Read = (path: string) => Promise<string | null>;
 
 /** A file's facts, or null when no parser reads it: another language, `@flow`, or too many errors. */
-export type Parse = (path: string, text: string) => Promise<FileFacts | GFile | null>;
+export type Parse = (path: string, text: string) => Promise<Facts | null>;
 
 export type Sources = {
-    /** Every text read, by path: the files the board can use, and `go.mod`; tsconfig aside. */
+    /** Every text read, by path: the files the board can use, `go.mod` and the package markers; tsconfig aside. */
     texts: Map<string, string>;
-    /** The parsed files, changed files first: JavaScript and TypeScript by `facts.ts`, the rest by their rule tables. */
-    facts: Map<string, FileFacts | GFile>;
-    /** tsconfig `paths` for a file: those of the nearest config read. */
-    paths: (from: string) => readonly PathMapping[];
+    /** The parsed files, changed files first, each by its linker. */
+    facts: Map<string, Facts>;
     /** Whether a path exists at the head commit, as far as the reads went, a file too long to take included: undefined when never asked. */
     exists: (path: string) => boolean | undefined;
+    /** Each own linker's reading of the PR, which links its files (JavaScript's and TypeScript's tsconfig `paths`). */
+    sessions: ReadonlyMap<OwnLinker, OwnSession>;
 };
 
 /** How much is read: changed code and test files, each file's length, imported files, and requests in flight. Every changed file read is parsed. */
@@ -78,7 +76,7 @@ export const pickFiles = (files: readonly PrFile[], max: number): PrFile[] => {
 export const changedSources = (files: readonly PrFile[]): PrFile[] => {
     const live = files.filter((f) => f.status !== "removed");
     const code = live.filter((f) => roleOf(f.path) === "code" && languageOf(f.path) !== "text" && (grammarOf(f.path) !== null || f.patch !== undefined || f.status === "added"));
-    const tests = live.filter((f) => roleOf(f.path) === "test" && grammarOf(f.path) !== null && !langOf(f.path)?.local);
+    const tests = live.filter((f) => roleOf(f.path) === "test" && grammarOf(f.path) !== null && !linkerOf(f.path)?.local);
     return [...pickFiles(code, READ.code), ...pickFiles(tests, READ.tests)];
 };
 
@@ -108,17 +106,18 @@ const reader = (read: Read) => {
     return { once, found, asked: (path: string) => answers.has(path) };
 };
 
-/** The resolver of a language whose modules the read tier tries for its imports: every one but Java's, which says what it wants itself. */
+/** The resolver of a rule table whose modules the read tier tries for its imports: every one but Java's, which says what it wants itself. */
 const moduleResolver = (path: string): GenericResolver | null => {
-    const resolver = langOf(path)?.resolver;
+    const resolver = rulesOf(path)?.resolver;
     return resolver && "typing" in resolver ? resolver : null;
 };
 
 export const readSources = async (files: readonly PrFile[], read: Read, parse: Parse): Promise<Sources> => {
     const { once, found, asked } = reader(read);
-    const configs = tsconfigs(once);
+    // Each own linker's reading of the PR, started before anything is read.
+    const sessions = new Map(LINKERS.flatMap((l) => (l.kind === "own" ? [[l, l.session(once)] as const] : [])));
     const texts = new Map<string, string>();
-    const facts = new Map<string, FileFacts | GFile>();
+    const facts = new Map<string, Facts>();
     const take = async (path: string, text: string) => {
         texts.set(path, text);
         const f = await parse(path, text);
@@ -126,27 +125,28 @@ export const readSources = async (files: readonly PrFile[], read: Read, parse: P
         await breathe();
     };
 
-    // The changed files, in order, with the nearest config above each JavaScript or TypeScript one; then the typings the configs name, in path order.
+    // The changed files, in order, each own linker starting what it reads beside its own (the nearest tsconfig above each); then what it reads next (the typings the configs name).
     const changed = changedSources(files);
     const parsedChanged = changed.filter((f) => grammarOf(f.path) !== null);
-    const mappings = Promise.all(parsedChanged.filter((f) => !langOf(f.path)).map((f) => configs.mappingsFor(dirOf(f.path))));
+    for (const [l, session] of sessions) session.start?.(parsedChanged.filter((f) => linkerOf(f.path) === l).map((f) => f.path));
     const changedTexts = changed.map((f) => once(f.path));
     for (const [i, f] of changed.entries()) {
         const text = await changedTexts[i];
         if (usable(text)) await take(f.path, text);
     }
-    await mappings;
-    for (const path of [...configs.typings].sort()) {
-        if (texts.has(path)) continue;
-        const text = await once(path);
-        if (usable(text)) await take(path, text);
+    for (const session of sessions.values()) {
+        for (const path of (await session.more?.()) ?? []) {
+            if (texts.has(path)) continue;
+            const text = await once(path);
+            if (usable(text)) await take(path, text);
+        }
     }
 
     // Beside a changed file, what its rule table reads: the go.mod above a Go file, the nearest that answers.
     const beside = await Promise.all(
         parsedChanged.map(async (f) => {
             const got: [string, string][] = [];
-            for (const list of langOf(f.path)?.configFiles?.(f.path) ?? []) {
+            for (const list of rulesOf(f.path)?.configFiles?.(f.path) ?? []) {
                 for (const c of list) {
                     const text = await once(c);
                     if (text === null) continue;
@@ -169,7 +169,7 @@ export const readSources = async (files: readonly PrFile[], read: Read, parse: P
             marked.set(
                 path,
                 (hit = (async () => {
-                    for (const m of langOf(path)?.packageMarkers?.(path) ?? []) {
+                    for (const m of rulesOf(path)?.packageMarkers?.(path) ?? []) {
                         const text = await once(m);
                         if (text === null) break;
                         if (texts.has(m)) continue;
@@ -185,7 +185,7 @@ export const readSources = async (files: readonly PrFile[], read: Read, parse: P
 
     // Read before any import: a candidate already here wins without a request.
     const known = new Set(texts.keys());
-    const paths = await configs.settle();
+    for (const session of sessions.values()) await session.settle?.();
     /** Each import tries its candidates in order, a 404 a miss, until one answers. */
     const firstAnswer = async (candidates: readonly string[]): Promise<string | null> => {
         const already = candidates.find((c) => known.has(c));
@@ -213,7 +213,7 @@ export const readSources = async (files: readonly PrFile[], read: Read, parse: P
         return out;
     };
     const genericImports = async (f: GFile): Promise<string[]> => {
-        const lang = langOf(f.path)!;
+        const lang = rulesOf(f.path)!;
         await markers(f.path);
         const answers = await Promise.all(
             f.imports.map(async (i) => {
@@ -244,7 +244,11 @@ export const readSources = async (files: readonly PrFile[], read: Read, parse: P
     await readAll(
         parsedChanged
             .flatMap((c) => facts.get(c.path) ?? [])
-            .flatMap((f): Promise<string | string[] | null>[] => (isGeneric(f) ? (moduleResolver(f.path) ? [genericImports(f)] : []) : f.specifiers.map((spec) => firstAnswer(moduleCandidates(f.path, spec, paths(f.path)).candidates))))
+            .flatMap((f): Promise<string | string[] | null>[] => {
+                const l = linkerOf(f.path);
+                if (l?.kind === "own") return sessions.get(l)!.imports(f, firstAnswer);
+                return isGeneric(f) && moduleResolver(f.path) ? [genericImports(f)] : [];
+            })
     );
     // A name a changed file imports from a module read may live in the module that one imports it from: one more hop.
     const reexports: Promise<string[]>[] = [];
@@ -267,15 +271,15 @@ export const readSources = async (files: readonly PrFile[], read: Read, parse: P
     // What a language wants for its names (Java), asked again of every file of it read after each round, until no path is new or the budget is spent.
     const changedPaths = new Set(changed.map((f) => f.path));
     const live: ModuleContext = { known: { [Symbol.iterator]: () => texts.keys() }, text: (path) => texts.get(path), exists: existing };
-    const wanting = [...new Set([...facts.values()].flatMap((f) => (isGeneric(f) && langOf(f.path)?.wants ? [langOf(f.path)!] : [])))];
+    const wanting = [...new Set([...facts.values()].flatMap((f) => (isGeneric(f) && rulesOf(f.path)?.wants ? [rulesOf(f.path)!] : [])))];
     for (const lang of wanting) {
         for (;;) {
-            const own = [...facts.values()].filter((f): f is GFile => isGeneric(f) && langOf(f.path) === lang);
+            const own = [...facts.values()].filter((f): f is GFile => isGeneric(f) && rulesOf(f.path) === lang);
             const fresh = [...new Set(lang.wants!(own, live, (path) => changedPaths.has(path)))].filter((path) => !asked(path));
             if (fresh.length === 0 || added >= READ.imports) break;
             const answers = fresh.map((path) => once(path));
             for (const [i, path] of fresh.entries()) await takeImported(path, await answers[i]);
         }
     }
-    return { texts, facts, paths, exists: existing };
+    return { texts, facts, exists: existing, sessions };
 };

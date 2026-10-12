@@ -6,9 +6,9 @@
 
 import type { GFile } from "../../anyfacts.ts";
 import type { ModuleContext } from "../../anylink.ts";
-import type { Unit } from "../../facts.ts";
 import { memoize } from "../../fp.ts";
 import { child, namedChildren, textOf, type Flat } from "../../syntax.ts";
+import type { Unit } from "../pack.ts";
 import { headerGap } from "./gaps.ts";
 import type { Lib } from "./library.ts";
 import { isAnonymousBody, isMember, TYPE_KINDS, TYPE_DECLARATIONS } from "./nodes.ts";

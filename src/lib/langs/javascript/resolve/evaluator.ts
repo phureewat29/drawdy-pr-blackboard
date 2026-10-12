@@ -6,12 +6,13 @@
  * it when changing this.
  */
 
-import { scopeAt, type Binding, type ExportEntry, type FileFacts, type ImportEntry, type Member, type Shape, type Unit } from "../facts.ts";
+import { child, hasToken, namedChildren, textOf, tokensOf, type Flat } from "../../../syntax.ts";
+import type { Unit } from "../../pack.ts";
+import { scopeAt, type Binding, type ExportEntry, type FileFacts, type ImportEntry, type Member, type Shape } from "../facts.ts";
 import { requireSpec } from "../facts/modules.ts";
 import { annotatedType, propName, unwrap } from "../facts/nodes.ts";
 import { lookup, NS, TYPE, VALUE } from "../facts/scopes.ts";
-import type { LinkerConfig } from "../linker.ts";
-import { child, hasToken, namedChildren, textOf, tokensOf, type Flat } from "../syntax.ts";
+import type { LinkerConfig } from "../resolve.ts";
 import { moduleCandidates } from "./paths.ts";
 import { asSide, external, hasSides, merge, namespace, NONE, perNode, shaped, unknown, type Side, type Val } from "./values.ts";
 

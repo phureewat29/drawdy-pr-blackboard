@@ -9,14 +9,15 @@
  */
 
 import { createGithub, type Fetch, type PrFile, type PrInfo } from "../lib/github.ts";
-import { parseFile } from "../lib/langs/index.ts";
+import { grammarOf } from "../lib/language.ts";
 import type { BoardPlan } from "../lib/layout.ts";
+import { linkerOfGrammar, parseFile } from "../lib/linking.ts";
 import { analyse, compact, type Review } from "../lib/model.ts";
 import { changedSources, READ, type Parse, type Read } from "../lib/sources.ts";
-import { createSyntax, grammarOf, type Grammar, type Syntax } from "../lib/syntax.ts";
+import { createSyntax, type Syntax } from "../lib/syntax.ts";
 
-/** A file the parser needs: the tree-sitter runtime, or a grammar. */
-export type ParserFile = Grammar | "runtime";
+/** A file the parser needs: the tree-sitter runtime (`runtime`), or a grammar, by its name (`langs/pack.ts`). */
+export type ParserFile = string;
 
 export type ToWorker =
     | { type: "analyse"; id: number; pr: PrInfo; files: PrFile[] }
@@ -25,7 +26,7 @@ export type ToWorker =
 
 export type FromWorker =
     /** The grammars the changed files need, so the driver loads them beside the reads. */
-    | { type: "load"; id: number; grammars: Grammar[] }
+    | { type: "load"; id: number; grammars: string[] }
     | { type: "file"; ask: number; name: ParserFile }
     /** The changed files read whole, in reading order, and how many more the read limits leave unread. */
     | { type: "reading"; id: number; paths: string[]; left: number }
@@ -83,8 +84,8 @@ export const serve = (scope: WorkerScope, start: (runtime: Uint8Array) => Promis
 
     // What this worker has loaded: the runtime started, and each grammar added. A failure is forgotten, so the next open tries again.
     let syntax: Promise<Syntax> | null = null;
-    const added = new Map<Grammar, Promise<void>>();
-    const load = async (grammar: Grammar): Promise<Syntax> => {
+    const added = new Map<string, Promise<void>>();
+    const load = async (grammar: string): Promise<Syntax> => {
         try {
             if (!syntax) {
                 syntax = fileOf("runtime").then(start);
@@ -93,7 +94,7 @@ export const serve = (scope: WorkerScope, start: (runtime: Uint8Array) => Promis
             const s = await syntax;
             let hit = added.get(grammar);
             if (!hit) {
-                hit = fileOf(grammar).then((bytes) => s.add(grammar, bytes));
+                hit = fileOf(grammar).then((bytes) => s.add(grammar, bytes, linkerOfGrammar(grammar)));
                 hit.catch(() => added.delete(grammar));
                 added.set(grammar, hit);
             }
@@ -149,7 +150,7 @@ export const serve = (scope: WorkerScope, start: (runtime: Uint8Array) => Promis
     const run = async ({ id, pr, files }: { id: number; pr: PrInfo; files: PrFile[] }) => {
         try {
             const changed = changedSources(files);
-            const grammars = [...new Set(changed.map((f) => grammarOf(f.path)).filter((x): x is Grammar => x !== null))];
+            const grammars = [...new Set(changed.map((f) => grammarOf(f.path)).filter((x): x is string => x !== null))];
             scope.postMessage({ type: "load", id, grammars });
             scope.postMessage({ type: "reading", id, paths: changed.map((f) => f.path), left: unreadCount(files) });
             const reads = reporting(

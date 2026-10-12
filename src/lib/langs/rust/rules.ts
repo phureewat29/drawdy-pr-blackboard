@@ -13,6 +13,7 @@
 import type { Emit, GImport, LangRules, Role } from "../../anyfacts.ts";
 import { labelOf } from "../../symbols.ts";
 import { child, namedChildren, perTree, textOf, type Flat } from "../../syntax.ts";
+import { RUST } from "./index.ts";
 import { expressionMacro, loneReceiver, macroBound, opensCall } from "./macros.ts";
 import { previous } from "./nodes.ts";
 
@@ -222,7 +223,7 @@ const traitName = (t: Flat, n: number): string => {
     return x >= 0 ? textOf(t, x) : "";
 };
 
-export const RUST: LangRules = {
+export const RUST_RULES: LangRules = {
     unit,
     extraUnits: (t) => {
         const out: { kind: "class"; nameNode: number; outer: number; node: number }[] = [];
@@ -238,7 +239,7 @@ export const RUST: LangRules = {
             const trait = child(t, u.node, "trait");
             return trait >= 0 ? `impl ${traitName(t, trait)} for ${u.name}` : `impl ${u.name}`;
         }
-        return labelOf({ name: u.name, kind: u.kind, ...(parent ? { parent: parent.name } : {}) }, "rs");
+        return labelOf({ name: u.name, kind: u.kind, ...(parent ? { parent: parent.name } : {}) }, RUST.id);
     },
     scope: (t, n) => {
         switch (t.type[n]) {

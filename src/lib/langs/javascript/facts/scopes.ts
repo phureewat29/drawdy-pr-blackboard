@@ -1,8 +1,9 @@
 /** A file's scopes and the names each binds. */
 
-import type { Binding, BindingKind, Scope, ScopeKind, Unit } from "../facts.ts";
-import { groupBy } from "../fp.ts";
-import { child, childOfType, namedChildren, textOf, type Flat } from "../syntax.ts";
+import { groupBy } from "../../../fp.ts";
+import { child, childOfType, namedChildren, textOf, type Flat } from "../../../syntax.ts";
+import type { Unit } from "../../pack.ts";
+import type { Binding, BindingKind, Scope, ScopeKind } from "../facts.ts";
 import { annotatedType, propName } from "./nodes.ts";
 
 /** What a name means, as flags: an import may be any of them. */

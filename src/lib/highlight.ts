@@ -5,51 +5,17 @@
  * diff by, not a parser.
  */
 
-import type { Language } from "./language.ts";
+import { PACKS } from "./langs/index.ts";
+import type { Highlight } from "./langs/pack.ts";
+import { packById, type Language } from "./language.ts";
 
 /** Carried from line to line: whether a block comment is still open. */
 export type HighlightState = { inBlock: boolean };
 
 const words = (s: string) => new Set(s.split(" "));
 
-const C_LIKE = "if else for while do switch case break continue default return new delete throw try catch finally class extends this super static public private protected const let var void null true false import export from as typeof instanceof in of async await yield function interface enum type implements package";
-const KEYWORDS: Partial<Record<Language, Set<string>>> = {
-    ts: words(`${C_LIKE} readonly declare namespace module keyof infer never unknown any satisfies abstract override get set undefined`),
-    js: words(`${C_LIKE} undefined get set`),
-    py: words("def class return if elif else for while in not and or is None True False import from as with try except finally raise yield lambda pass break continue global nonlocal async await assert del self"),
-    go: words("func package import return if else for range switch case default break continue go defer select chan map struct interface type var const nil true false fallthrough goto"),
-    rs: words("fn let mut pub crate mod use impl trait struct enum match if else for while loop return break continue self Self super where as in ref move async await dyn const static unsafe true false Some None Ok Err"),
-    java: words(`${C_LIKE} final abstract synchronized throws boolean int long double float char byte short`),
-    kt: words("fun val var class object interface if else when for while do return break continue try catch finally throw import package as is in out null true false this super override open data sealed suspend companion private public internal protected"),
-    swift: words("func let var class struct enum protocol extension if else guard for while repeat return break continue switch case default import self Self nil true false init deinit throws throw try catch async await public private internal fileprivate static"),
-    rb: words("def class module end if elsif else unless while until for in do return yield begin rescue ensure raise nil true false self super require require_relative attr_reader attr_accessor"),
-    php: words(`${C_LIKE} function echo namespace use fn match array`),
-    cs: words(`${C_LIKE} using namespace readonly override virtual sealed partial string int bool var get set async await`),
-    c: words("if else for while do switch case break continue default return struct union enum typedef static const void int char long short unsigned signed float double sizeof include define NULL true false class public private protected template typename namespace using virtual auto"),
-    sh: words("if then else elif fi for while do done case esac function return local export in"),
-    sql: words("select from where and or not insert into values update set delete create table alter drop index join left right inner outer on group by order having limit as null is distinct union"),
-};
-
-const LINE_COMMENT: Partial<Record<Language, string>> = {
-    ts: "//",
-    js: "//",
-    go: "//",
-    rs: "//",
-    java: "//",
-    kt: "//",
-    swift: "//",
-    php: "//",
-    cs: "//",
-    c: "//",
-    py: "#",
-    rb: "#",
-    sh: "#",
-    yaml: "#",
-    toml: "#",
-    sql: "--",
-};
-
-const BLOCK_COMMENTS = new Set<Language>(["ts", "js", "go", "rs", "java", "kt", "swift", "php", "cs", "c", "css"]);
+/** Each pack's keywords, by its id. */
+const KEYWORDS = new Map(PACKS.flatMap((p) => (p.highlight && p.highlight.keywords ? [[p.id, words(p.highlight.keywords)] as const] : [])));
 
 export const escapeHtml = (s: string): string =>
     s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
@@ -63,11 +29,11 @@ const stringEnd = (text: string, i: number): number => {
     return j + 1;
 };
 
-/** A word as a keyword, a call, a type name (capitalised, but not in SQL) or plain text; `after` is what follows it. */
-const wordHtml = (word: string, after: string, lang: Language): string => {
-    if (KEYWORDS[lang]?.has(word)) return span("k", word);
+/** A word as a keyword, a call, a type name (capitalised, unless the language says not) or plain text; `after` is what follows it. */
+const wordHtml = (word: string, after: string, keywords: ReadonlySet<string> | undefined, look: Highlight | undefined): string => {
+    if (keywords?.has(word)) return span("k", word);
     if (after.startsWith("(") || (after.startsWith("<") && /^<[\w\s,.]*>\s*\(/.test(after))) return span("f", word);
-    if (/^[A-Z][a-z0-9]/.test(word) && lang !== "sql") return span("t", word);
+    if (/^[A-Z][a-z0-9]/.test(word) && look?.types !== false) return span("t", word);
     return escapeHtml(word);
 };
 
@@ -76,9 +42,11 @@ const wordHtml = (word: string, after: string, lang: Language): string => {
  * k keyword, f call, t type. Updates `state` for the next line.
  */
 export const highlightLine = (text: string, lang: Language, state: HighlightState): string => {
-    const lineComment = LINE_COMMENT[lang];
-    const blocks = BLOCK_COMMENTS.has(lang);
-    if (lang === "md" || lang === "text") return escapeHtml(text);
+    const look = packById(lang)?.highlight;
+    if (lang === "text" || look === false) return escapeHtml(text);
+    const lineComment = look?.comment;
+    const blocks = look?.blocks === true;
+    const keywords = KEYWORDS.get(lang);
     let out = "";
     let i = 0;
     while (i < text.length) {
@@ -121,7 +89,7 @@ export const highlightLine = (text: string, lang: Language, state: HighlightStat
         }
         const word = /^[#@]?[A-Za-z_$][\w$]*/.exec(rest)?.[0];
         if (word) {
-            out += wordHtml(word, text.slice(i + word.length).trimStart(), lang);
+            out += wordHtml(word, text.slice(i + word.length).trimStart(), keywords, look);
             i += word.length;
             continue;
         }

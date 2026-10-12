@@ -2,7 +2,7 @@ import { describe, expect, it } from "@jest/globals";
 import { testParse } from "../test/parser.ts";
 import { isGeneric, type GFile } from "./anyfacts.ts";
 import { resolveAny } from "./anylink.ts";
-import { langOf } from "./langs/index.ts";
+import { rulesOf } from "./linking.ts";
 
 /** What the rule tables read of the files, and every reference that resolves; `exists`, what the reads found to exist: true, a 404 (false), or never asked. */
 const resolve = async (files: Record<string, string>, exists?: (path: string) => boolean | undefined) => {
@@ -11,7 +11,7 @@ const resolve = async (files: Record<string, string>, exists?: (path: string) =>
         const f = await testParse(path, text);
         if (f && isGeneric(f)) parsed.push(f);
     }
-    return { parsed, refs: resolveAny(parsed, (f) => langOf(f.path)!.resolver, (path) => files[path], exists) };
+    return { parsed, refs: resolveAny(parsed, (f) => rulesOf(f.path)!.resolver, (path) => files[path], exists) };
 };
 
 /** Every reference that resolves, as `path:line ref card`, with what the reads found to exist. */
@@ -590,7 +590,7 @@ const javaTargets = async (files: Record<string, string>, exists: (path: string)
         const f = await testParse(path, text);
         if (f && isGeneric(f)) parsed.push(f);
     }
-    return resolveAny(parsed, (f) => langOf(f.path)!.resolver, (path) => files[path], exists).flatMap((r) => r.units.map((u) => `${r.path}:${r.line} ${r.ref} ${u.path}:${u.nameLine}`));
+    return resolveAny(parsed, (f) => rulesOf(f.path)!.resolver, (path) => files[path], exists).flatMap((r) => r.units.map((u) => `${r.path}:${r.line} ${r.ref} ${u.path}:${u.nameLine}`));
 };
 
 describe("Java", () => {

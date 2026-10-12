@@ -6,11 +6,11 @@
  */
 
 import { addedHunks, addedLines, allLines, parsePatch, type DiffLine, type Hunk } from "../diff.ts";
-import type { Unit } from "../facts.ts";
 import { partition } from "../fp.ts";
 import type { PrFile } from "../github.ts";
+import type { Facts, Unit } from "../langs/pack.ts";
 import { languageOf, roleOf, type Language } from "../language.ts";
-import type { Analysed, Parsed, ReviewFile } from "../model.ts";
+import type { Analysed, ReviewFile } from "../model.ts";
 import { changedSymbols, changeSpan, innermostByLine, looseRuns, testCases, type ChangedSymbol, type LooseChange } from "../symbols.ts";
 
 /** A card's first line: the declaration's first line, or its first change when that comes earlier. */
@@ -22,7 +22,7 @@ export const pinFrom = (s: ChangedSymbol) => Math.min(s.from, s.start);
  * line's head position (a deletion sits at the head line after it). Added
  * blank lines belong to nothing; the rest is loose.
  */
-const parsedChanges = (path: string, lang: Language, parsed: Parsed, hunks: readonly Hunk[], nameOf: (u: Unit) => string) => {
+const parsedChanges = (path: string, lang: Language, parsed: Facts, hunks: readonly Hunk[], nameOf: (u: Unit) => string) => {
     const text = parsed.flat.text.split("\n");
     const changed = allLines(hunks).filter((l) => l.t !== "ctx" && !(l.t === "add" && (text[l.at - 1] ?? "").trim() === ""));
     const owners = innermostByLine(parsed.units, text.length, (u) => [u.docLine, u.endLine]);

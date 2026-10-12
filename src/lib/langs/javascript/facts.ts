@@ -6,39 +6,13 @@
  * literals (shapes).
  */
 
+import type { Flat, Syntax } from "../../syntax.ts";
+import type { RefKind, Unit } from "../pack.ts";
 import { modulesOf } from "./facts/modules.ts";
 import { scopesOf } from "./facts/scopes.ts";
 import { shapesOf } from "./facts/shapes.ts";
 import { sitesOf } from "./facts/sites.ts";
 import { unitsOf } from "./facts/units.ts";
-import type { Flat, Syntax } from "./syntax.ts";
-
-export type UnitKind = "function" | "method" | "class" | "type" | "value" | "namespace";
-
-export type Unit = {
-    /** `path:nameLine`, the id of the card that stands for it. */
-    id: string;
-    path: string;
-    name: string;
-    /** How code reaches it: `Hono.onError`, `EventEmitterPrototype.once`, `module.exports.isAuditMode`. */
-    qname: string;
-    kind: UnitKind;
-    /** Offsets of the declaration (modifiers and decorators in, comments out). */
-    start: number;
-    end: number;
-    startLine: number;
-    endLine: number;
-    nameLine: number;
-    /** First line of the comments attached above it. */
-    docLine: number;
-    nameStart: number;
-    /** The id of the unit it is a member of. */
-    parent?: string;
-    /** The declaration node. */
-    node: number;
-    /** The function, class or object node the unit's value is, when it has one. */
-    valueNode: number;
-};
 
 export type BindingKind = "var" | "let" | "const" | "param" | "function" | "class" | "import" | "type" | "enum" | "namespace" | "catch" | "typeparam";
 
@@ -69,8 +43,6 @@ export type Scope = {
     parent: Scope | null;
     bindings: Map<string, Binding[]>;
 };
-
-export type RefKind = "call" | "value" | "type" | "write" | "jsx" | "import" | "export" | "extends";
 
 /** An identifier that refers to something. */
 export type Site = {
@@ -158,10 +130,8 @@ export type FileFacts = {
 /** The scope a node sits in. */
 export const scopeAt = (f: FileFacts, n: number): Scope => f.scopes[f.scopeIds[n]];
 
-/** A file's facts, or null when the parser doesn't read it: no grammar for it, `@flow`, or too many errors. */
-export const parseFacts = (syntax: Syntax, path: string, text: string): FileFacts | null => {
-    const t = syntax.parse(path, text);
-    if (!t) return null;
+/** A parsed file's facts. */
+export const factsOf = (path: string, t: Flat): FileFacts => {
     const units = unitsOf(path, t);
     const scopes = scopesOf(t, units);
     const modules = modulesOf(t);
@@ -176,4 +146,10 @@ export const parseFacts = (syntax: Syntax, path: string, text: string): FileFact
         ...modules,
         ...shapesOf(t, units),
     };
+};
+
+/** A file's facts, or null when the parser doesn't read it: no grammar for it, `@flow`, or too many errors. */
+export const parseFacts = (syntax: Syntax, path: string, text: string): FileFacts | null => {
+    const t = syntax.parse(path, text);
+    return t ? factsOf(path, t) : null;
 };

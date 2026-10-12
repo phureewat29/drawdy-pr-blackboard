@@ -11,8 +11,8 @@
  * sites.
  */
 
-import type { FileFacts, Unit, UnitKind } from "./facts.ts";
 import { pushTo } from "./fp.ts";
+import type { Facts, Unit, UnitKind } from "./langs/pack.ts";
 import { lineOf, prevSibling, textOf, type Flat } from "./syntax.ts";
 
 export type ScopeKind = "module" | "function" | "class" | "block";
@@ -150,7 +150,7 @@ export type GFile = {
 };
 
 /** Whether a parsed file is read by a rule table rather than by `facts.ts`. */
-export const isGeneric = (f: FileFacts | GFile): f is GFile => "rules" in f;
+export const isGeneric = (f: Facts): f is GFile => "rules" in f;
 
 /** The scope a node sits in: for a node that opens one, the scope around it. */
 export const scopeAround = (f: GFile, n: number): GScope => {

@@ -1,7 +1,7 @@
 /**
  * Which declaration each name refers to, across the files a PR's board reads:
  * scopes inside a file, imports and re-exports between files, and members
- * through what a receiver is known to be (`linker/evaluator.ts`).
+ * through what a receiver is known to be (`resolve/evaluator.ts`).
  *
  * A file names another file's declaration only through an import. A member
  * (`x.y`) resolves when the receiver is known: `this`, `super`, a class or
@@ -9,16 +9,17 @@
  * typed `C`. Anything else resolves to nothing, and makes no link.
  */
 
-import { scopeAt, type Binding, type ExportEntry, type FileFacts, type Site, type Unit } from "./facts.ts";
+import { child } from "../../syntax.ts";
+import type { Ref, Unit } from "../pack.ts";
+import { scopeAt, type Binding, type ExportEntry, type FileFacts, type Site } from "./facts.ts";
 import { requireSpec } from "./facts/modules.ts";
 import { propName, unwrap } from "./facts/nodes.ts";
 import { lookup, NS, TYPE, VALUE } from "./facts/scopes.ts";
-import { createEvaluator, importOf, positional, type Evaluator } from "./linker/evaluator.ts";
-import type { PathMapping } from "./linker/paths.ts";
-import { namespace, unknown, type Val } from "./linker/values.ts";
-import { child } from "./syntax.ts";
+import { createEvaluator, importOf, positional, type Evaluator } from "./resolve/evaluator.ts";
+import type { PathMapping } from "./resolve/paths.ts";
+import { namespace, unknown, type Val } from "./resolve/values.ts";
 
-export { builtinRule } from "./linker/builtins.ts";
+export { builtinRule } from "./resolve/builtins.ts";
 
 export type LinkerConfig = {
     /** tsconfig `paths` that apply to a file, targets already joined to `baseUrl` and made repo-relative. */
@@ -26,9 +27,6 @@ export type LinkerConfig = {
     /** The file a bare import stands for in this repository (`builtinRule`), or null. */
     builtin: (spec: string) => string | null;
 };
-
-/** A reference that resolved: where it is, how it refers, and the declarations it names; `alt`, the one whose card stands for them where they have none (a constructor's class). */
-export type Ref = { path: string; start: number; line: number; ref: Site["ref"]; units: Unit[]; alt?: Unit };
 
 /**
  * Every reference that names a declaration, in the files that can hold a

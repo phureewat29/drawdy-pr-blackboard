@@ -1,7 +1,7 @@
 /** A file's imports and exports, and every module it names. */
 
+import { child, childOfType, hasToken, namedChildren, textOf, type Flat } from "../../../syntax.ts";
 import type { ExportEntry, FileFacts, ImportEntry, Scope } from "../facts.ts";
-import { child, childOfType, hasToken, namedChildren, textOf, type Flat } from "../syntax.ts";
 import { assignmentIn, firstStringArgument, propName, stringValue, unwrap } from "./nodes.ts";
 import { lookup, VALUE } from "./scopes.ts";
 

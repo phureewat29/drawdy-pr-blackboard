@@ -8,7 +8,6 @@
 import { serial } from "../lib/fp.ts";
 import type { Fetch, PrFile, PrInfo } from "../lib/github.ts";
 import type { Built } from "../lib/model.ts";
-import type { Grammar } from "../lib/syntax.ts";
 import { WORKER_SCRIPT } from "../worker/script.ts";
 import type { FromWorker, ParserFile, ToWorker, WorkerScope } from "../worker/serve.ts";
 import type { Ddp } from "./ddp.ts";
@@ -85,7 +84,7 @@ const connectWorker: Connect = (fetch, receive, broken) => {
 type Analysis = {
     request: Extract<ToWorker, { type: "analyse" }>;
     progress: ParserProgress;
-    grammars: Grammar[];
+    grammars: string[];
     /** The parser's files the changed files need, loading beside the reads. */
     loading: Promise<unknown>;
     /** The first file that couldn't be had, in words. */

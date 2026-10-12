@@ -6,13 +6,13 @@
  */
 
 import { allLines } from "../diff.ts";
-import type { Unit } from "../facts.ts";
 import { groupBy, minBy, partition, sortBy, sumBy } from "../fp.ts";
 import { languageOf, roleOf, type Language } from "../language.ts";
-import type { Ref } from "../linker.ts";
-import type { Band, Lane, Parsed, Pin, Review, ReviewFile } from "../model.ts";
+import type { Facts, Ref, Unit } from "../langs/pack.ts";
+import { linkerOf } from "../linking.ts";
+import type { Band, Lane, Pin, Review, ReviewFile } from "../model.ts";
 import { isComment, type ChangedSymbol } from "../symbols.ts";
-import { lineOf, textOf, type Flat } from "../syntax.ts";
+import { lineOf } from "../syntax.ts";
 import { pinFrom } from "./changes.ts";
 import { layThreads, type Edge } from "./threads.ts";
 
@@ -20,7 +20,7 @@ import { layThreads, type Edge } from "./threads.ts";
 export type BoardContext = {
     files: readonly ReviewFile[];
     heads: ReadonlyMap<string, readonly string[]>;
-    facts: ReadonlyMap<string, Parsed>;
+    facts: ReadonlyMap<string, Facts>;
     refs: readonly Ref[];
     /** The parsed unit behind each changed declaration of a parsed file, by its id. */
     units: ReadonlyMap<string, Unit>;
@@ -180,30 +180,21 @@ const contextCallers = (bands: readonly Band[], ctx: BoardContext): Pin[] => {
     return pins;
 };
 
+/** A line that looks like an import in the common languages, for a file no parser reads, whatever its language. */
 const IMPORT_LINE = /^\s*(import\b|from\s+\S+\s+import\b|export\s.*\bfrom\b|use\s|#include|require\(|const\s.*=\s*require\()/;
 
-/** Python's, Go's and Rust's import statements. */
-const IMPORTS = new Set(["import_from_statement", "future_import_statement", "import_declaration", "use_declaration"]);
-
-/** The head lines inside a module's import statements: `import`, `export … from`, a module-level `const x = require(…)`, `from x import y`, `use a::b`. */
-const importLines = (t: Flat): Set<number> => {
+/** The head lines inside a parsed module's import statements, as its linker tells them (`Linker.isImport`). */
+const importLines = (f: Facts): Set<number> => {
+    const t = f.flat;
+    const isImport = linkerOf(f.path)?.isImport;
     const lines = new Set<number>();
-    for (let n = t.first[0]; n >= 0; n = t.next[n]) {
-        const ty = t.type[n];
-        const text = textOf(t, n);
-        const isImport =
-            ty === "import_statement" ||
-            IMPORTS.has(ty) ||
-            (ty === "export_statement" && /\bfrom\s*["']/.test(text) && !/^export\s+(default\s+)?(async\s+)?(function|class|const|let|var|interface|type|enum)\b/.test(text)) ||
-            ((ty === "lexical_declaration" || ty === "variable_declaration") && /^\s*(const|let|var)\b[^=]*=\s*require\s*\(\s*["'][^"']+["']\s*\)\s*;?\s*$/.test(text));
-        if (isImport) for (let l = lineOf(t, t.start[n]); l <= lineOf(t, Math.max(t.start[n], t.end[n] - 1)); l++) lines.add(l);
-    }
+    for (let n = t.first[0]; n >= 0; n = t.next[n]) if (isImport?.(t, n)) for (let l = lineOf(t, t.start[n]); l <= lineOf(t, Math.max(t.start[n], t.end[n] - 1)); l++) lines.add(l);
     return lines;
 };
 
 /** Whether a file card's changed lines all import: inside a parsed module's import statements, or by the line's own look. */
-const onlyImports = (f: ReviewFile, ranges: readonly { from: number; to: number }[], parsed?: Parsed): boolean => {
-    const inImports = parsed ? importLines(parsed.flat) : new Set<number>();
+const onlyImports = (f: ReviewFile, ranges: readonly { from: number; to: number }[], parsed?: Facts): boolean => {
+    const inImports = parsed ? importLines(parsed) : new Set<number>();
     const lines = allLines(f.hunks).filter((l) => l.t !== "ctx" && l.text.trim() !== "" && ranges.some((r) => l.at >= r.from && l.at <= r.to));
     return lines.length > 0 && lines.every((l) => inImports.has(l.n ?? l.at) || IMPORT_LINE.test(l.text));
 };

@@ -1,9 +1,7 @@
 import { beforeAll, describe, expect, it } from "@jest/globals";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { testSyntax } from "../test/parser.ts";
-import { grammarOf, type Flat, type Syntax } from "./syntax.ts";
-import { TAGS } from "./tags.ts";
+import { grammarOf } from "./language.ts";
+import type { Flat, Syntax } from "./syntax.ts";
 
 let syntax: Syntax;
 beforeAll(async () => {
@@ -51,12 +49,5 @@ describe("the parser", () => {
         expect(syntax.parse("a.js", "// x @flow\nconst a = 1\n")).toBeNull();
         expect(syntax.parse("a.js", "const a = 1\n// the word @flow later is no pragma\n")).not.toBeNull();
         expect(syntax.parse("a.ts", "const a = 1\n".repeat(20) + "function ((( {{{ ]]] )))\n")).toBeNull();
-    });
-});
-
-describe("the tags queries", () => {
-    it("are each pinned grammar's tags.scm, unchanged", () => {
-        const file = (pkg: string) => readFileSync(join(import.meta.dirname, "../../node_modules", pkg, "queries/tags.scm"), "utf8");
-        expect([TAGS.python, TAGS.go, TAGS.rust, TAGS.java]).toEqual([file("tree-sitter-python"), file("tree-sitter-go"), file("tree-sitter-rust"), file("tree-sitter-java")]);
     });
 });

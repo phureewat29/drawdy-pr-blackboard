@@ -1,7 +1,8 @@
 /** Every identifier in a file that refers to something, and how: a call, a value, a type, a write, an import or an export. */
 
-import type { ExportEntry, RefKind, Site } from "../facts.ts";
-import { child, lineOf, textOf, type Flat } from "../syntax.ts";
+import { child, lineOf, textOf, type Flat } from "../../../syntax.ts";
+import type { RefKind } from "../../pack.ts";
+import type { ExportEntry, Site } from "../facts.ts";
 import { requireSpec, type Modules } from "./modules.ts";
 import { propName, unwrap } from "./nodes.ts";
 import type { Scopes } from "./scopes.ts";

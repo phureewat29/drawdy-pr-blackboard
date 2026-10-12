@@ -1,7 +1,8 @@
 # PR Blackboard: developer guide
 
 How to run, change and publish PR Blackboard. For what it does, see the
-[README](../README.md); for the full spec, [flow-spec.md](flow-spec.md).
+[README](../README.md); for the full spec, [flow-spec.md](flow-spec.md); to
+add a language, [languages.md](languages.md).
 
 ## Run it locally
 
@@ -46,14 +47,17 @@ Opening a PR runs one pipeline of pure functions in `src/lib/`:
    lists 3,000 files at most.
 2. **Read** (`sources.ts`): files at the head commit from
    `raw.githubusercontent.com`, which costs no API quota. Up to 40 code and
-   40 test files, each under 400,000 characters, plus what linking needs:
-   direct imports, `tsconfig.json`, `go.mod`, Java supertypes.
-3. **Parse** (`syntax.ts`, `facts.ts`, `anyfacts.ts`): tree-sitter. The
-   grammars come from jsDelivr at pinned versions, are checked against the
-   SHA-256 in `PINS` (`driver/grammars.ts`) and are kept in kv-storage.
-4. **Link**: `linker.ts` for JavaScript and TypeScript; `anylink.ts` with a
-   rule table in `langs/` for Python, Go, Rust and Java. A line is drawn
-   only when exactly one target is proven; anything unsure draws nothing.
+   40 test files, each under 400,000 characters, plus what each language's
+   linker needs: direct imports, `tsconfig.json`, `go.mod`, Java supertypes.
+3. **Parse** (`syntax.ts`, `linking.ts`): tree-sitter. Each language pack
+   in `langs/` pins its grammars; they come from jsDelivr at those versions,
+   are checked against their SHA-256 (`driver/grammars.ts`) and are kept in
+   kv-storage.
+4. **Link** (`linking.ts`): each language's linker. JavaScript and
+   TypeScript have their own (`langs/javascript/`); Python, Go, Rust and
+   Java plug a rule table into the shared one (`anyfacts.ts`,
+   `anylink.ts`). A line is drawn only when exactly one target is proven;
+   anything unsure draws nothing.
 5. **Review** (`model.ts`): a card per changed function, links labelled
    `calls`, `uses`, `imports`, `tests` or `context`, and at most 32 cards per
    board, the PR card included. What's left off is counted on the PR card.
@@ -79,11 +83,12 @@ src/
   webview/        the panel
   shared/         driver ⇄ panel protocol, the examples, icons
   lib/            the pure core: GitHub, reading, parsing, linking, review,
-                  layout, cards, Markdown
-  lib/langs/      rule tables for Python, Go, Rust and Java, a folder
-                  each; java/jdk.ts is generated
-  lib/facts/      JavaScript and TypeScript facts: units, scopes, imports, sites
-  lib/linker/     what each JS/TS expression, type and member is known to be
+                  layout, cards, Markdown; no language of its own
+  lib/langs/      the language packs, a folder each (languages.md): pack.ts
+                  is the contract, index.ts lists every pack, linkers.ts
+                  every linker; javascript/ holds TypeScript and JavaScript
+                  (facts/, resolve/, tsconfig), python/, go/, rust/ and
+                  java/ their rule tables (java/jdk.ts is generated)
   lib/model/      the review: changed lines, threads, cards, links, the card limit
   lib/layout/     the plan's stages: columns, routes, strings, labels, colours
   lib/card/       a card's grid and rows, its HTML, the PR card, Read all
@@ -105,7 +110,7 @@ scripts and tests without a build step.
 - GitHub allows 60 API requests an hour without a token.
 - The bundle must stay under 1 MB (`npm run check`).
 - Other languages (Ruby, Kotlin, Swift, C#, PHP, C, Scala and more) get
-  cards but no lines.
+  cards but no lines, until their packs have proven linkers.
 - Deleted functions get no card: only head files are read.
 - Moving a card keeps its lines' bend points (DDP 1.3 can't move them).
 

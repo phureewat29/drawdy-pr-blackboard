@@ -6,8 +6,9 @@
  * `Object.assign(X, {...})`) give them.
  */
 
-import type { FileFacts, Shape, Unit } from "../facts.ts";
-import { child, childOfType, hasToken, namedChildren, textOf, tokensOf, type Flat } from "../syntax.ts";
+import { child, childOfType, hasToken, namedChildren, textOf, tokensOf, type Flat } from "../../../syntax.ts";
+import type { Unit } from "../../pack.ts";
+import type { FileFacts, Shape } from "../facts.ts";
 import { annotatedType, fieldName, objectOf, propName, unwrap } from "./nodes.ts";
 
 export type ShapeFacts = Pick<FileFacts, "shapes" | "protoAliases" | "assignments">;

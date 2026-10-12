@@ -6,6 +6,7 @@
  */
 
 import type { DiffLine } from "../diff.ts";
+import { typedMethods } from "../language.ts";
 import type { Pin } from "../model.ts";
 import type { TestCase } from "../symbols.ts";
 
@@ -96,9 +97,6 @@ export const isDeclaration = (pin: Pick<Pin, "kind">): boolean => pin.kind === "
 
 /** Where a card's code column starts. */
 export const gutterOf = (pin: Pick<Pin, "kind">): number => (pin.kind === "context" ? CARD.plainGutter : CARD.gutter);
-
-/** Whether a file's method cards are named with their type, `Server.Start()`: Python's, Go's, Rust's and Java's rule tables name them so. */
-export const typedMethods = (path: string): boolean => /\.(py|go|rs|java)$/i.test(path);
 
 /**
  * A card's name as its header shows it, `width` wide. A typed method that doesn't fit loses its type from the left, never the method,

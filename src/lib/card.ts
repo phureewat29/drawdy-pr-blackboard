@@ -5,9 +5,10 @@
  * `card/pr.ts`, `card/read-all.ts`).
  */
 
-import { CARD, NAME, expandTabs, gutterOf, isDeclaration, opensReadAll, typedMethods, type CardModel, type Row } from "./card/grid.ts";
+import { CARD, NAME, expandTabs, gutterOf, isDeclaration, opensReadAll, type CardModel, type Row } from "./card/grid.ts";
 import { outgoing, rowsOf, type CardInput } from "./card/rows.ts";
 import { clamp } from "./fp.ts";
+import { typedMethods } from "./language.ts";
 import type { Pin } from "./model.ts";
 
 export { CARD, foldAt, foldsOf, nameRect, rowMiddle, type CardModel, type Fold, type Row } from "./card/grid.ts";

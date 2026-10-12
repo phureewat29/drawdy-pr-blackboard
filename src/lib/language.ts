@@ -1,106 +1,46 @@
-/** What kind of file a path is, from its name alone. */
+/** What kind of file a path is, from its name alone: the pack that reads it (`langs/`), the grammar that parses it, and the part it plays in a PR. */
 
-export type Language =
-    | "ts"
-    | "js"
-    | "py"
-    | "go"
-    | "rs"
-    | "java"
-    | "kt"
-    | "swift"
-    | "rb"
-    | "php"
-    | "cs"
-    | "c"
-    | "css"
-    | "html"
-    | "json"
-    | "yaml"
-    | "toml"
-    | "md"
-    | "sh"
-    | "sql"
-    | "text";
+import { PACKS } from "./langs/index.ts";
+import type { LanguagePack } from "./langs/pack.ts";
 
-const EXTENSIONS: Record<string, Language> = {
-    ts: "ts",
-    tsx: "ts",
-    mts: "ts",
-    cts: "ts",
-    js: "js",
-    jsx: "js",
-    mjs: "js",
-    cjs: "js",
-    vue: "js",
-    svelte: "js",
-    py: "py",
-    go: "go",
-    rs: "rs",
-    java: "java",
-    kt: "kt",
-    kts: "kt",
-    scala: "java",
-    swift: "swift",
-    rb: "rb",
-    php: "php",
-    cs: "cs",
-    c: "c",
-    h: "c",
-    cc: "c",
-    cpp: "c",
-    hpp: "c",
-    m: "c",
-    css: "css",
-    scss: "css",
-    less: "css",
-    html: "html",
-    xml: "html",
-    svg: "html",
-    json: "json",
-    jsonc: "json",
-    yml: "yaml",
-    yaml: "yaml",
-    toml: "toml",
-    md: "md",
-    mdx: "md",
-    rst: "md",
-    txt: "text",
-    sh: "sh",
-    bash: "sh",
-    zsh: "sh",
-    sql: "sql",
-};
+/** A pack's id (`ts`, `py`), or `text` for a file no pack reads. */
+export type Language = string;
+
+const BY_ID = new Map(PACKS.map((p) => [p.id, p]));
+const EXTENSIONS: Record<string, Language> = Object.fromEntries(PACKS.flatMap((p) => p.extensions.map((e) => [e, p.id])));
+/** Names a Markdown code fence gives a language by, besides its extensions. */
+const FENCES: Record<string, Language> = Object.fromEntries(PACKS.flatMap((p) => (p.fences ?? []).map((f) => [f, p.id])));
+const GRAMMARS = new Map(PACKS.flatMap((p) => (p.grammars ?? []).flatMap((g) => g.extensions.map((e) => [e, g.name] as const))));
+const GRAMMAR_PACKS = new Map(PACKS.flatMap((p) => (p.grammars ?? []).map((g) => [g.name, p] as const)));
+
+export const packById = (id: Language): LanguagePack | undefined => BY_ID.get(id);
+
+/** The pack whose grammar this is. */
+export const packOfGrammar = (grammar: string): LanguagePack | undefined => GRAMMAR_PACKS.get(grammar);
+
+/** A file name's extension, lowercase; "" for none. */
+const extensionOf = (name: string): string => (name.includes(".") ? name.split(".").pop()!.toLowerCase() : "");
 
 export const languageOf = (path: string): Language => {
     const name = path.split("/").pop() ?? path;
-    if (/^(Dockerfile|Makefile)$/i.test(name)) return "sh";
-    const ext = name.includes(".") ? name.split(".").pop()!.toLowerCase() : "";
-    return EXTENSIONS[ext] ?? "text";
+    const named = PACKS.find((p) => p.names?.test(name));
+    if (named) return named.id;
+    return EXTENSIONS[extensionOf(name)] ?? "text";
 };
 
-/** Names a Markdown code fence gives its language by, besides file extensions. */
-const FENCES: Record<string, Language> = {
-    typescript: "ts",
-    javascript: "js",
-    python: "py",
-    golang: "go",
-    rust: "rs",
-    kotlin: "kt",
-    ruby: "rb",
-    csharp: "cs",
-    cpp: "c",
-    shell: "sh",
-    console: "sh",
-    shellscript: "sh",
-    markdown: "md",
-};
+const TYPED = new Set(PACKS.flatMap((p) => (p.grammars ?? []).flatMap((g) => (g.typedMethods ? g.extensions : []))));
+
+/** Whether a file's method cards are named with their type, `Server.Start()`, as its grammar's linker names them (`Grammar.typedMethods`). */
+export const typedMethods = (path: string): boolean => TYPED.has(extensionOf(path.split("/").pop() ?? path));
 
 /** The language of a fenced code block, from its info string: `ts`, `typescript`, `tsx title="x"`. */
 export const languageOfFence = (info: string | undefined): Language => {
     const name = (info ?? "").trim().split(/\s+/)[0].toLowerCase();
     return FENCES[name] ?? EXTENSIONS[name] ?? "text";
 };
+
+/** Which grammar reads a file, by extension; null when none applies. */
+export const grammarOf = (path: string): string | null => GRAMMARS.get(path.split(".").pop()?.toLowerCase() ?? "") ?? null;
 
 /**
  * The part a file plays in a PR, which decides where its card goes
@@ -120,13 +60,8 @@ const GENERATED = [
     /\.generated\.[^/]+$/,
 ];
 
-const TEST = [
-    /(^|\/)(__tests__|__mocks__|tests?|spec|specs|e2e|testdata|fixtures)\//i,
-    /\.(test|spec|e2e)\.[^/]+$/i,
-    /_test\.(go|py|rb|exs?)$/,
-    /(^|\/)test_[^/]+\.py$/,
-    /Tests?\.(java|kt|cs|swift)$/,
-];
+/** Test folders and suffixes every language shares, Elixir's `_test.exs` until Elixir has a pack, then each pack's own (`_test.go`). */
+const TEST = [/(^|\/)(__tests__|__mocks__|tests?|spec|specs|e2e|testdata|fixtures)\//i, /\.(test|spec|e2e)\.[^/]+$/i, /_test\.exs?$/, ...PACKS.flatMap((p) => p.tests ?? [])];
 
 const DOCS = [/\.(md|mdx|rst|txt|adoc)$/i, /(^|\/)(docs?|documentation)\//i, /(^|\/)(LICENSE|CHANGELOG|README|CONTRIBUTING)(\.[^/]*)?$/i];
 

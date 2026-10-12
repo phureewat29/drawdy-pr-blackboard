@@ -7,9 +7,8 @@
  */
 
 import { addedLines, allLines } from "../diff.ts";
-import type { Unit } from "../facts.ts";
 import { groupBy, minBy } from "../fp.ts";
-import type { Ref } from "../linker.ts";
+import type { Ref, Unit } from "../langs/pack.ts";
 import type { Link, LinkKind, Pin } from "../model.ts";
 import type { Flat } from "../syntax.ts";
 import type { BoardContext } from "./cards.ts";

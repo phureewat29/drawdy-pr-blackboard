@@ -8,6 +8,7 @@
 import type { Emit, GImport, LangRules, Role } from "../../anyfacts.ts";
 import { labelOf } from "../../symbols.ts";
 import { child, hasToken, namedChildren, perTree, textOf, type Flat } from "../../syntax.ts";
+import { GO } from "./index.ts";
 import { receiverType, typeName } from "./nodes.ts";
 
 const IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -166,12 +167,12 @@ const unit: LangRules["unit"] = (t, capture, node) => {
 const FUNCTIONS: ReadonlySet<string> = new Set(["function_declaration", "method_declaration", "func_literal"]);
 const BLOCKS: ReadonlySet<string> = new Set(["block", "if_statement", "for_statement", "expression_switch_statement", "type_switch_statement", "select_statement", "communication_case", "expression_case", "type_case", "default_case"]);
 
-export const GO: LangRules = {
+export const GO_RULES: LangRules = {
     unit,
     label: (t, u) => {
         const recv = u.kind === "method" ? typeName(t, receiverType(t, u.node)) : null;
         const owner = recv?.kind === "name" ? textOf(t, recv.node) : recv?.kind === "qualified" ? recv.name : undefined;
-        return labelOf({ name: u.name, kind: u.kind, ...(owner ? { parent: owner } : {}) }, "go");
+        return labelOf({ name: u.name, kind: u.kind, ...(owner ? { parent: owner } : {}) }, GO.id);
     },
     scope: (t, n) => {
         const ty = t.type[n];

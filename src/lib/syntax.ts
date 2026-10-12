@@ -1,8 +1,8 @@
 /**
  * Syntax trees from tree-sitter grammars, flattened into typed arrays so the
  * linkers work on plain numbers instead of crossing into WebAssembly for
- * every node. For the grammars with a `tags.scm` (`tags.ts`), the tree also
- * carries the declarations it defines.
+ * every node. Where a grammar's linker gives a units query (its `tags.scm`),
+ * the tree also carries the declarations it defines.
  *
  * The caller supplies the wasm bytes: the driver downloads them and checks
  * each against its SHA-256 (`driver/grammars.ts`), the tests read them from
@@ -11,14 +11,12 @@
 
 import { Language, Parser, Query, type Tree } from "../vendor/web-tree-sitter.ts";
 import { memoize, pushTo } from "./fp.ts";
-import { TAGS } from "./tags.ts";
+import { grammarOf } from "./language.ts";
 
 // The vendored file is untyped JavaScript: its classes are values, so their instances get names here.
 type Lang = InstanceType<typeof Language>;
 type ParseTree = InstanceType<typeof Tree>;
 type TagQuery = InstanceType<typeof Query>;
-
-export type Grammar = "typescript" | "tsx" | "javascript" | "python" | "go" | "rust" | "java";
 
 /** A syntax tree as arrays indexed by node id; node 0 is the root. */
 export type Flat = {
@@ -41,33 +39,18 @@ export type Flat = {
     tags?: { capture: string; node: number }[];
 };
 
+/** What a grammar's linker asks of the parser (`langs/pack.ts`): the units query its trees carry, and the text it reads in place of a file's. */
+export type GrammarUse = { units?: string; prepare?: (grammar: string, text: string) => string };
+
 export type Syntax = {
-    /** Loads a grammar from its wasm bytes; a second load of one is a no-op. */
-    add: (grammar: Grammar, bytes: Uint8Array) => Promise<void>;
+    /** Loads a grammar from its wasm bytes, for its linker's `use`; a second load of one is a no-op. */
+    add: (grammar: string, bytes: Uint8Array, use?: GrammarUse) => Promise<void>;
     /** The file's tree, or null when its grammar isn't loaded or the file can't be read (`readable`). */
     parse: (path: string, text: string) => Flat | null;
 };
 
 /** A fact read once per parsed tree. */
 export const perTree = <V>(read: (t: Flat) => V): ((t: Flat) => V) => memoize(read, { cache: new WeakMap() });
-
-const GRAMMARS: ReadonlyMap<string, Grammar> = new Map<string, Grammar>([
-    ["tsx", "tsx"],
-    ["ts", "typescript"],
-    ["mts", "typescript"],
-    ["cts", "typescript"],
-    ["js", "javascript"],
-    ["jsx", "javascript"],
-    ["mjs", "javascript"],
-    ["cjs", "javascript"],
-    ["py", "python"],
-    ["go", "go"],
-    ["rs", "rust"],
-    ["java", "java"],
-]);
-
-/** Which grammar reads a file, by extension; null when none applies. */
-export const grammarOf = (path: string): Grammar | null => GRAMMARS.get(path.split(".").pop()?.toLowerCase() ?? "") ?? null;
 
 /**
  * The share of a file's text in ERROR and MISSING nodes above which the
@@ -104,23 +87,25 @@ export const createSyntax = async (runtimeBytes: Uint8Array): Promise<Syntax> =>
         throw err;
     });
     await runtime;
-    const languages = new Map<Grammar, Lang>();
-    const queries = new Map<Grammar, TagQuery>();
+    const languages = new Map<string, Lang>();
+    const queries = new Map<string, TagQuery>();
+    const uses = new Map<string, GrammarUse>();
     const parser = new Parser();
     return {
-        add: async (grammar, bytes) => {
+        add: async (grammar, bytes, use = {}) => {
             if (languages.has(grammar)) return;
             const lang = await Language.load(bytes);
             languages.set(grammar, lang);
-            const tags = TAGS[grammar];
-            if (tags) queries.set(grammar, definitions(lang, tags));
+            uses.set(grammar, use);
+            if (use.units) queries.set(grammar, definitions(lang, use.units));
         },
         parse: (path, text) => {
             const g = grammarOf(path);
             const lang = g ? languages.get(g) : undefined;
             if (!g || !lang) return null;
             parser.setLanguage(lang);
-            const tree = parser.parse(g === "typescript" ? repairCallSignatures(text) : text, null, undefined);
+            const prepare = uses.get(g)?.prepare;
+            const tree = parser.parse(prepare ? prepare(g, text) : text, null, undefined);
             if (!tree) return null;
             try {
                 const query = queries.get(g);
@@ -131,28 +116,6 @@ export const createSyntax = async (runtimeBytes: Uint8Array): Promise<Syntax> =>
             }
         },
     };
-};
-
-/**
- * tree-sitter-typescript 0.23.2 cannot insert a semicolon before a member
- * that starts with `<`, so a generic call signature after a member without
- * one (`get: Get` then `<K>(key: K): V`) breaks the whole interface, and in
- * code written without semicolons the error can swallow the file. Puts a `;`
- * in the indentation before such a line: offsets and lines stay the same, and
- * the flat tree keeps the original text.
- */
-const repairCallSignatures = (text: string): string => {
-    if (!/\n[ \t]+<([A-Za-z_$]|[ \t]*\r?\n)/.test(text)) return text;
-    const lines = text.split("\n");
-    let previous = "";
-    for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        // `<T extends ...>(`, `<T, U>(`, or `<` alone with the type parameters on the next lines.
-        const m = /^([ \t]*)[ \t]<(\s*$|[A-Za-z_$][\w$]*\s*(extends\b|,|=|>))/.exec(line);
-        if (m && previous && !/[;{(,[=|&:]\s*$|=>\s*$/.test(previous)) lines[i] = `${m[1]};${line.slice(m[1].length + 1)}`;
-        if (line.trim() !== "") previous = line;
-    }
-    return lines.join("\n");
 };
 
 /**

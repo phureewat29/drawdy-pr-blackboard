@@ -1,6 +1,6 @@
 /** Reading JavaScript and TypeScript syntax nodes: what every part of a file's facts asks of its tree. */
 
-import { child, childOfType, namedChildren, textOf, type Flat } from "../syntax.ts";
+import { child, childOfType, namedChildren, textOf, type Flat } from "../../../syntax.ts";
 
 const FUNCTIONS = new Set(["function_expression", "arrow_function", "generator_function", "function"]);
 const WRAPPERS = new Set(["parenthesized_expression", "as_expression", "satisfies_expression", "non_null_expression", "type_assertion"]);

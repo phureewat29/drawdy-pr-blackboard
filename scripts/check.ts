@@ -39,8 +39,11 @@ const MAX_PAYLOAD_BYTES = 512 * 1024;
 /** Drawdy's marketplace build refuses a listing icon over 256 KB. */
 const MAX_ICON_BYTES = 256 * 1024;
 const HONO = "https://github.com/honojs/hono/pull/5513";
-/** The parser's sources, files and folders, which may reach the bundle only inside the worker's script. */
-const PARSING = ["src/lib/facts.ts", "src/lib/facts/", "src/lib/linker.ts", "src/lib/linker/", "src/lib/syntax.ts", "src/vendor/web-tree-sitter.ts"];
+/**
+ * The parser's sources, which may reach the bundle only inside the worker's script: tree-sitter, the shared
+ * linker, the linkers' list, and in each language's folder every file but its pack (`langs/<name>/index.ts`).
+ */
+const PARSING = [/src\/vendor\/web-tree-sitter\.ts$/, /src\/lib\/(syntax|anyfacts|anylink|linking)\.ts$/, /src\/lib\/langs\/linkers\.ts$/, /src\/lib\/langs\/[^/]+\/(?!index\.ts$)/];
 
 const manifestText = readFileSync(join(ROOT, "manifest.json"), "utf8");
 const manifest = JSON.parse(manifestText) as { driverId: string; main: string; icon: string };
@@ -86,8 +89,8 @@ const checkBundle = async ({ code, bareImports, inputs }: Awaited<ReturnType<typ
     const bytes = Buffer.byteLength(code);
     expectThat(bytes < MAX_BUNDLE_BYTES, `bundle is ${(bytes / 1024).toFixed(1)} KB (limit 1 MB)`);
     expectThat(readFileSync(SCRIPT_FILE, "utf8") === (await workerScriptFile()), "the parser worker's script is current with its sources (npm run worker)");
-    const parsing = PARSING.filter((source) => inputs.some((input) => (source.endsWith("/") ? input.includes(source) : input.endsWith(source))));
-    expectThat(parsing.length === 0, parsing.length === 0 ? "the parser and the linker reach the bundle only inside the worker's script" : `the driver imports the parser itself: ${parsing.join(", ")}`);
+    const parsing = inputs.filter((input) => PARSING.some((re) => re.test(input)));
+    expectThat(parsing.length === 0, parsing.length === 0 ? "the parser and the linkers reach the bundle only inside the worker's script" : `the driver imports the parser itself: ${parsing.join(", ")}`);
 };
 
 const built = await bundle();

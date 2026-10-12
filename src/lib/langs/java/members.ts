@@ -7,9 +7,9 @@
  * members is not `complete`.
  */
 
-import type { Unit } from "../../facts.ts";
 import { memoize, once, pushTo } from "../../fp.ts";
 import { child, namedChildren, textOf, type Flat } from "../../syntax.ts";
+import type { Unit } from "../pack.ts";
 import { isIface, memberNodes, openOf, type JType } from "./files.ts";
 import { classTypeVar } from "./generics.ts";
 import type { Lib } from "./library.ts";

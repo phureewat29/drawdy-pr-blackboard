@@ -1,6 +1,6 @@
 /** tsconfig.json and jsconfig.json: the `paths` that apply to a file, and the typings a config names one by one. */
 
-import { dirOf, joinPath, type PathMapping } from "../linker/paths.ts";
+import { dirOf, joinPath, type PathMapping } from "./resolve/paths.ts";
 
 /** A config read with comments and trailing commas allowed. */
 const parseJsonc = (text: string): unknown => {

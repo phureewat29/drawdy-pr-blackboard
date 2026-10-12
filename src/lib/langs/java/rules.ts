@@ -209,7 +209,7 @@ const keywordOf = (type: string): string => {
 /** The nodes that open a block scope. An old-style switch is one block: a local of one group is seen in the next. */
 const BLOCKS: ReadonlySet<string> = new Set(["block", "switch_block", "switch_rule", "for_statement", "enhanced_for_statement", "catch_clause", "try_with_resources_statement"]);
 
-export const JAVA: LangRules = {
+export const JAVA_RULES: LangRules = {
     unit,
     extraUnits: (t) => {
         const out: { kind: "class" | "function"; nameNode: number; outer: number; node: number }[] = [];

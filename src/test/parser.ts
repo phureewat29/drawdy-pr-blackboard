@@ -1,24 +1,18 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { onThisThread, type Connect } from "../driver/parser.ts";
-import { parseFile } from "../lib/langs/index.ts";
+import { PACKS } from "../lib/langs/index.ts";
+import { linkerOfGrammar, parseFile } from "../lib/linking.ts";
 import type { Parse } from "../lib/sources.ts";
-import { createSyntax, type Grammar, type Syntax } from "../lib/syntax.ts";
+import { createSyntax, type Syntax } from "../lib/syntax.ts";
 import { serve } from "../worker/serve.ts";
 
-/** The pinned wasm files, from the exact-version devDependencies: the bytes the driver downloads. */
-export const WASM: Record<Grammar | "runtime", string> = {
-    runtime: "web-tree-sitter/web-tree-sitter.wasm",
-    typescript: "tree-sitter-typescript/tree-sitter-typescript.wasm",
-    tsx: "tree-sitter-typescript/tree-sitter-tsx.wasm",
-    javascript: "tree-sitter-javascript/tree-sitter-javascript.wasm",
-    python: "tree-sitter-python/tree-sitter-python.wasm",
-    go: "tree-sitter-go/tree-sitter-go.wasm",
-    rust: "tree-sitter-rust/tree-sitter-rust.wasm",
-    java: "tree-sitter-java/tree-sitter-java.wasm",
-};
+const GRAMMARS = PACKS.flatMap((p) => p.grammars ?? []);
 
-export const wasmBytes = (name: Grammar | "runtime"): Uint8Array => new Uint8Array(readFileSync(join(import.meta.dirname, "../../node_modules", WASM[name])));
+/** The pinned wasm files, from the exact-version devDependencies: the bytes the driver downloads. */
+export const WASM: Record<string, string> = { runtime: "web-tree-sitter/web-tree-sitter.wasm", ...Object.fromEntries(GRAMMARS.map((g) => [g.name, `${g.package}/${g.file}`])) };
+
+export const wasmBytes = (name: string): Uint8Array => new Uint8Array(readFileSync(join(import.meta.dirname, "../../node_modules", WASM[name])));
 
 let syntax: Promise<Syntax> | null = null;
 
@@ -26,7 +20,7 @@ let syntax: Promise<Syntax> | null = null;
 export const testSyntax = (): Promise<Syntax> =>
     (syntax ??= (async () => {
         const s = await createSyntax(wasmBytes("runtime"));
-        for (const g of ["typescript", "tsx", "javascript", "python", "go", "rust", "java"] as const) await s.add(g, wasmBytes(g));
+        for (const g of GRAMMARS) await s.add(g.name, wasmBytes(g.name), linkerOfGrammar(g.name));
         return s;
     })());
 

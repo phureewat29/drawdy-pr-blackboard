@@ -1,6 +1,6 @@
 /** The repositories that implement Node's built-in modules, where an import of one names their own file. */
 
-import type { PrRef } from "../github.ts";
+import type { PrRef } from "../../../github.ts";
 
 /** Node 24's `builtinModules`; the last four exist only with the `node:` prefix. */
 const NODE_BUILTINS = new Set([

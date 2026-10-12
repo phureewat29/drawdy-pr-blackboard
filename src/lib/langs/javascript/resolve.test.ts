@@ -1,8 +1,8 @@
 import { beforeAll, describe, expect, it } from "@jest/globals";
-import { testSyntax } from "../test/parser.ts";
+import { testSyntax } from "../../../test/parser.ts";
 import { parseFacts } from "./facts.ts";
-import { builtinRule, resolveAll, type LinkerConfig } from "./linker.ts";
-import type { Syntax } from "./syntax.ts";
+import { builtinRule, resolveAll, type LinkerConfig } from "./resolve.ts";
+import type { Syntax } from "../../syntax.ts";
 
 let syntax: Syntax;
 beforeAll(async () => {

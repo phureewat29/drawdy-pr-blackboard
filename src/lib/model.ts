@@ -9,22 +9,18 @@
  * in board order, which the layout decides, so `buildReview` plans the board
  * once to fix it.
  *
- * A link is a fact: every link comes from a reference a linker resolved,
- * `linker.ts` for JavaScript and TypeScript, `anylink.ts` for the languages
- * with a rule table: the innermost card holding the reference, to the card
- * standing for what it names. Other languages keep the line patterns of
- * `symbols.ts` for their cards, and draw no strings.
+ * A link is a fact: every link comes from a reference a language's linker
+ * resolved (`linking.ts`): the innermost card holding the reference, to the
+ * card standing for what it names. Languages with no linker keep the line
+ * patterns of `symbols.ts` for their cards, and draw no strings.
  */
 
-import { isGeneric } from "./anyfacts.ts";
-import { resolveAny } from "./anylink.ts";
 import type { Hunk } from "./diff.ts";
-import type { FileFacts, Unit } from "./facts.ts";
 import type { FileStatus, PrFile, PrInfo } from "./github.ts";
-import { langOf } from "./langs/index.ts";
+import type { Facts, Ref, Unit } from "./langs/pack.ts";
 import { planBoard, type BoardPlan } from "./layout.ts";
 import type { FileRole, Language } from "./language.ts";
-import { builtinRule, resolveAll, type Ref } from "./linker.ts";
+import { linkAll } from "./linking.ts";
 import { fileBoard, symbolBoard, type BoardContext } from "./model/cards.ts";
 import { reviewFiles } from "./model/changes.ts";
 import { limit, unpinnedOf } from "./model/limit.ts";
@@ -124,40 +120,31 @@ export type Review = {
 /** A board's cards, bands and links, before its review is whole. */
 export type Board = Pick<Review, "mode" | "pins" | "links" | "bands">;
 
-/** What a card needs of a parsed file, whichever parser read it. */
-export type Parsed = Pick<FileFacts, "path" | "flat" | "units">;
-
 /**
  * What the read tier gave: every text read, the parsed files' facts, the
- * references that resolved, and the card names the rule tables give their
- * units (`Server.Start()`), which `labelOf` gives the rest.
+ * references that resolved, and the card names the linkers give their units
+ * (`Server.Start()`), which `labelOf` gives the rest.
  */
-export type Analysed = { texts: ReadonlyMap<string, string>; facts: ReadonlyMap<string, Parsed>; refs: readonly Ref[]; labels: ReadonlyMap<string, string> };
+export type Analysed = { texts: ReadonlyMap<string, string>; facts: ReadonlyMap<string, Facts>; refs: readonly Ref[]; labels: ReadonlyMap<string, string> };
 
 /** A review and its board's plan, which fixes the review's order. */
 export type Built = { review: Review; plan: BoardPlan };
+
+/** Reads what a PR's board needs and resolves its references: what `buildReview` builds the review from. */
+export const readAndLink = async (pr: PrInfo, files: readonly PrFile[], read: Read, parse: Parse): Promise<Analysed> => {
+    const sources = await readSources(files, read, parse);
+    const changed = new Set(files.filter((f) => f.status !== "removed").map((f) => f.path));
+    const refs = linkAll(pr, changed, sources);
+    const labels = new Map([...sources.facts.values()].flatMap((f) => (f.labels ? [...f.labels] : [])));
+    return { texts: sources.texts, facts: sources.facts, refs, labels };
+};
 
 /**
  * Reads what the board needs, resolves its references and builds the review:
  * the one path from a PR's files to its board, for the parser worker, the
  * tests and the score gate alike.
  */
-export const analyse = async (pr: PrInfo, files: readonly PrFile[], read: Read, parse: Parse): Promise<Built> => {
-    const sources = await readSources(files, read, parse);
-    const changed = new Set(files.filter((f) => f.status !== "removed").map((f) => f.path));
-    const parsed = [...sources.facts.values()];
-    const generic = parsed.filter(isGeneric);
-    const refs = [
-        ...resolveAll(
-            parsed.filter((f): f is FileFacts => !isGeneric(f)),
-            changed,
-            { paths: sources.paths, builtin: builtinRule(pr.ref, changed) }
-        ),
-        ...resolveAny(generic, (f) => langOf(f.path)!.resolver, (path) => sources.texts.get(path), sources.exists),
-    ];
-    const labels = new Map(generic.flatMap((f) => [...f.labels]));
-    return buildReview(pr, files, { texts: sources.texts, facts: sources.facts, refs, labels });
-};
+export const analyse = async (pr: PrInfo, files: readonly PrFile[], read: Read, parse: Parse): Promise<Built> => buildReview(pr, files, await readAndLink(pr, files, read, parse));
 
 export const buildReview = (pr: PrInfo, prFiles: readonly PrFile[], analysed: Analysed): Built => {
     const heads = new Map([...analysed.texts].map(([path, text]) => [path, text.split("\n")]));

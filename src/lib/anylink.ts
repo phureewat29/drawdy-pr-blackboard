@@ -11,9 +11,8 @@
  */
 
 import { scopeAround, type GBinding, type GFile, type GImport, type GScope, type GSite, type Members, type RefKind } from "./anyfacts.ts";
-import type { Unit } from "./facts.ts";
 import { memoize, pushTo } from "./fp.ts";
-import type { Ref } from "./linker.ts";
+import type { Ref, Unit } from "./langs/pack.ts";
 import { textOf, type Flat } from "./syntax.ts";
 
 /** What an expression is, as a language's rules read its syntax. */

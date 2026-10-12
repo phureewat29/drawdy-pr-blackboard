@@ -9,8 +9,8 @@
 
 import type { GSite, RefKind } from "../../anyfacts.ts";
 import type { Named, OwnResolver } from "../../anylink.ts";
-import type { Unit } from "../../facts.ts";
 import { hasToken } from "../../syntax.ts";
+import type { Unit } from "../pack.ts";
 import { importable } from "./access.ts";
 import { callOf, ctorOf, pick, receiverOf } from "./calls.ts";
 import { exprVal, nameVal, selfOf, superVal, typeOf } from "./expressions.ts";

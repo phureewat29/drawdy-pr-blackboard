@@ -5,7 +5,8 @@
  * Copyright (c) 2018 Max Brunsfeld (MIT License)
  * https://github.com/tree-sitter/tree-sitter
  *
- * Patched so the marketplace's CommonJS build of the extension takes it:
+ * Patched so the marketplace's CommonJS build of the extension takes it, and
+ * to keep that build small:
  * 1. Language.load's Node branch, which reads a path with
  *    import("fs/promises"), is removed; PR Blackboard always passes bytes.
  * 2. The Module's createRequire(import.meta.url) under ENVIRONMENT_IS_NODE
@@ -13,6 +14,8 @@
  * 3. The Module's Node file loader (require("fs"), require("path")) is
  *    removed; PR Blackboard passes wasmBinary and a locateFile.
  * 4. import.meta.url reads undefined, and the source map comment is gone.
+ * 5. The comments esbuild keeps in a bundle, doc comments in class bodies and
+ *    the like, are removed: they made 24 KB of the parser worker's script.
  * Nothing else is changed.
  */
 var __defProp = Object.defineProperty;
@@ -23,17 +26,11 @@ var Edit = class {
   static {
     __name(this, "Edit");
   }
-  /** The start position of the change. */
   startPosition;
-  /** The end position of the change before the edit. */
   oldEndPosition;
-  /** The end position of the change after the edit. */
   newEndPosition;
-  /** The start index of the change. */
   startIndex;
-  /** The end index of the change before the edit. */
   oldEndIndex;
-  /** The end index of the change after the edit. */
   newEndIndex;
   constructor({
     startIndex,
@@ -50,13 +47,6 @@ var Edit = class {
     this.oldEndPosition = oldEndPosition;
     this.newEndPosition = newEndPosition;
   }
-  /**
-   * Edit a point and index to keep it in-sync with source code that has been edited.
-   *
-   * This function updates a single point's byte offset and row/column position
-   * based on an edit operation. This is useful for editing points without
-   * requiring a tree or node instance.
-   */
   editPoint(point, index) {
     let newIndex = index;
     const newPoint = { ...point };
@@ -72,13 +62,6 @@ var Edit = class {
     }
     return { point: newPoint, index: newIndex };
   }
-  /**
-   * Edit a range to keep it in-sync with source code that has been edited.
-   *
-   * This function updates a range's start and end positions based on an edit
-   * operation. This is useful for editing ranges without requiring a tree
-   * or node instance.
-   */
   editRange(range) {
     const newRange = {
       startIndex: range.startIndex,
@@ -162,54 +145,28 @@ var LookaheadIterator = class {
   static {
     __name(this, "LookaheadIterator");
   }
-  /** @internal */
   [0] = 0;
-  // Internal handle for Wasm
-  /** @internal */
   language;
-  /** @internal */
   positioned = false;
-  /** @internal */
   constructor(internal, address, language) {
     assertInternal(internal);
     this[0] = address;
     this.language = language;
     finalizer?.register(this, address, this);
   }
-  /**
-   * Get the current symbol of the lookahead iterator.
-   *
-   * Returns `null` if the iterator is not positioned on a symbol:
-   *
-   * - Before the first iteration step
-   * - After the iterator is exhausted
-   * - After a {@link reset} or {@link resetState} call
-   */
   get currentTypeId() {
     return this.positioned ? C._ts_lookahead_iterator_current_symbol(this[0]) : null;
   }
-  /**
-   * Get the current symbol name of the lookahead iterator.
-   *
-   * Returns `null` if the iterator is not positioned on a symbol.
-   */
   get currentType() {
     const id = this.currentTypeId;
     if (id === null) return null;
     return this.language.types[id] ?? C.UTF8ToString(C._ts_language_symbol_name(this.language[0], id));
   }
-  /** Delete the lookahead iterator, freeing its resources. */
   delete() {
     finalizer?.unregister(this);
     C._ts_lookahead_iterator_delete(this[0]);
     this[0] = 0;
   }
-  /**
-   * Reset the lookahead iterator.
-   *
-   * This returns `true` if the language was set successfully and `false`
-   * otherwise.
-   */
   reset(language, stateId) {
     if (C._ts_lookahead_iterator_reset(this[0], language[0], stateId)) {
       this.language = language;
@@ -218,23 +175,11 @@ var LookaheadIterator = class {
     }
     return false;
   }
-  /**
-   * Reset the lookahead iterator to another state.
-   *
-   * This returns `true` if the iterator was reset to the given state and
-   * `false` otherwise.
-   */
   resetState(stateId) {
     if (!C._ts_lookahead_iterator_reset_state(this[0], stateId)) return false;
     this.positioned = false;
     return true;
   }
-  /**
-   * Returns an iterator that iterates over the symbols of the lookahead iterator.
-   *
-   * The iterator will yield the current symbol name as a string for each step
-   * until there are no more symbols to iterate over.
-   */
   [Symbol.iterator]() {
     return {
       next: /* @__PURE__ */ __name(() => {
@@ -275,14 +220,9 @@ var Tree = class _Tree {
   static {
     __name(this, "Tree");
   }
-  /** @internal */
   [0] = 0;
-  // Internal handle for Wasm
-  /** @internal */
   textCallback;
-  /** The language that was used to parse the syntax tree. */
   language;
-  /** @internal */
   constructor(internal, address, language, textCallback) {
     assertInternal(internal);
     this[0] = address;
@@ -290,26 +230,19 @@ var Tree = class _Tree {
     this.textCallback = textCallback;
     finalizer2?.register(this, address, this);
   }
-  /** Create a shallow copy of the syntax tree. This is very fast. */
   copy() {
     const address = C._ts_tree_copy(this[0]);
     return new _Tree(INTERNAL, address, this.language, this.textCallback);
   }
-  /** Delete the syntax tree, freeing its resources. */
   delete() {
     finalizer2?.unregister(this);
     C._ts_tree_delete(this[0]);
     this[0] = 0;
   }
-  /** Get the root node of the syntax tree. */
   get rootNode() {
     C._ts_tree_root_node_wasm(this[0]);
     return unmarshalNode(this);
   }
-  /**
-   * Get the root node of the syntax tree, but with its position shifted
-   * forward by the given offset.
-   */
   rootNodeWithOffset(offsetBytes, offsetExtent) {
     const address = TRANSFER_BUFFER + SIZE_OF_NODE;
     C.setValue(address, offsetBytes, "i32");
@@ -317,32 +250,13 @@ var Tree = class _Tree {
     C._ts_tree_root_node_with_offset_wasm(this[0]);
     return unmarshalNode(this);
   }
-  /**
-   * Edit the syntax tree to keep it in sync with source code that has been
-   * edited.
-   *
-   * You must describe the edit both in terms of byte offsets and in terms of
-   * row/column coordinates.
-   */
   edit(edit) {
     marshalEdit(edit);
     C._ts_tree_edit_wasm(this[0]);
   }
-  /** Create a new {@link TreeCursor} starting from the root of the tree. */
   walk() {
     return this.rootNode.walk();
   }
-  /**
-   * Compare this old edited syntax tree to a new syntax tree representing
-   * the same document, returning a sequence of ranges whose syntactic
-   * structure has changed.
-   *
-   * For this to work correctly, this syntax tree must have been edited such
-   * that its ranges match up to the new tree. Generally, you'll want to
-   * call this method right after calling one of the [`Parser::parse`]
-   * functions. Call it on the old tree that was passed to parse, and
-   * pass the new tree that was returned from `parse`.
-   */
   getChangedRanges(other) {
     if (!(other instanceof _Tree)) {
       throw new TypeError("Argument must be a Tree");
@@ -361,7 +275,6 @@ var Tree = class _Tree {
     }
     return result;
   }
-  /** Get the included ranges that were used to parse the syntax tree. */
   getIncludedRanges() {
     C._ts_tree_included_ranges_wasm(this[0]);
     const count = C.getValue(TRANSFER_BUFFER, "i32");
@@ -387,120 +300,72 @@ var TreeCursor = class _TreeCursor {
   static {
     __name(this, "TreeCursor");
   }
-  /** @internal */
-  // @ts-expect-error: never read
   [0] = 0;
-  // Internal handle for Wasm
-  /** @internal */
-  // @ts-expect-error: never read
   [1] = 0;
-  // Internal handle for Wasm
-  /** @internal */
-  // @ts-expect-error: never read
   [2] = 0;
-  // Internal handle for Wasm
-  /** @internal */
-  // @ts-expect-error: never read
   [3] = 0;
-  // Internal handle for Wasm
-  /** @internal */
   tree;
-  /** @internal */
   constructor(internal, tree) {
     assertInternal(internal);
     this.tree = tree;
     unmarshalTreeCursor(this);
     finalizer3?.register(this, this.tree[0], this);
   }
-  /** Creates a deep copy of the tree cursor. This allocates new memory. */
   copy() {
     const copy = new _TreeCursor(INTERNAL, this.tree);
     C._ts_tree_cursor_copy_wasm(this.tree[0]);
     unmarshalTreeCursor(copy);
     return copy;
   }
-  /** Delete the tree cursor, freeing its resources. */
   delete() {
     finalizer3?.unregister(this);
     marshalTreeCursor(this);
     C._ts_tree_cursor_delete_wasm(this.tree[0]);
     this[0] = this[1] = this[2] = 0;
   }
-  /** Get the tree cursor's current {@link Node}. */
   get currentNode() {
     marshalTreeCursor(this);
     C._ts_tree_cursor_current_node_wasm(this.tree[0]);
     return unmarshalNode(this.tree);
   }
-  /**
-   * Get the numerical field id of this tree cursor's current node.
-   *
-   * See also {@link TreeCursor#currentFieldName}.
-   */
   get currentFieldId() {
     marshalTreeCursor(this);
     return C._ts_tree_cursor_current_field_id_wasm(this.tree[0]);
   }
-  /** Get the field name of this tree cursor's current node. */
   get currentFieldName() {
     return this.tree.language.fields[this.currentFieldId];
   }
-  /**
-   * Get the depth of the cursor's current node relative to the original
-   * node that the cursor was constructed with.
-   */
   get currentDepth() {
     marshalTreeCursor(this);
     return C._ts_tree_cursor_current_depth_wasm(this.tree[0]);
   }
-  /**
-   * Get the index of the cursor's current node out of all of the
-   * descendants of the original node that the cursor was constructed with.
-   */
   get currentDescendantIndex() {
     marshalTreeCursor(this);
     return C._ts_tree_cursor_current_descendant_index_wasm(this.tree[0]);
   }
-  /** Get the type of the cursor's current node. */
   get nodeType() {
     return this.tree.language.types[this.nodeTypeId] || "ERROR";
   }
-  /** Get the type id of the cursor's current node. */
   get nodeTypeId() {
     marshalTreeCursor(this);
     return C._ts_tree_cursor_current_node_type_id_wasm(this.tree[0]);
   }
-  /** Get the state id of the cursor's current node. */
   get nodeStateId() {
     marshalTreeCursor(this);
     return C._ts_tree_cursor_current_node_state_id_wasm(this.tree[0]);
   }
-  /** Get the id of the cursor's current node. */
   get nodeId() {
     marshalTreeCursor(this);
     return C._ts_tree_cursor_current_node_id_wasm(this.tree[0]);
   }
-  /**
-   * Check if the cursor's current node is *named*.
-   *
-   * Named nodes correspond to named rules in the grammar, whereas
-   * *anonymous* nodes correspond to string literals in the grammar.
-   */
   get nodeIsNamed() {
     marshalTreeCursor(this);
     return C._ts_tree_cursor_current_node_is_named_wasm(this.tree[0]) === 1;
   }
-  /**
-   * Check if the cursor's current node is *missing*.
-   *
-   * Missing nodes are inserted by the parser in order to recover from
-   * certain kinds of syntax errors.
-   */
   get nodeIsMissing() {
     marshalTreeCursor(this);
     return C._ts_tree_cursor_current_node_is_missing_wasm(this.tree[0]) === 1;
   }
-  /** Get the string content of the cursor's current node. */
   get nodeText() {
     marshalTreeCursor(this);
     const startIndex = C._ts_tree_cursor_start_index_wasm(this.tree[0]);
@@ -509,123 +374,59 @@ var TreeCursor = class _TreeCursor {
     const startPosition = unmarshalPoint(TRANSFER_BUFFER);
     return getText(this.tree, startIndex, endIndex, startPosition);
   }
-  /** Get the start position of the cursor's current node. */
   get startPosition() {
     marshalTreeCursor(this);
     C._ts_tree_cursor_start_position_wasm(this.tree[0]);
     return unmarshalPoint(TRANSFER_BUFFER);
   }
-  /** Get the end position of the cursor's current node. */
   get endPosition() {
     marshalTreeCursor(this);
     C._ts_tree_cursor_end_position_wasm(this.tree[0]);
     return unmarshalPoint(TRANSFER_BUFFER);
   }
-  /** Get the start index of the cursor's current node. */
   get startIndex() {
     marshalTreeCursor(this);
     return C._ts_tree_cursor_start_index_wasm(this.tree[0]);
   }
-  /** Get the end index of the cursor's current node. */
   get endIndex() {
     marshalTreeCursor(this);
     return C._ts_tree_cursor_end_index_wasm(this.tree[0]);
   }
-  /**
-   * Move this cursor to the first child of its current node.
-   *
-   * This returns `true` if the cursor successfully moved, and returns
-   * `false` if there were no children.
-   */
   gotoFirstChild() {
     marshalTreeCursor(this);
     const result = C._ts_tree_cursor_goto_first_child_wasm(this.tree[0]);
     unmarshalTreeCursor(this);
     return result === 1;
   }
-  /**
-   * Move this cursor to the last child of its current node.
-   *
-   * This returns `true` if the cursor successfully moved, and returns
-   * `false` if there were no children.
-   *
-   * Note that this function may be slower than
-   * {@link TreeCursor#gotoFirstChild} because it needs to
-   * iterate through all the children to compute the child's position.
-   */
   gotoLastChild() {
     marshalTreeCursor(this);
     const result = C._ts_tree_cursor_goto_last_child_wasm(this.tree[0]);
     unmarshalTreeCursor(this);
     return result === 1;
   }
-  /**
-   * Move this cursor to the parent of its current node.
-   *
-   * This returns `true` if the cursor successfully moved, and returns
-   * `false` if there was no parent node (the cursor was already on the
-   * root node).
-   *
-   * Note that the node the cursor was constructed with is considered the root
-   * of the cursor, and the cursor cannot walk outside this node.
-   */
   gotoParent() {
     marshalTreeCursor(this);
     const result = C._ts_tree_cursor_goto_parent_wasm(this.tree[0]);
     unmarshalTreeCursor(this);
     return result === 1;
   }
-  /**
-   * Move this cursor to the next sibling of its current node.
-   *
-   * This returns `true` if the cursor successfully moved, and returns
-   * `false` if there was no next sibling node.
-   *
-   * Note that the node the cursor was constructed with is considered the root
-   * of the cursor, and the cursor cannot walk outside this node.
-   */
   gotoNextSibling() {
     marshalTreeCursor(this);
     const result = C._ts_tree_cursor_goto_next_sibling_wasm(this.tree[0]);
     unmarshalTreeCursor(this);
     return result === 1;
   }
-  /**
-   * Move this cursor to the previous sibling of its current node.
-   *
-   * This returns `true` if the cursor successfully moved, and returns
-   * `false` if there was no previous sibling node.
-   *
-   * Note that this function may be slower than
-   * {@link TreeCursor#gotoNextSibling} due to how node
-   * positions are stored. In the worst case, this will need to iterate
-   * through all the children up to the previous sibling node to recalculate
-   * its position. Also note that the node the cursor was constructed with is
-   * considered the root of the cursor, and the cursor cannot walk outside this node.
-   */
   gotoPreviousSibling() {
     marshalTreeCursor(this);
     const result = C._ts_tree_cursor_goto_previous_sibling_wasm(this.tree[0]);
     unmarshalTreeCursor(this);
     return result === 1;
   }
-  /**
-   * Move the cursor to the node that is the nth descendant of
-   * the original node that the cursor was constructed with, where
-   * zero represents the original node itself.
-   */
   gotoDescendant(goalDescendantIndex) {
     marshalTreeCursor(this);
     C._ts_tree_cursor_goto_descendant_wasm(this.tree[0], goalDescendantIndex);
     unmarshalTreeCursor(this);
   }
-  /**
-   * Move this cursor to the first child of its current node that contains or
-   * starts after the given byte offset.
-   *
-   * This returns `true` if the cursor successfully moved to a child node, and returns
-   * `false` if no such child was found.
-   */
   gotoFirstChildForIndex(goalIndex) {
     marshalTreeCursor(this);
     C.setValue(TRANSFER_BUFFER + SIZE_OF_CURSOR, goalIndex, "i32");
@@ -633,13 +434,6 @@ var TreeCursor = class _TreeCursor {
     unmarshalTreeCursor(this);
     return result === 1;
   }
-  /**
-   * Move this cursor to the first child of its current node that contains or
-   * starts after the given byte offset.
-   *
-   * This returns the index of the child node if one was found, and returns
-   * `null` if no such child was found.
-   */
   gotoFirstChildForPosition(goalPosition) {
     marshalTreeCursor(this);
     marshalPoint(TRANSFER_BUFFER + SIZE_OF_CURSOR, goalPosition);
@@ -647,22 +441,12 @@ var TreeCursor = class _TreeCursor {
     unmarshalTreeCursor(this);
     return result === 1;
   }
-  /**
-   * Re-initialize this tree cursor to start at the original node that the
-   * cursor was constructed with.
-   */
   reset(node) {
     marshalNode(node);
     marshalTreeCursor(this, TRANSFER_BUFFER + SIZE_OF_NODE);
     C._ts_tree_cursor_reset_wasm(this.tree[0]);
     unmarshalTreeCursor(this);
   }
-  /**
-   * Re-initialize a tree cursor to the same position as another cursor.
-   *
-   * Unlike {@link TreeCursor#reset}, this will not lose parent
-   * information and allows reusing already created cursors.
-   */
   resetTo(cursor) {
     marshalTreeCursor(this, TRANSFER_BUFFER);
     marshalTreeCursor(cursor, TRANSFER_BUFFER + SIZE_OF_CURSOR);
@@ -676,15 +460,9 @@ var Node = class {
   static {
     __name(this, "Node");
   }
-  /** @internal */
-  // @ts-expect-error: never read
   [0] = 0;
-  // Internal handle for Wasm
-  /** @internal */
   _children;
-  /** @internal */
   _namedChildren;
-  /** @internal */
   constructor(internal, {
     id,
     tree,
@@ -699,207 +477,108 @@ var Node = class {
     this.startIndex = startIndex;
     this.startPosition = startPosition;
   }
-  /**
-   * The numeric id for this node that is unique.
-   *
-   * Within a given syntax tree, no two nodes have the same id. However:
-   *
-   * * If a new tree is created based on an older tree, and a node from the old tree is reused in
-   *   the process, then that node will have the same id in both trees.
-   *
-   * * A node not marked as having changes does not guarantee it was reused.
-   *
-   * * If a node is marked as having changed in the old tree, it will not be reused.
-   */
   id;
-  /** The byte index where this node starts. */
   startIndex;
-  /** The position where this node starts. */
   startPosition;
-  /** The tree that this node belongs to. */
   tree;
-  /** Get this node's type as a numerical id. */
   get typeId() {
     marshalNode(this);
     return C._ts_node_symbol_wasm(this.tree[0]);
   }
-  /**
-   * Get the node's type as a numerical id as it appears in the grammar,
-   * ignoring aliases.
-   */
   get grammarId() {
     marshalNode(this);
     return C._ts_node_grammar_symbol_wasm(this.tree[0]);
   }
-  /** Get this node's type as a string. */
   get type() {
     return this.tree.language.types[this.typeId] || "ERROR";
   }
-  /**
-   * Get this node's symbol name as it appears in the grammar, ignoring
-   * aliases as a string.
-   */
   get grammarType() {
     return this.tree.language.types[this.grammarId] || "ERROR";
   }
-  /**
-   * Check if this node is *named*.
-   *
-   * Named nodes correspond to named rules in the grammar, whereas
-   * *anonymous* nodes correspond to string literals in the grammar.
-   */
   get isNamed() {
     marshalNode(this);
     return C._ts_node_is_named_wasm(this.tree[0]) === 1;
   }
-  /**
-   * Check if this node is *extra*.
-   *
-   * Extra nodes represent things like comments, which are not required
-   * by the grammar, but can appear anywhere.
-   */
   get isExtra() {
     marshalNode(this);
     return C._ts_node_is_extra_wasm(this.tree[0]) === 1;
   }
-  /**
-   * Check if this node represents a syntax error.
-   *
-   * Syntax errors represent parts of the code that could not be incorporated
-   * into a valid syntax tree.
-   */
   get isError() {
     marshalNode(this);
     return C._ts_node_is_error_wasm(this.tree[0]) === 1;
   }
-  /**
-   * Check if this node is *missing*.
-   *
-   * Missing nodes are inserted by the parser in order to recover from
-   * certain kinds of syntax errors.
-   */
   get isMissing() {
     marshalNode(this);
     return C._ts_node_is_missing_wasm(this.tree[0]) === 1;
   }
-  /** Check if this node has been edited. */
   get hasChanges() {
     marshalNode(this);
     return C._ts_node_has_changes_wasm(this.tree[0]) === 1;
   }
-  /**
-   * Check if this node represents a syntax error or contains any syntax
-   * errors anywhere within it.
-   */
   get hasError() {
     marshalNode(this);
     return C._ts_node_has_error_wasm(this.tree[0]) === 1;
   }
-  /** Get the byte index where this node ends. */
   get endIndex() {
     marshalNode(this);
     return C._ts_node_end_index_wasm(this.tree[0]);
   }
-  /** Get the position where this node ends. */
   get endPosition() {
     marshalNode(this);
     C._ts_node_end_point_wasm(this.tree[0]);
     return unmarshalPoint(TRANSFER_BUFFER);
   }
-  /** Get the string content of this node. */
   get text() {
     return getText(this.tree, this.startIndex, this.endIndex, this.startPosition);
   }
-  /** Get this node's parse state. */
   get parseState() {
     marshalNode(this);
     return C._ts_node_parse_state_wasm(this.tree[0]);
   }
-  /** Get the parse state after this node. */
   get nextParseState() {
     marshalNode(this);
     return C._ts_node_next_parse_state_wasm(this.tree[0]);
   }
-  /** Check if this node is equal to another node. */
   equals(other) {
     return this.tree === other.tree && this.id === other.id;
   }
-  /**
-   * Get the node's child at the given index, where zero represents the first child.
-   *
-   * This method is fairly fast, but its cost is technically log(n), so if
-   * you might be iterating over a long list of children, you should use
-   * {@link Node#children} instead.
-   */
   child(index) {
     marshalNode(this);
     C._ts_node_child_wasm(this.tree[0], index);
     return unmarshalNode(this.tree);
   }
-  /**
-   * Get this node's *named* child at the given index.
-   *
-   * See also {@link Node#isNamed}.
-   * This method is fairly fast, but its cost is technically log(n), so if
-   * you might be iterating over a long list of children, you should use
-   * {@link Node#namedChildren} instead.
-   */
   namedChild(index) {
     marshalNode(this);
     C._ts_node_named_child_wasm(this.tree[0], index);
     return unmarshalNode(this.tree);
   }
-  /**
-   * Get this node's child with the given numerical field id.
-   *
-   * See also {@link Node#childForFieldName}. You can
-   * convert a field name to an id using {@link Language#fieldIdForName}.
-   */
   childForFieldId(fieldId) {
     marshalNode(this);
     C._ts_node_child_by_field_id_wasm(this.tree[0], fieldId);
     return unmarshalNode(this.tree);
   }
-  /**
-   * Get the first child with the given field name.
-   *
-   * If multiple children may have the same field name, access them using
-   * {@link Node#childrenForFieldName}.
-   */
   childForFieldName(fieldName) {
     const fieldId = this.tree.language.fields.indexOf(fieldName);
     if (fieldId !== -1) return this.childForFieldId(fieldId);
     return null;
   }
-  /** Get the field name of this node's child at the given index. */
   fieldNameForChild(index) {
     marshalNode(this);
     const address = C._ts_node_field_name_for_child_wasm(this.tree[0], index);
     if (!address) return null;
     return C.AsciiToString(address);
   }
-  /** Get the field name of this node's named child at the given index. */
   fieldNameForNamedChild(index) {
     marshalNode(this);
     const address = C._ts_node_field_name_for_named_child_wasm(this.tree[0], index);
     if (!address) return null;
     return C.AsciiToString(address);
   }
-  /**
-   * Get an array of this node's children with a given field name.
-   *
-   * See also {@link Node#children}.
-   */
   childrenForFieldName(fieldName) {
     const fieldId = this.tree.language.fields.indexOf(fieldName);
     if (fieldId !== -1 && fieldId !== 0) return this.childrenForFieldId(fieldId);
     return [];
   }
-  /**
-    * Get an array of this node's children with a given field id.
-    *
-    * See also {@link Node#childrenForFieldName}.
-    */
   childrenForFieldId(fieldId) {
     marshalNode(this);
     C._ts_node_children_by_field_id_wasm(this.tree[0], fieldId);
@@ -916,7 +595,6 @@ var Node = class {
     }
     return result;
   }
-  /** Get the node's first child that contains or starts after the given byte offset. */
   firstChildForIndex(index) {
     marshalNode(this);
     const address = TRANSFER_BUFFER + SIZE_OF_NODE;
@@ -924,7 +602,6 @@ var Node = class {
     C._ts_node_first_child_for_byte_wasm(this.tree[0]);
     return unmarshalNode(this.tree);
   }
-  /** Get the node's first named child that contains or starts after the given byte offset. */
   firstNamedChildForIndex(index) {
     marshalNode(this);
     const address = TRANSFER_BUFFER + SIZE_OF_NODE;
@@ -932,50 +609,26 @@ var Node = class {
     C._ts_node_first_named_child_for_byte_wasm(this.tree[0]);
     return unmarshalNode(this.tree);
   }
-  /** Get this node's number of children. */
   get childCount() {
     marshalNode(this);
     return C._ts_node_child_count_wasm(this.tree[0]);
   }
-  /**
-   * Get this node's number of *named* children.
-   *
-   * See also {@link Node#isNamed}.
-   */
   get namedChildCount() {
     marshalNode(this);
     return C._ts_node_named_child_count_wasm(this.tree[0]);
   }
-  /** Get this node's first child. */
   get firstChild() {
     return this.child(0);
   }
-  /**
-   * Get this node's first named child.
-   *
-   * See also {@link Node#isNamed}.
-   */
   get firstNamedChild() {
     return this.namedChild(0);
   }
-  /** Get this node's last child. */
   get lastChild() {
     return this.child(this.childCount - 1);
   }
-  /**
-   * Get this node's last named child.
-   *
-   * See also {@link Node#isNamed}.
-   */
   get lastNamedChild() {
     return this.namedChild(this.namedChildCount - 1);
   }
-  /**
-   * Iterate over this node's children.
-   *
-   * If you're walking the tree recursively, you may want to use the
-   * {@link TreeCursor} APIs directly instead.
-   */
   get children() {
     if (!this._children) {
       marshalNode(this);
@@ -994,11 +647,6 @@ var Node = class {
     }
     return this._children;
   }
-  /**
-   * Iterate over this node's named children.
-   *
-   * See also {@link Node#children}.
-   */
   get namedChildren() {
     if (!this._namedChildren) {
       marshalNode(this);
@@ -1017,13 +665,6 @@ var Node = class {
     }
     return this._namedChildren;
   }
-  /**
-   * Get the descendants of this node that are the given type, or in the given types array.
-   *
-   * The types array should contain node type strings, which can be retrieved from {@link Language#types}.
-   *
-   * Additionally, a `startPosition` and `endPosition` can be passed in to restrict the search to a byte range.
-   */
   descendantsOfType(types, startPosition = ZERO_POINT, endPosition = ZERO_POINT) {
     if (!Array.isArray(types)) types = [types];
     const symbols = [];
@@ -1066,64 +707,41 @@ var Node = class {
     C._free(symbolsAddress);
     return result;
   }
-  /** Get this node's next sibling. */
   get nextSibling() {
     marshalNode(this);
     C._ts_node_next_sibling_wasm(this.tree[0]);
     return unmarshalNode(this.tree);
   }
-  /** Get this node's previous sibling. */
   get previousSibling() {
     marshalNode(this);
     C._ts_node_prev_sibling_wasm(this.tree[0]);
     return unmarshalNode(this.tree);
   }
-  /**
-   * Get this node's next *named* sibling.
-   *
-   * See also {@link Node#isNamed}.
-   */
   get nextNamedSibling() {
     marshalNode(this);
     C._ts_node_next_named_sibling_wasm(this.tree[0]);
     return unmarshalNode(this.tree);
   }
-  /**
-   * Get this node's previous *named* sibling.
-   *
-   * See also {@link Node#isNamed}.
-   */
   get previousNamedSibling() {
     marshalNode(this);
     C._ts_node_prev_named_sibling_wasm(this.tree[0]);
     return unmarshalNode(this.tree);
   }
-  /** Get the node's number of descendants, including one for the node itself. */
   get descendantCount() {
     marshalNode(this);
     return C._ts_node_descendant_count_wasm(this.tree[0]);
   }
-  /**
-   * Get this node's immediate parent.
-   * Prefer {@link Node#childWithDescendant} for iterating over this node's ancestors.
-   */
   get parent() {
     marshalNode(this);
     C._ts_node_parent_wasm(this.tree[0]);
     return unmarshalNode(this.tree);
   }
-  /**
-   * Get the node that contains `descendant`.
-   *
-   * Note that this can return `descendant` itself.
-   */
   childWithDescendant(descendant) {
     marshalNode(this);
     marshalNode(descendant, 1);
     C._ts_node_child_with_descendant_wasm(this.tree[0]);
     return unmarshalNode(this.tree);
   }
-  /** Get the smallest node within this node that spans the given byte range. */
   descendantForIndex(start2, end = start2) {
     if (typeof start2 !== "number" || typeof end !== "number") {
       throw new Error("Arguments must be numbers");
@@ -1135,7 +753,6 @@ var Node = class {
     C._ts_node_descendant_for_index_wasm(this.tree[0]);
     return unmarshalNode(this.tree);
   }
-  /** Get the smallest named node within this node that spans the given byte range. */
   namedDescendantForIndex(start2, end = start2) {
     if (typeof start2 !== "number" || typeof end !== "number") {
       throw new Error("Arguments must be numbers");
@@ -1147,7 +764,6 @@ var Node = class {
     C._ts_node_named_descendant_for_index_wasm(this.tree[0]);
     return unmarshalNode(this.tree);
   }
-  /** Get the smallest node within this node that spans the given point range. */
   descendantForPosition(start2, end = start2) {
     if (!isPoint(start2) || !isPoint(end)) {
       throw new Error("Arguments must be {row, column} objects");
@@ -1159,7 +775,6 @@ var Node = class {
     C._ts_node_descendant_for_position_wasm(this.tree[0]);
     return unmarshalNode(this.tree);
   }
-  /** Get the smallest named node within this node that spans the given point range. */
   namedDescendantForPosition(start2, end = start2) {
     if (!isPoint(start2) || !isPoint(end)) {
       throw new Error("Arguments must be {row, column} objects");
@@ -1171,26 +786,11 @@ var Node = class {
     C._ts_node_named_descendant_for_position_wasm(this.tree[0]);
     return unmarshalNode(this.tree);
   }
-  /**
-   * Create a new {@link TreeCursor} starting from this node.
-   *
-   * Note that the given node is considered the root of the cursor,
-   * and the cursor cannot walk outside this node.
-   */
   walk() {
     marshalNode(this);
     C._ts_tree_cursor_new_wasm(this.tree[0]);
     return new TreeCursor(INTERNAL, this.tree);
   }
-  /**
-   * Edit this node to keep it in-sync with source code that has been edited.
-   *
-   * This function is only rarely needed. When you edit a syntax tree with
-   * the {@link Tree#edit} method, all of the nodes that you retrieve from
-   * the tree afterward will already reflect the edit. You only need to
-   * use {@link Node#edit} when you have a specific {@link Node} instance that
-   * you want to keep and continue to use after an edit.
-   */
   edit(edit) {
     if (this.startIndex >= edit.oldEndIndex) {
       this.startIndex = edit.newEndIndex + (this.startIndex - edit.oldEndIndex);
@@ -1218,7 +818,6 @@ var Node = class {
       this.startPosition.column = edit.newEndPosition.column;
     }
   }
-  /** Get the S-expression representation of this node. */
   toString() {
     marshalNode(this);
     const address = C._ts_node_to_string_wasm(this.tree[0]);
@@ -1353,20 +952,9 @@ var Language = class _Language {
   static {
     __name(this, "Language");
   }
-  /** @internal */
   [0] = 0;
-  // Internal handle for Wasm
-  /**
-   * A list of all node types in the language. The index of each type in this
-   * array is its node type id.
-   */
   types;
-  /**
-   * A list of all field names in the language. The index of each field name in
-   * this array is its field id.
-   */
   fields;
-  /** @internal */
   constructor(internal, address) {
     assertInternal(internal);
     this[0] = address;
@@ -1386,59 +974,33 @@ var Language = class _Language {
       }
     }
   }
-  /**
-   * Gets the name of the language.
-   */
   get name() {
     const ptr = C._ts_language_name(this[0]);
     if (ptr === 0) return null;
     return C.UTF8ToString(ptr);
   }
-  /**
-   * Gets the ABI version of the language.
-   */
   get abiVersion() {
     return C._ts_language_abi_version(this[0]);
   }
-  /**
-  * Get the metadata for this language. This information is generated by the
-  * CLI, and relies on the language author providing the correct metadata in
-  * the language's `tree-sitter.json` file.
-  */
   get metadata() {
     C._ts_language_metadata_wasm(this[0]);
     const length = C.getValue(TRANSFER_BUFFER, "i32");
     if (length === 0) return null;
     return unmarshalLanguageMetadata(TRANSFER_BUFFER + SIZE_OF_INT);
   }
-  /**
-   * Gets the number of fields in the language.
-   */
   get fieldCount() {
     return this.fields.length - 1;
   }
-  /**
-   * Gets the number of states in the language.
-   */
   get stateCount() {
     return C._ts_language_state_count(this[0]);
   }
-  /**
-   * Get the field id for a field name.
-   */
   fieldIdForName(fieldName) {
     const result = this.fields.indexOf(fieldName);
     return result !== -1 ? result : null;
   }
-  /**
-   * Get the field name for a field id.
-   */
   fieldNameForId(fieldId) {
     return this.fields[fieldId] ?? null;
   }
-  /**
-   * Get the node type id for a node type name.
-   */
   idForNodeType(type, named) {
     const typeLength = C.lengthBytesUTF8(type);
     const typeAddress = C._malloc(typeLength + 1);
@@ -1447,38 +1009,19 @@ var Language = class _Language {
     C._free(typeAddress);
     return result || null;
   }
-  /**
-   * Gets the number of node types in the language.
-   */
   get nodeTypeCount() {
     return C._ts_language_symbol_count(this[0]);
   }
-  /**
-   * Get the node type name for a node type id.
-   */
   nodeTypeForId(typeId) {
     const name2 = C._ts_language_symbol_name(this[0], typeId);
     return name2 ? C.UTF8ToString(name2) : null;
   }
-  /**
-   * Check if a node type is named.
-   *
-   * @see {@link https://tree-sitter.github.io/tree-sitter/using-parsers/2-basic-parsing.html#named-vs-anonymous-nodes}
-   */
   nodeTypeIsNamed(typeId) {
     return C._ts_language_type_is_named_wasm(this[0], typeId) ? true : false;
   }
-  /**
-   * Check if a node type is visible.
-   */
   nodeTypeIsVisible(typeId) {
     return C._ts_language_type_is_visible_wasm(this[0], typeId) ? true : false;
   }
-  /**
-   * Get the supertypes ids of this language.
-   *
-   * @see {@link https://tree-sitter.github.io/tree-sitter/using-parsers/6-static-node-types.html?highlight=supertype#supertype-nodes}
-   */
   get supertypes() {
     C._ts_language_supertypes_wasm(this[0]);
     const count = C.getValue(TRANSFER_BUFFER, "i32");
@@ -1493,9 +1036,6 @@ var Language = class _Language {
     }
     return result;
   }
-  /**
-   * Get the subtype ids for a given supertype node id.
-   */
   subtypes(supertype) {
     C._ts_language_subtypes_wasm(this[0], supertype);
     const count = C.getValue(TRANSFER_BUFFER, "i32");
@@ -1510,38 +1050,14 @@ var Language = class _Language {
     }
     return result;
   }
-  /**
-   * Get the next state id for a given state id and node type id.
-   */
   nextState(stateId, typeId) {
     return C._ts_language_next_state(this[0], stateId, typeId);
   }
-  /**
-   * Create a new lookahead iterator for this language and parse state.
-   *
-   * This returns `null` if state is invalid for this language.
-   *
-   * Iterating {@link LookaheadIterator} will yield valid symbols in the given
-   * parse state. A newly created iterator is not positioned on a symbol, so
-   * {@link LookaheadIterator#currentType} returns `null` until the first
-   * iteration step.
-   *
-   * Lookahead iterators can be useful for generating suggestions and improving
-   * syntax error diagnostics. To get symbols valid in an `ERROR` node, use the
-   * lookahead iterator on its first leaf node state. For `MISSING` nodes, a
-   * lookahead iterator created on the previous non-extra leaf node may be
-   * appropriate.
-   */
   lookaheadIterator(stateId) {
     const address = C._ts_lookahead_iterator_new(this[0], stateId);
     if (address) return new LookaheadIterator(INTERNAL, address, this);
     return null;
   }
-  /**
-   * Load a language from a WebAssembly module.
-   * The module can be provided as a path to a file, a `URL` to a file, or as a
-   * buffer.
-   */
   static async load(input) {
     let binary2;
     if (input instanceof Uint8Array) {
@@ -1577,10 +1093,6 @@ ${JSON.stringify(symbolNames, null, 2)}`);
     const languageAddress = mod[functionName]();
     return new _Language(INTERNAL, languageAddress);
   }
-  /**
-   * Load a language synchronously from a pre-compiled WebAssembly module.
-   * Use this when the host environment provides a `WebAssembly.Module` directly.
-   */
   static loadSync(wasmModule) {
     const mod = C.loadWebAssemblyModule(wasmModule, { loadAsync: false });
     return _Language.loadFromWasmExports(mod, { sync: true });
@@ -1626,7 +1138,6 @@ async function Module2(moduleArg = {}) {
           xhr.responseType = "arraybuffer";
           xhr.send(null);
           return new Uint8Array(
-            /** @type{!ArrayBuffer} */
             xhr.response
           );
         }, "readBinary");
@@ -1695,11 +1206,6 @@ async function Module2(moduleArg = {}) {
       var INITIAL_MEMORY = Module["INITIAL_MEMORY"] || 33554432;
       wasmMemory = new WebAssembly.Memory({
         "initial": INITIAL_MEMORY / 65536,
-        // In theory we should not need to emit the maximum if we want "unlimited"
-        // or 4GB of memory, but VMs error on that atm, see
-        // https://github.com/emscripten-core/emscripten/issues/14130
-        // And in the pthreads case we definitely need to emit a maximum. So
-        // always emit one.
         "maximum": 32768
       });
     }
@@ -2101,15 +1607,10 @@ async function Module2(moduleArg = {}) {
   }, "uleb128EncodeWithLen");
   var wasmTypeCodes = {
     "i": 127,
-    // i32
     "p": 127,
-    // i32
     "j": 126,
-    // i64
     "f": 125,
-    // f32
     "d": 124,
-    // f64
     "e": 111
   };
   var generateTypePack = /* @__PURE__ */ __name((types) => uleb128EncodeWithLen(Array.from(types, (type) => {
@@ -2122,27 +1623,19 @@ async function Module2(moduleArg = {}) {
       97,
       115,
       109,
-      // magic ("\0asm")
       1,
       0,
       0,
       0,
-      // version: 1
       1,
       ...uleb128EncodeWithLen([
         1,
-        // count: 1
         96,
-        // param types
         ...generateTypePack(sig.slice(1)),
-        // return types (for now only supporting [] if `void` and single [T] otherwise)
         ...generateTypePack(sig[0] === "v" ? "" : sig[0])
       ]),
-      // The rest of the module is static
       2,
       7,
-      // import section
-      // (import "e" "f" (func 0 (type 0)))
       1,
       1,
       101,
@@ -2152,8 +1645,6 @@ async function Module2(moduleArg = {}) {
       0,
       7,
       5,
-      // export section
-      // (export "f" (func 0 (type 0)))
       1,
       1,
       102,
@@ -2660,10 +2151,6 @@ async function Module2(moduleArg = {}) {
   var __abort_js = /* @__PURE__ */ __name(() => abort(""), "__abort_js");
   __abort_js.sig = "v";
   var getHeapMax = /* @__PURE__ */ __name(() => (
-    // Stay one Wasm page short of 4GB: while e.g. Chrome is able to allocate
-    // full 4GB Wasm memories, the size will wrap back to 0 bytes in Wasm side
-    // for any code that deals with heap sizes, which would require special
-    // casing all heap size related code to treat 0 specially.
     2147483648
   ), "getHeapMax");
   var growMemory = /* @__PURE__ */ __name((size) => {
@@ -2870,13 +2357,11 @@ async function Module2(moduleArg = {}) {
     return outPtr - startPtr;
   }, "stringToUTF16");
   LE_ATOMICS_NATIVE_BYTE_ORDER = new Int8Array(new Int16Array([1]).buffer)[0] === 1 ? [
-    /* little endian */
     ((x) => x),
     ((x) => x),
     void 0,
     ((x) => x)
   ] : [
-    /* big endian */
     ((x) => x),
     ((x) => ((x & 65280) << 8 | (x & 255) << 24) >> 16),
     void 0,
@@ -3071,39 +2556,22 @@ async function Module2(moduleArg = {}) {
   }
   __name(assignWasmExports, "assignWasmExports");
   var wasmImports = {
-    /** @export */
     __heap_base: ___heap_base,
-    /** @export */
     __indirect_function_table: wasmTable,
-    /** @export */
     __memory_base: ___memory_base,
-    /** @export */
     __stack_high: ___stack_high,
-    /** @export */
     __stack_low: ___stack_low,
-    /** @export */
     __stack_pointer: ___stack_pointer,
-    /** @export */
     __table_base: ___table_base,
-    /** @export */
     _abort_js: __abort_js,
-    /** @export */
     emscripten_resize_heap: _emscripten_resize_heap,
-    /** @export */
     fd_close: _fd_close,
-    /** @export */
     fd_seek: _fd_seek,
-    /** @export */
     fd_write: _fd_write,
-    /** @export */
     memory: wasmMemory,
-    /** @export */
     tree_sitter_log_callback: _tree_sitter_log_callback,
-    /** @export */
     tree_sitter_parse_callback: _tree_sitter_parse_callback,
-    /** @export */
     tree_sitter_progress_callback: _tree_sitter_progress_callback,
-    /** @export */
     tree_sitter_query_progress_callback: _tree_sitter_query_progress_callback
   };
   function callMain(args2 = []) {
@@ -3122,7 +2590,6 @@ async function Module2(moduleArg = {}) {
       var ret = entryFunction(argc, argv);
       exitJS(
         ret,
-        /* implicit = */
         true
       );
       return ret;
@@ -3203,36 +2670,20 @@ var Parser = class {
   static {
     __name(this, "Parser");
   }
-  /** @internal */
   [0] = 0;
-  // Internal handle for Wasm
-  /** @internal */
   [1] = 0;
-  // Internal handle for Wasm
-  /** @internal */
   logCallback = null;
-  /** The parser's current language. */
   language = null;
-  /**
-   * This must always be called before creating a Parser.
-   *
-   * You can optionally pass in options to configure the Wasm module, the most common
-   * one being `locateFile` to help the module find the `.wasm` file.
-   */
   static async init(moduleOptions) {
     setModule(await initializeBinding(moduleOptions));
     TRANSFER_BUFFER = C._ts_init();
     LANGUAGE_VERSION = C.getValue(TRANSFER_BUFFER, "i32");
     MIN_COMPATIBLE_VERSION = C.getValue(TRANSFER_BUFFER + SIZE_OF_INT, "i32");
   }
-  /**
-   * Create a new parser.
-   */
   constructor() {
     this.initialize();
     finalizer4?.register(this, [this[0], this[1]], this);
   }
-  /** @internal */
   initialize() {
     if (!checkModule()) {
       throw new Error("cannot construct a Parser before calling `init()`");
@@ -3241,7 +2692,6 @@ var Parser = class {
     this[0] = C.getValue(TRANSFER_BUFFER, "i32");
     this[1] = C.getValue(TRANSFER_BUFFER + SIZE_OF_INT, "i32");
   }
-  /** Delete the parser, freeing its resources. */
   delete() {
     finalizer4?.unregister(this);
     C._ts_parser_delete(this[0]);
@@ -3249,15 +2699,6 @@ var Parser = class {
     this[0] = 0;
     this[1] = 0;
   }
-  /**
-   * Set the language that the parser should use for parsing.
-   *
-   * If the language was not successfully assigned, an error will be thrown.
-   * This happens if the language was generated with an incompatible
-   * version of the Tree-sitter CLI. Check the language's version using
-   * {@link Language#version} and compare it to this library's
-   * {@link LANGUAGE_VERSION} and {@link MIN_COMPATIBLE_VERSION} constants.
-   */
   setLanguage(language) {
     let address;
     if (!language) {
@@ -3278,22 +2719,6 @@ var Parser = class {
     C._ts_parser_set_language(this[0], address);
     return this;
   }
-  /**
-   * Parse a slice of UTF8 text.
-   *
-   * @param {string | ParseCallback} callback - The UTF8-encoded text to parse or a callback function.
-   *
-   * @param {Tree | null} [oldTree] - A previous syntax tree parsed from the same document. If the text of the
-   *   document has changed since `oldTree` was created, then you must edit `oldTree` to match
-   *   the new text using {@link Tree#edit}.
-   *
-   * @param {ParseOptions} [options] - Options for parsing the text.
-   *  This can be used to set the included ranges, or a progress callback.
-   *
-   * @returns {Tree | null} A {@link Tree} if parsing succeeded, or `null` if:
-   *  - The parser has not yet had a language assigned with {@link Parser#setLanguage}.
-   *  - The progress callback returned true.
-   */
   parse(callback, oldTree, options) {
     if (typeof callback === "string") {
       C.currentParseCallback = (index) => callback.slice(index);
@@ -3347,19 +2772,9 @@ var Parser = class {
     C.currentProgressCallback = null;
     return result;
   }
-  /**
-   * Instruct the parser to start the next parse from the beginning.
-   *
-   * If the parser previously failed because of a callback, 
-   * then by default, it will resume where it left off on the
-   * next call to {@link Parser#parse} or other parsing functions.
-   * If you don't want to resume, and instead intend to use this parser to
-   * parse some other document, you must call `reset` first.
-   */
   reset() {
     C._ts_parser_reset(this[0]);
   }
-  /** Get the ranges of text that the parser will include when parsing. */
   getIncludedRanges() {
     C._ts_parser_included_ranges_wasm(this[0]);
     const count = C.getValue(TRANSFER_BUFFER, "i32");
@@ -3375,7 +2790,6 @@ var Parser = class {
     }
     return result;
   }
-  /** Set the logging callback that a parser should use during parsing. */
   setLogger(callback) {
     if (!callback) {
       this.logCallback = null;
@@ -3386,7 +2800,6 @@ var Parser = class {
     }
     return this;
   }
-  /** Get the parser's current logger. */
   getLogger() {
     return this.logCallback;
   }
@@ -3428,7 +2841,6 @@ var QueryError = class _QueryError extends Error {
   static {
     __name(this, "QueryError");
   }
-  /** Formats an error message based on the error kind and info */
   static formatMessage(kind, info2) {
     switch (kind) {
       case QueryErrorKind.NodeName:
@@ -3627,46 +3039,16 @@ var Query = class {
   static {
     __name(this, "Query");
   }
-  /** @internal */
   [0] = 0;
-  // Internal handle for Wasm
-  /** @internal */
   exceededMatchLimit;
-  /** @internal */
   textPredicates;
-  /** The names of the captures used in the query. */
   captureNames;
-  /** The quantifiers of the captures used in the query. */
   captureQuantifiers;
-  /**
-   * The other user-defined predicates associated with the given index.
-   *
-   * This includes predicates with operators other than:
-   * - `match?`
-   * - `eq?` and `not-eq?`
-   * - `any-of?` and `not-any-of?`
-   * - `is?` and `is-not?`
-   * - `set!`
-   */
   predicates;
-  /** The properties for predicates with the operator `set!`. */
   setProperties;
-  /** The properties for predicates with the operator `is?`. */
   assertedProperties;
-  /** The properties for predicates with the operator `is-not?`. */
   refutedProperties;
-  /** The maximum number of in-progress matches for this cursor. */
   matchLimit;
-  /**
-   * Create a new query from a string containing one or more S-expression
-   * patterns.
-   *
-   * The query is associated with a particular language, and can only be run
-   * on syntax nodes parsed with that language. References to Queries can be
-   * shared between multiple threads.
-   *
-   * @link {@see https://tree-sitter.github.io/tree-sitter/using-parsers/queries}
-   */
   constructor(language, source) {
     const sourceLength = C.lengthBytesUTF8(source);
     const sourceAddress = C._malloc(sourceLength + 1);
@@ -3779,24 +3161,11 @@ var Query = class {
     this.exceededMatchLimit = false;
     finalizer5?.register(this, address, this);
   }
-  /** Delete the query, freeing its resources. */
   delete() {
     finalizer5?.unregister(this);
     C._ts_query_delete(this[0]);
     this[0] = 0;
   }
-  /**
-   * Iterate over all of the matches in the order that they were found.
-   *
-   * Each match contains the index of the pattern that matched, and a list of
-   * captures. Because multiple patterns can match the same set of nodes,
-   * one match may contain captures that appear *before* some of the
-   * captures from a previous match.
-   *
-   * @param {Node} node - The node to execute the query on.
-   *
-   * @param {QueryOptions} options - Options for query execution.
-   */
   matches(node, options = {}) {
     const startPosition = options.startPosition ?? ZERO_POINT;
     const endPosition = options.endPosition ?? ZERO_POINT;
@@ -3877,17 +3246,6 @@ var Query = class {
     C.currentQueryProgressCallback = null;
     return result;
   }
-  /**
-   * Iterate over all of the individual captures in the order that they
-   * appear.
-   *
-   * This is useful if you don't care about which pattern matched, and just
-   * want a single, ordered sequence of captures.
-   *
-   * @param {Node} node - The node to execute the query on.
-   *
-   * @param {QueryOptions} options - Options for query execution.
-   */
   captures(node, options = {}) {
     const startPosition = options.startPosition ?? ZERO_POINT;
     const endPosition = options.endPosition ?? ZERO_POINT;
@@ -3969,16 +3327,9 @@ var Query = class {
     C.currentQueryProgressCallback = null;
     return result;
   }
-  /** Get the predicates for a given pattern. */
   predicatesForPattern(patternIndex) {
     return this.predicates[patternIndex];
   }
-  /**
-   * Disable a certain capture within a query.
-   *
-   * This prevents the capture from being returned in matches, and also
-   * avoids any resource usage associated with recording the capture.
-   */
   disableCapture(captureName) {
     const captureNameLength = C.lengthBytesUTF8(captureName);
     const captureNameAddress = C._malloc(captureNameLength + 1);
@@ -3986,13 +3337,6 @@ var Query = class {
     C._ts_query_disable_capture(this[0], captureNameAddress, captureNameLength);
     C._free(captureNameAddress);
   }
-  /**
-   * Disable a certain pattern within a query.
-   *
-   * This prevents the pattern from matching, and also avoids any resource
-   * usage associated with the pattern. This throws an error if the pattern
-   * index is out of bounds.
-   */
   disablePattern(patternIndex) {
     if (patternIndex >= this.predicates.length) {
       throw new Error(
@@ -4001,14 +3345,9 @@ var Query = class {
     }
     C._ts_query_disable_pattern(this[0], patternIndex);
   }
-  /**
-   * Check if, on its last execution, this cursor exceeded its maximum number
-   * of in-progress matches.
-   */
   didExceedMatchLimit() {
     return this.exceededMatchLimit;
   }
-  /** Get the byte offset where the given pattern starts in the query's source. */
   startIndexForPattern(patternIndex) {
     if (patternIndex >= this.predicates.length) {
       throw new Error(
@@ -4017,7 +3356,6 @@ var Query = class {
     }
     return C._ts_query_start_byte_for_pattern(this[0], patternIndex);
   }
-  /** Get the byte offset where the given pattern ends in the query's source. */
   endIndexForPattern(patternIndex) {
     if (patternIndex >= this.predicates.length) {
       throw new Error(
@@ -4026,28 +3364,18 @@ var Query = class {
     }
     return C._ts_query_end_byte_for_pattern(this[0], patternIndex);
   }
-  /** Get the number of patterns in the query. */
   patternCount() {
     return C._ts_query_pattern_count(this[0]);
   }
-  /** Get the index for a given capture name. */
   captureIndexForName(captureName) {
     return this.captureNames.indexOf(captureName);
   }
-  /** Check if a given pattern within a query has a single root node. */
   isPatternRooted(patternIndex) {
     return C._ts_query_is_pattern_rooted(this[0], patternIndex) === 1;
   }
-  /** Check if a given pattern within a query has a single root node. */
   isPatternNonLocal(patternIndex) {
     return C._ts_query_is_pattern_non_local(this[0], patternIndex) === 1;
   }
-  /**
-   * Check if a given step in a query is 'definite'.
-   *
-   * A query step is 'definite' if its parent pattern will be guaranteed to
-   * match successfully once it reaches the step.
-   */
   isPatternGuaranteedAtStep(byteIndex) {
     return C._ts_query_is_pattern_guaranteed_at_step(this[0], byteIndex) === 1;
   }
