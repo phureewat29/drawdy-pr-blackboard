@@ -1,36 +1,34 @@
 # PR Blackboard
 
-**Code got fast. Understanding it didn't.**
+**Read any PR as one board.**
 
-Pull requests arrive faster than ever, and they keep getting bigger. A
-coding agent opens one in minutes; a thousand changed lines is a normal
-afternoon. Writing the code is no longer the slow part of shipping.
-Understanding it is.
+PRs come in faster every month, and they keep getting bigger. A coding
+agent can open a thousand-line PR in a few minutes, and someone on the team
+still has to read it.
 
-PR Blackboard turns a pull request into a board you can take in at a
-glance and walk through in minutes. Every changed function is a card,
-joined to the code that calls it and the tests that cover it by labelled
-strings, laid out the way the change actually runs.
+PR Blackboard pins a GitHub PR to your Drawdy board. Each changed function
+becomes a card. Labelled strings run from every call to the function it
+reaches and from every test to the code it covers. The board reads left to
+right, from where the change starts to the code it calls, so you can walk
+through a big PR one card at a time.
 
-![honojs/hono#5513 lands on the board, then the panel steps from card to card while the camera follows the strings](https://raw.githubusercontent.com/phureewat29/drawdy-pr-blackboard/main/.github/assets/demo.gif)
+![67 PRs waiting for review turn into one board: honojs/hono#5513 opens, every changed function becomes a card, the panel follows the strings, then boards for Python, Go and JavaScript PRs](https://raw.githubusercontent.com/phureewat29/drawdy-pr-blackboard/main/.github/assets/demo.gif)
 
-## Understanding is the new bottleneck
+## Why a board
 
-A diff hands you files in alphabetical order and leaves the rest to you:
-where the change starts, what calls it, what it calls, which test covers
-it. That works for ten lines. It doesn't work for a hundred files a day.
+A diff lists the changed files in alphabetical order. Where the change
+starts, what calls it and which test covers it are left for you to piece
+together, and on a big PR that takes most of the review.
 
-PR Blackboard draws the rest for you.
-
-- **See the whole change at once.** One board, read left to right: where
-  the change starts, then what it calls, then what that calls.
-- **Follow the call, not the file list.** A string runs from each call to
-  the exact function it reaches, in whatever file it lives.
-- **Know who's affected.** Code that didn't change but calls into the
-  change is pinned too.
-- **Find the proof.** Tests hang right under what they test.
-- **Built for the big ones.** Even Bun's 2,188-file rewrite in Rust lands
-  as one board you can walk through.
+- **The whole change in one place.** Where the change starts, then what it
+  calls, then what that calls, from left to right.
+- **Calls you can follow.** A string runs from each call to the exact
+  function it reaches, in whatever file it lives.
+- **Callers included.** Code that didn't change but calls into the change
+  gets a card too.
+- **Tests next to the code.** Each test sits under the code it tests.
+- **Big PRs too.** Bun's 2,188-file rewrite in Rust opens as one board you
+  can step through.
 
 ## How it works
 
@@ -38,12 +36,12 @@ PR Blackboard draws the rest for you.
 
 ## Made for
 
-- **Keeping up with the queue**: get the shape of each pull request in
+- **Getting through the review queue**: see the shape of each PR in a few
   minutes, then read the lines that matter.
-- **Agent-written changes**: see what a coding agent actually touched, and
-  how it all connects, before you trust it.
-- **Joining a new codebase**: open a recent pull request and watch a real
-  change travel through the project.
+- **PRs from coding agents**: see what the agent touched and how the pieces
+  connect before you approve it.
+- **Learning a new codebase**: open a recent PR and watch a real change move
+  through the project.
 - **Walking your team through a change**: step through the board card by
   card on a shared screen, and add sticky notes as you talk.
 
@@ -55,12 +53,12 @@ PR Blackboard draws the rest for you.
   lines that call other cards marked `→`. **Read all** opens the full code
   right on the board; drag it anywhere, and it pans and zooms with the
   board.
-- **Strings**: **calls**, **uses**, **tests** and **imports**, each in its
-  own colour, so you can follow one across the board. Every string is a
-  fact: PR Blackboard draws it only when it can tell exactly where a call
-  goes, never from a name alone.
+- **Strings**: **calls**, **uses**, **tests** and **imports**. Strings that
+  cross or run close get different colours, so you can follow one across
+  the board. PR Blackboard draws a string only when it can tell exactly
+  where a call goes. It never guesses from a name.
 
-## The panel walks you through it
+## Stepping through
 
 - **›** and **‹**, or the arrow keys, step through the code in board order,
   and the camera follows.
@@ -68,10 +66,10 @@ PR Blackboard draws the rest for you.
   tests it. Each name takes its string's colour; click one to go there.
 - **Overview** shows the whole board. **Description** goes to the PR card.
   **Home** takes you back to the examples, and your board stays.
-  **Rebuild** reads the pull request again after new commits.
+  **Rebuild** reads the PR again after new commits.
 
-Strings work for **JavaScript, TypeScript, Python, Go and Rust**. Pull
-requests in other languages get a card for every change.
+Strings work for **JavaScript, TypeScript, Python, Go and Rust**. PRs in
+other languages get a card for every change.
 
 ## Try it in 30 seconds
 
@@ -84,14 +82,14 @@ requests in other languages get a card for every change.
 
 ## Good to know
 
-- Works with public pull requests on GitHub. No account or sign-in.
-- GitHub allows 60 requests an hour without signing in. Opening a pull
-  request uses 2. A very big one uses more, and its example row says how
-  many: Bun's rewrite takes 23.
-- The first pull request in a language downloads that language's parser,
-  once: 83 KB for the engine, then 38 KB for Go, 49 KB for JavaScript,
-  64 KB for Python, 114 KB for Rust or 133 KB for TypeScript. It's kept on
-  your device after that.
+- Works with public PRs on GitHub. No account or sign-in.
+- GitHub allows 60 requests an hour without signing in. Opening a PR uses
+  2. A very big one uses more, and its example row says how many: Bun's
+  rewrite takes 23.
+- The first PR in a language downloads that language's parser, once: 83 KB
+  for the engine, then 38 KB for Go, 49 KB for JavaScript, 64 KB for
+  Python, 114 KB for Rust or 133 KB for TypeScript. It stays on your device
+  after that.
 - The board is yours: move the cards, draw on them, add sticky notes.
 - PR Blackboard only reads. It never approves, comments on or changes
   anything on GitHub.
@@ -102,13 +100,13 @@ requests in other languages get a card for every change.
 - **Board**: to pin cards and strings, and to find the boards it pinned
   before.
 - **Interface**: to show its panel, its button and the Read all pane.
-- **Storage**: to keep the pull requests you open and the language parsers
-  on your device.
+- **Storage**: to keep the PRs you open and the language parsers on your
+  device.
 
 ## Privacy
 
-PR Blackboard talks to GitHub, to read the pull request and its files, and
-to jsDelivr, to download the language parsers, each checked against a
+PR Blackboard talks to GitHub, to read the PR and its files, and to
+jsDelivr, to download the language parsers, each checked against a
 fingerprint before it runs. It sends nothing anywhere else: no account, no
 tracking.
 
