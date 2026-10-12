@@ -7,9 +7,11 @@
  */
 
 import { C } from "./c/index.ts";
+import { CPP } from "./cpp/index.ts";
 import { CSHARP } from "./csharp/index.ts";
 import { FORMATS } from "./formats.ts";
 import { GO } from "./go/index.ts";
+import { HASKELL } from "./haskell/index.ts";
 import { JAVA } from "./java/index.ts";
 import { JAVASCRIPT, TYPESCRIPT } from "./javascript/index.ts";
 import { KOTLIN } from "./kotlin/index.ts";
@@ -18,6 +20,7 @@ import { PHP } from "./php/index.ts";
 import { PYTHON } from "./python/index.ts";
 import { RUBY } from "./ruby/index.ts";
 import { RUST } from "./rust/index.ts";
+import { SCALA } from "./scala/index.ts";
 import { SWIFT } from "./swift/index.ts";
 
-export const PACKS: readonly LanguagePack[] = [TYPESCRIPT, JAVASCRIPT, PYTHON, GO, RUST, JAVA, KOTLIN, SWIFT, RUBY, PHP, CSHARP, C, ...FORMATS];
+export const PACKS: readonly LanguagePack[] = [TYPESCRIPT, JAVASCRIPT, PYTHON, GO, RUST, JAVA, KOTLIN, SWIFT, RUBY, PHP, CSHARP, C, CPP, SCALA, HASKELL, ...FORMATS];

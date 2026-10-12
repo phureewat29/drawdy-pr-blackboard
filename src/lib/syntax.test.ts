@@ -9,10 +9,11 @@ beforeAll(async () => {
 });
 
 describe("grammarOf", () => {
-    it("reads TypeScript, TSX, JavaScript, Python, Go, Rust and Java by extension, and nothing else", () => {
+    it("reads each grammar's extensions, and nothing else", () => {
         expect(["a.ts", "a.mts", "a.cts", "a.d.ts", "a.tsx", "a.js", "a.jsx", "a.mjs", "a.cjs", "a.py", "a.go", "a.rs", "A.java", "a.vue", "a.rb", "a.pyi", "a.kt", "a.scala"].map(grammarOf)).toEqual([
-            "typescript", "typescript", "typescript", "typescript", "tsx", "javascript", "javascript", "javascript", "javascript", "python", "go", "rust", "java", null, null, null, null, null,
+            "typescript", "typescript", "typescript", "typescript", "tsx", "javascript", "javascript", "javascript", "javascript", "python", "go", "rust", "java", null, null, null, "kotlin", "scala",
         ]);
+        expect(["a.c", "a.h", "a.cc", "a.cpp", "a.hpp", "a.m", "a.hs", "build.gradle.kts"].map(grammarOf)).toEqual(["c", "cpp", "cpp", "cpp", "cpp", null, "haskell", null]);
     });
 });
 

@@ -98,8 +98,9 @@ that resolves makes a link. TypeScript and JavaScript have a linker of
 their own (`langs/javascript/`); Python, Go, Rust and Java share one
 generic file index, a rule table per language over the grammar's own
 `tags.scm`, and Python, Go and Rust its resolver (2.2.10, request 58);
-Java resolves by the JLS's own rules (2.2.10, request 66). Other languages
-keep their cards from line patterns and draw no string (2.2.7). Nothing
+Java resolves by the JLS's own rules (2.2.10, request 66). Kotlin, C, C++,
+Scala and Haskell are parsed for their cards alone (`units-only.ts`); other
+languages keep their cards from line patterns. Neither draws a string (2.2.7). Nothing
 anywhere links code by its name alone.
 
 Measured on the 15 scored pull requests (the operator's research,

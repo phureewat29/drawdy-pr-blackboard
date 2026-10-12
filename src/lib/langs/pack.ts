@@ -174,7 +174,7 @@ type LinkerBase = {
  */
 export type RulesLinker = LinkerBase & {
     kind: "rules";
-    /** The units query: its `definition.*` captures are the declarations a card can stand for. The grammar's own `tags.scm`. */
+    /** The units query: its `definition.*` captures are the declarations a card can stand for. The grammar's own `tags.scm`, or a query of the pack's own where its package ships none. */
     units: string;
     rules: LangRules;
     resolver: Resolver;

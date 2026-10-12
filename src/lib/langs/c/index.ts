@@ -1,13 +1,18 @@
-/** C, with C++ and Objective-C until they have packs of their own: cards by line patterns, no links yet. */
+/**
+ * C: a card per declaration from its parser (`linker.ts`), no lines yet.
+ * Headers are C++'s (`../cpp/`): that grammar reads C's as well, and C's
+ * fails on most C++ headers. Objective-C (`.m`) reads by line patterns alone.
+ */
 
-import { C_FAMILY } from "../c-family.ts";
+import { C_FAMILY, C_KEYWORDS } from "../c-family.ts";
 import type { LanguagePack } from "../pack.ts";
 
 export const C: LanguagePack = {
     id: "c",
     name: "C",
-    extensions: ["c", "h", "cc", "cpp", "hpp", "m"],
-    fences: ["cpp"],
-    highlight: { keywords: "if else for while do switch case break continue default return struct union enum typedef static const void int char long short unsigned signed float double sizeof include define NULL true false class public private protected template typename namespace using virtual auto", comment: "//", blocks: true },
+    extensions: ["c", "m"],
+    grammars: [{ name: "c", extensions: ["c"], package: "tree-sitter-c", version: "0.24.1", file: "tree-sitter-c.wasm", sha256: "c852c2a85ebf2beb636aa3b0ef7f7e70458684d74f6741b20dcb296885bed9f9" }],
+    highlight: { keywords: C_KEYWORDS, comment: "//", blocks: true },
     lines: C_FAMILY,
+    tests: [/_tests?\.c$/],
 };

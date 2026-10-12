@@ -12,7 +12,8 @@ knows no language. It reads them through two lists and one contract,
 | Go | `go/` | parsed | rule table |
 | Rust | `rust/` | parsed | rule table |
 | Java | `java/` | parsed | rule table, own resolver |
-| Kotlin, Swift, Ruby, PHP, C#, C and C++ | `kotlin/` and so on | line patterns | none |
+| Kotlin, C, C++, Scala, Haskell | `kotlin/`, `c/`, `cpp/`, `scala/`, `haskell/` | parsed | none: units only |
+| Swift, Ruby, PHP, C# | `swift/` and so on | line patterns | none |
 | CSS, HTML, JSON, YAML, TOML, Markdown, shell, SQL | `formats.ts` | whole files | none |
 
 ## The contract
@@ -51,9 +52,20 @@ Both kinds may give `prepare` (a text repair for a grammar's gap),
 `isImport` (which top-level statements import) and `local` (names never
 leave their file).
 
+A language whose calls can't be proven yet gets a linker of units alone,
+`unitsOnly` (`units-only.ts`): a rule table with units and nothing else,
+and a resolver that names nothing, apart from every other language's. Its
+files get a card per changed declaration, and draw no line. A declaration
+whose range the parser can't vouch for is no unit (in or right before an
+ERROR node, or a check of the pack's own), so its lines go to its file's
+card. `UnitRule` may give a unit's `end`, where its node runs on over blank
+lines and comments (Scala's indented blocks), and its `doc`, where its doc
+comments aren't its siblings in the tree (Haskell's `-- |`).
+
 **The two lists.** `langs/index.ts` lists every pack (`PACKS`);
 `langs/linkers.ts` lists every linker (`LINKERS`). A pack with no linker
-gets cards from its line patterns and draws no lines. The lists are
+gets cards from its line patterns and draws no lines; so does a file the
+parser can't trust, whatever its pack. The lists are
 apart because the driver bundles `PACKS`, and a linker would bring the
 parser into it: `npm run check` fails when any file of a pack's folder
 but its `index.ts` reaches the driver. So `index.ts` imports no parser
@@ -73,10 +85,11 @@ and generated folders, and when the parser's tree isn't trusted (a leading
 A pack's `index.ts` ships twice in the marketplace bundle, in the driver
 and in the parser worker's script, so keep it to data; a linker ships once,
 in the worker's script. Measured in the bundle, a pattern-only pack costs
-about 1 KB; a pack with a rule table 20 to 40 KB (Go 23 KB, Rust 33 KB,
-Python 36 KB); Java, with its own resolver and the JDK's types, 135 KB;
-JavaScript and TypeScript, 85 KB. A grammar's wasm file is downloaded
-apart, once. The bundle's check is 1 MB.
+about 1 KB; a units-only pack 4 to 8 KB, and `units-only.ts` 5 KB; a pack
+with a rule table 20 to 40 KB (Go 23 KB, Rust 33 KB, Python 36 KB); Java,
+with its own resolver and the JDK's types, 135 KB; JavaScript and
+TypeScript, 85 KB. A grammar's wasm file is downloaded apart, once. The
+bundle's check is 1 MB.
 
 ## Add a language
 
@@ -100,6 +113,9 @@ On a branch, until the last step:
 3. **Units.** Copy the package's `queries/tags.scm` unchanged into
    `linker.ts` as `units`. Where it has none, write a query whose
    `definition.<kind>` captures sit on the declarations, with a `@name`.
+   With `unitsOnly` (`units-only.ts`) the language can ship here: a card
+   per declaration, no lines. Check the units' ranges against a compiler
+   or the code's layout on real files first.
 4. **Rules and read hints.** Write the rule table (`rules.ts`): scopes,
    bindings, identifiers, imports and card names. Then the resolver
    (`typing.ts`), how a module names files (`modules.ts`), what the read

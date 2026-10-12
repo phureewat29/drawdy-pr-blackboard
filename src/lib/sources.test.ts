@@ -160,10 +160,10 @@ describe("the files read", () => {
     });
 
     it("take a code file the parser doesn't read only with its patch, but for one added whole, whose every line is new", () => {
-        const added: PrFile = { path: "src/New.kt", status: "added", additions: 300, deletions: 0 };
-        const big: PrFile = { path: "src/Big.kt", status: "modified", additions: 3000, deletions: 10 };
+        const added: PrFile = { path: "src/New.swift", status: "added", additions: 300, deletions: 0 };
+        const big: PrFile = { path: "src/Big.swift", status: "modified", additions: 3000, deletions: 10 };
         const parsed: PrFile = { path: "src/Big.java", status: "modified", additions: 3000, deletions: 10 };
-        expect(changedSources([added, big, parsed, changed("src/Small.kt")]).map((f) => f.path)).toEqual(["src/New.kt", "src/Big.java", "src/Small.kt"]);
+        expect(changedSources([added, big, parsed, changed("src/Small.swift")]).map((f) => f.path)).toEqual(["src/New.swift", "src/Big.java", "src/Small.swift"]);
     });
 
     it("on a big PR, are the largest changes in its main languages, spread across top-level directories, tooling folders aside", () => {

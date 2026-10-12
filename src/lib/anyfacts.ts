@@ -93,7 +93,15 @@ export type Role =
 
 export type Emit = (nameNode: number, kind: BindingKind, opts?: { to?: "function" | "module"; typeNode?: number; init?: number; initResult?: number; import?: GImport; unitNode?: number; name?: string; from?: number }) => void;
 
-type UnitRule = { kind: UnitKind; nameNode: number; outer: number };
+export type UnitRule = {
+    kind: UnitKind;
+    nameNode: number;
+    outer: number;
+    /** Where it ends, when its node runs on past it: an indented block that holds the blank lines and comments after it. Absent, where its node ends. */
+    end?: number;
+    /** Where the comments attached above it start, when the tree doesn't hold them beside it. Absent, its sibling comments'. */
+    doc?: number;
+};
 
 export type LangRules = {
     /** A `tags.scm` definition capture on a node, as a unit, or null. */
@@ -184,7 +192,7 @@ const definitionsOf = (t: Flat, rules: LangRules): { r: UnitRule & { node: numbe
         if (!prev || KIND_ORDER[r.kind] > KIND_ORDER[prev.kind]) found.set(c.node, { ...r, node: c.node });
     }
     for (const r of rules.extraUnits?.(t) ?? []) if (!found.has(r.node)) found.set(r.node, r);
-    return [...found.values()].map((r) => ({ r, start: t.start[r.outer], end: Math.max(t.end[r.outer], t.end[r.node]) })).sort((a, b) => a.start - b.start || b.end - a.end);
+    return [...found.values()].map((r) => ({ r, start: t.start[r.outer], end: r.end ?? Math.max(t.end[r.outer], t.end[r.node]) })).sort((a, b) => a.start - b.start || b.end - a.end);
 };
 
 /** The first line of the comments right above a node, with no blank line between. */
@@ -248,7 +256,7 @@ const unitsOf = (path: string, t: Flat, rules: LangRules): { units: Unit[]; unit
             startLine: lineOf(t, start),
             endLine: lineOf(t, Math.max(start, end - 1)),
             nameLine,
-            docLine: lineOf(t, docStartOf(t, r.outer)),
+            docLine: lineOf(t, r.doc ?? docStartOf(t, r.outer)),
             nameStart,
             ...(parent ? { parent: parent.id } : {}),
             node: r.node,

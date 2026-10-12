@@ -5,6 +5,9 @@ import type { Lines } from "./pack.ts";
 /** The keywords JavaScript, TypeScript, Java, PHP and C# have in common, for their highlighting. */
 export const C_LIKE = "if else for while do switch case break continue default return new delete throw try catch finally class extends this super static public private protected const let var void null true false import export from as typeof instanceof in of async await yield function interface enum type implements package";
 
+/** C's keywords and C++'s best known, for both: C code seldom names a thing `class`. */
+export const C_KEYWORDS = "if else for while do switch case break continue default return struct union enum typedef static const void int char long short unsigned signed float double sizeof include define NULL true false class public private protected template typename namespace using virtual auto";
+
 /** Java, Kotlin, Swift, C#, PHP, C and C++. */
 export const C_FAMILY: Lines = {
     patterns: [

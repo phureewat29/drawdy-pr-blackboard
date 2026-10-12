@@ -109,8 +109,9 @@ scripts and tests without a build step.
 - 32 cards per board; up to 40 code and 40 test files read per PR.
 - GitHub allows 60 API requests an hour without a token.
 - The bundle must stay under 1 MB (`npm run check`).
-- Other languages (Ruby, Kotlin, Swift, C#, PHP, C, Scala and more) get
-  cards but no lines, until their packs have proven linkers.
+- Kotlin, C, C++, Scala and Haskell get a parsed card per declaration;
+  Ruby, Swift, C#, PHP and others get cards from line patterns. None of
+  them draws lines until its pack has a proven linker.
 - Deleted functions get no card: only head files are read.
 - Moving a card keeps its lines' bend points (DDP 1.3 can't move them).
 
