@@ -156,6 +156,7 @@ const baseView = (review: Review): Omit<PanelView, "phase"> => {
         tag: { label, colour: projectColour(label) },
         pr: { title: segments(review.pr.title), state: review.pr.state, additions: review.pr.additions, deletions: review.pr.deletions },
         total: stepsOf(review).length,
+        cards: review.pins.length,
         current: -1,
         hasPrevious: false,
         hasNext: false,

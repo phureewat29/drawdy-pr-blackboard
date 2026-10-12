@@ -37,6 +37,7 @@ const readyView: PanelView = {
     tag: { label: "honojs/hono#5513", colour: "#E36002" },
     pr: { title: [{ text: "fix(hono): handle non-Error throws with onError", code: false }], state: "merged", additions: 202, deletions: 11 },
     total: 8,
+    cards: 10,
     current: 0,
     hasPrevious: false,
     hasNext: true,
@@ -409,22 +410,24 @@ describe("panel", () => {
         expect(post).not.toHaveBeenCalled();
     });
 
-    it("ends the reading view in one toolbar: Home, Rebuild, a rule, Overview, Description, then Previous, the position and Next", () => {
+    it("ends the reading view in one toolbar: Home, Rebuild, Clear, a rule, Overview, Description, then Previous, the position and Next", () => {
         panel.show(readyView);
         const bar = document.querySelector("#ready .tools .bar")!;
-        expect([...bar.children].map((c) => c.id || c.className)).toEqual(["home", "rebuild", "sep", "overview", "description", "spacer", "previous", "position", "next"]);
+        expect([...bar.children].map((c) => c.id || c.className)).toEqual(["home", "rebuild", "clear", "sep", "overview", "description", "spacer", "previous", "position", "next"]);
         expect([...bar.querySelectorAll("button")].map((b) => [b.id, b.getAttribute("aria-label"), b.dataset.tip, b.title])).toEqual([
             ["home", "Home", "Home: open another PR", ""],
             ["rebuild", "Rebuild", "Rebuild this board from GitHub", ""],
+            ["clear", "Clear board", "Clear: remove this PR's cards", ""],
             ["overview", "Overview", "Overview: the whole board", ""],
             ["description", "Description", "Description", ""],
             ["previous", "Previous card", "Previous (←)", ""],
             ["next", "Next card", "Next (→)", ""],
         ]);
-        // Lucide house, refresh-cw, scan, file-text and the chevrons; no text button and no nav row left.
+        // Lucide house, refresh-cw, brush-cleaning, scan, file-text and the chevrons; no text button and no nav row left.
         expect([...bar.querySelectorAll("button svg")].map((svg) => svg.firstElementChild!.getAttribute("d"))).toEqual([
             "M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8",
             "M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8",
+            "m16 22-1-4",
             "M3 7V5a2 2 0 0 1 2-2h2",
             "M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z",
             "m15 18-6-6 6-6",
@@ -483,6 +486,63 @@ describe("panel", () => {
         $("rebuild").click();
         $("rebuild").click();
         expect(post.mock.calls.map(([m]) => m)).toEqual([{ type: "close" }, { type: "overview" }, { type: "rebuild" }]);
+    });
+
+    it("holds Clear down on the first press, saying what it removes, until the second press clears and goes Home with the field focused, or Esc or another control lets it go", () => {
+        panel.show(readyView);
+        const line = () => [$("clear").classList.contains("armed"), $("tools-line").hidden, $("tools-line").textContent];
+        $("clear").click();
+        expect(post).not.toHaveBeenCalled();
+        expect(line()).toEqual([true, false, "Clear removes this PR's 10 cards and their lines. Your notes stay. Press Clear again."]);
+        expect($("tools-line").getAttribute("role")).toBe("status");
+        // Held, a control's tooltip would sit over the line: the line says it all.
+        expect(css).toContain("#rebuild.armed, #clear.armed { background: var(--shade); color: var(--drawdy-foreground); } #rebuild.armed::after, #clear.armed::after { display: none; }");
+        document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+        expect(line()).toEqual([false, true, "Clear removes this PR's 10 cards and their lines. Your notes stay. Press Clear again."]);
+        $("clear").click();
+        $("next").click();
+        expect($("clear").classList.contains("armed")).toBe(false);
+        $("clear").click();
+        $("clear").click();
+        expect(post.mock.calls.map(([m]) => m)).toEqual([{ type: "close" }, { type: "next" }, { type: "clear" }]);
+        // Off at once, so a third press asks nothing; the driver answers with the start view, where the field takes focus.
+        expect([$<HTMLButtonElement>("clear").disabled, $("clear").classList.contains("armed"), $("tools-line").hidden]).toEqual([true, false, true]);
+        $("clear").click();
+        expect(post).toHaveBeenCalledTimes(3);
+        panel.show(startView);
+        expect(document.activeElement).toBe($("start-url"));
+        // Back on a board, Clear is on again; a board of one card says so.
+        panel.show({ ...readyView, cards: 1 });
+        expect($<HTMLButtonElement>("clear").disabled).toBe(false);
+        $("clear").click();
+        expect($("tools-line").textContent).toBe("Clear removes this PR's card. Your notes stay. Press Clear again.");
+    });
+
+    it("lets a held Clear go when the panel moves to another PR, takes turns with a held Rebuild, and turns Clear off while a rebuild runs", () => {
+        panel.show(readyView);
+        $("clear").click();
+        // A click on another board moves the panel there: the line named hono's cards, so the hold goes.
+        panel.show({ ...readyView, tag: { label: "vitejs/vite#23586", colour: "#BD34FE" }, cards: 7 });
+        expect([$("clear").classList.contains("armed"), $("tools-line").hidden]).toEqual([false, true]);
+        $("clear").click();
+        expect($("tools-line").textContent).toBe("Clear removes this PR's 7 cards and their lines. Your notes stay. Press Clear again.");
+        // Rebuild past 2 requests takes the hold, and Clear takes it back; neither asks the driver anything.
+        panel.show({ ...readyView, rebuildCost: { files: 2188, requests: 23 } });
+        $("clear").click();
+        $("rebuild").click();
+        expect([$("clear").classList.contains("armed"), $("rebuild").classList.contains("armed"), $("tools-line").textContent]).toEqual([
+            false,
+            true,
+            "Rebuilding reads 2,188 files: 23 of 60 GitHub requests. Press Rebuild again to start.",
+        ]);
+        $("clear").click();
+        expect([$("clear").classList.contains("armed"), $("rebuild").classList.contains("armed")]).toEqual([true, false]);
+        expect(post).not.toHaveBeenCalled();
+        // A rebuild under way turns Clear off and lets it go.
+        panel.show({ ...readyView, rebuilding: "Reading the PR" });
+        expect([$<HTMLButtonElement>("clear").disabled, $("clear").classList.contains("armed"), $("tools-line").textContent]).toEqual([true, false, "Reading the PR"]);
+        panel.show(readyView);
+        expect($<HTMLButtonElement>("clear").disabled).toBe(false);
     });
 
     it("turns Rebuild off the moment it asks for a rebuild, so a second press asks nothing more, until the driver's views say it ended", () => {

@@ -66,6 +66,8 @@ together, and on a big PR that takes most of the review.
 - **Overview** shows the whole board. **Description** goes to the PR card.
   **Home** takes you back to the examples, and your board stays.
   **Rebuild** reads the PR again after new commits.
+- **Clear** takes the PR's cards and lines off the board and goes Home. It
+  asks first, your own notes stay, and undo brings the board back.
 
 Lines are drawn for **JavaScript, TypeScript, Python, Go, Rust and Java**.
 PRs in other languages get a card for every change.

@@ -6,7 +6,7 @@ import { projectColour } from "../shared/suggestions.ts";
 import { parse } from "../lib/guard.ts";
 import { webviewToDriver, type CodeCard, type LoadStep, type PanelView } from "../shared/protocol.ts";
 import { fakeFetch } from "../test/fake-fetch.ts";
-import { fakeHost } from "../test/fake-host.ts";
+import { fakeHost, keptStorage } from "../test/fake-host.ts";
 import { STRING_COLOURS } from "../lib/layout.ts";
 import { Lexer } from "../vendor/marked.ts";
 import { rebuildCostOf } from "./panel-view.ts";
@@ -657,6 +657,118 @@ describe("rebuilding a board", () => {
         await until(() => view().rebuilding === null, SLOW);
         await wait(50);
         expect([view().tag?.label, view().phase, flights(host) - flown]).toEqual(["excalidraw/excalidraw#12237", "ready", 0]);
+    }, SLOW);
+});
+
+describe("clearing a board", () => {
+    /** An open reads and parses the pull request. */
+    const SLOW = 30_000;
+
+    /**
+     * hono#5513 opened, its review kept in a storage of its own and GitHub's requests counted. Drawdy tells the driver
+     * of each removal, as of any, before the command answers; `undo` puts the last removal back, as Drawdy's undo does.
+     * `hold` keeps GitHub's API answers back until `release`.
+     */
+    const opened = async () => {
+        const net = fakeFetch("hono-5513.json");
+        let held: Promise<void> | null = null;
+        let release = () => {};
+        globalThis.fetch = (async (url: string) => {
+            if (held && url.startsWith("https://api.github.com/")) await held;
+            return net.fetch(url);
+        }) as typeof fetch;
+        let deliver: (event: DriverSubscriptionEvent) => Promise<void> = async () => undefined;
+        let made: ReturnType<typeof fakeHost> | null = null;
+        let last: unknown[] = [];
+        const booted = await boot({
+            extra: {
+                ...keptStorage(),
+                "command:scene:remove-drawdy-elements": (req) => {
+                    const host = made!;
+                    const gone: string[] = req.drawdyElementIds.filter((id: string) => host.elements.has(id));
+                    last = gone.map((id) => host.elements.get(id)!.schema);
+                    const reported = gone.map((id) => ({ id, meta: host.elements.get(id)!.schema.meta }));
+                    for (const id of gone) host.remove(id);
+                    void deliver({ type: "subscription:scene:elements-removed", subscriptionId: "t", body: { drawdyElements: reported, properties: ["meta"] } } as DriverSubscriptionEvent);
+                    return { removed: gone.length };
+                },
+            },
+        });
+        made = booted.host;
+        deliver = booted.handle;
+        await booted.openHono(SLOW);
+        const requests = (host: string) => net.requests.filter((url) => url.startsWith(`https://${host}/`)).length;
+        return {
+            ...booted,
+            requests,
+            undo: () => last.forEach((schema) => booted.host.add(schema)),
+            hold: () => {
+                held = new Promise((resolve) => (release = resolve));
+            },
+            release: () => {
+                held = null;
+                release();
+            },
+        };
+    };
+    const ours = (host: ReturnType<typeof fakeHost>) => [...host.elements].filter(([, e]) => e.schema.meta?.prBlackboard).map(([id]) => id);
+    const scene = (host: ReturnType<typeof fakeHost>, from: number) => host.calls.slice(from).filter((c) => /^command:(scene:(add|remove|update)-|kv-storage:delete|camera:fly)/.test(c.type));
+
+    it("takes the board's cards, lines and labels off in one removal, leaves the reader's note and the camera, and goes back to the start view", async () => {
+        const { host, message, view } = await opened();
+        const before = ours(host);
+        host.add({ type: "text", drawdyElementId: "readers-note", x: 40, y: -200, text: "check this" });
+        expect(view()).toMatchObject({ phase: "ready", cards: 10 });
+        const from = host.calls.length;
+        await message({ type: "clear" });
+        await until(() => view().phase === "start");
+        await wait(20);
+        const calls = scene(host, from);
+        expect(calls.map((c) => c.type)).toEqual(["command:scene:remove-drawdy-elements"]);
+        expect([...calls[0].req.drawdyElementIds].sort()).toEqual([...before].sort());
+        expect([...host.elements.keys()]).toEqual(["readers-note"]);
+        // Drawdy's report of the removal is known for the clear's own: the board isn't read again for it, and the start view stays.
+        const removal = host.calls.findIndex((c) => c.type === "command:scene:remove-drawdy-elements");
+        expect(host.calls.slice(removal).map((c) => c.type)).not.toContain("command:scene:get-drawdy-elements");
+        expect(view()).toMatchObject({ phase: "start", error: null, tag: null, pr: null, cards: 0 });
+    }, SLOW);
+
+    it("keeps the review stored, so opening the PR again reads only the PR from GitHub and pins it anew", async () => {
+        const { host, message, view, requests } = await opened();
+        await message({ type: "clear" });
+        await until(() => view().phase === "start");
+        const [api, raw, jsdelivr, from] = [requests("api.github.com"), requests("raw.githubusercontent.com"), requests("cdn.jsdelivr.net"), host.calls.length];
+        await message({ type: "open", url: HONO });
+        await until(() => view().phase === "ready" && host.calls.slice(from).some((c) => c.type === "command:camera:fly-to-rect"), SLOW);
+        expect([requests("api.github.com") - api, requests("raw.githubusercontent.com") - raw, requests("cdn.jsdelivr.net") - jsdelivr]).toEqual([1, 0, 0]);
+        expect(scene(host, from).filter((c) => c.type === "command:scene:add-drawdy-elements")).toHaveLength(1);
+        expect(view()).toMatchObject({ phase: "ready", error: null, cards: 10, card: { pin: "pr" } });
+    }, SLOW);
+
+    it("comes back with one undo, and a click on one of its cards reads it again", async () => {
+        const { host, message, view, click, undo } = await opened();
+        await message({ type: "clear" });
+        await until(() => view().phase === "start");
+        undo();
+        const card = cardsOf(host).get("src/compose.ts:18")!;
+        await click([card.id], { x: card.rect.x + 40, y: card.rect.y + 20 });
+        await until(() => view().phase === "ready");
+        expect(view()).toMatchObject({ phase: "ready", error: null, cards: 10, card: { name: "compose()" } });
+    }, SLOW);
+
+    it("is refused while a rebuild runs, and the rebuild lands", async () => {
+        const { host, message, view, hold, release } = await opened();
+        hold();
+        const from = host.calls.length;
+        await message({ type: "rebuild" });
+        await message({ type: "clear" });
+        await wait(50);
+        expect(scene(host, from)).toEqual([]);
+        expect(view()).toMatchObject({ phase: "ready", rebuilding: "Reading the PR" });
+        release();
+        await until(() => view().rebuilding === null && scene(host, from).some((c) => c.type === "command:camera:fly-to-rect"), SLOW);
+        expect(scene(host, from).map((c) => c.type)).toEqual(["command:scene:add-drawdy-elements", "command:scene:remove-drawdy-elements", "command:camera:fly-to-rect"]);
+        expect(view()).toMatchObject({ phase: "ready", error: null, cards: 10 });
     }, SLOW);
 });
 

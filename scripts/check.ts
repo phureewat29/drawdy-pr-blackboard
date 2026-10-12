@@ -6,7 +6,7 @@
  *    script (src/worker/script.ts) behind its sources;
  * 3. boots the bundle in a fake Drawdy host, runs the generated webview in jsdom until it reports `ready`, opens a
  *    saved PR (honojs/hono#5513) from a fake GitHub and jsDelivr, and walks the board: the one add call, the
- *    strings, the steps, Description, the link names' colours, Read all, Home and a rebuild. Node has no Worker, so
+ *    strings, the steps, Description, the link names' colours, Read all, Home, a rebuild and Clear. Node has no Worker, so
  *    the parser worker's script runs on the driver's thread, as where no worker can start. Then it boots the bundle
  *    again, as after a reload, and checks the board works with the panel never opened and nothing from jsDelivr;
  * 4. checks a 32-card board's add payload stays small;
@@ -393,6 +393,27 @@ const rebuilds = async () => {
     );
 };
 
+/** Clear: the board's elements off in one removal, the reader's note kept, then the start view; opening the PR again reads only the PR from GitHub. */
+const clears = async () => {
+    const ours = () => [...host.elements].filter(([, e]) => e.schema.meta?.prBlackboard).map(([id]) => id);
+    const before = ours();
+    const clearing = host.calls.length;
+    await tell({ type: "clear" }, 100);
+    const scene = host.calls.slice(clearing).filter((c) => /^command:scene:(add|remove|update)-/.test(c.type));
+    const removed = new Set<string>(scene[0]?.req.drawdyElementIds ?? []);
+    expectThat(
+        scene.map((c) => c.type).join() === "command:scene:remove-drawdy-elements" && removed.size === before.length && before.every((id) => removed.has(id)) && ours().length === 0 && host.elements.has("readers-note") && shown()?.phase === "start",
+        `Clear removes the board's ${before.length} elements in one removal, one undo step; the reader's note stays and the start view shows`
+    );
+    const api = () => net.requests.filter((url) => url.startsWith("https://api.github.com/")).length;
+    const [apiBefore, reopening] = [api(), host.calls.length];
+    await tell({ type: "open", url: HONO }, 1500);
+    expectThat(
+        api() - apiBefore === 1 && callsOf("command:scene:add-drawdy-elements", reopening).length === 1 && shown()?.phase === "ready",
+        `opening it again reads only the PR from GitHub (${api() - apiBefore} request) and pins it anew from the stored review`
+    );
+};
+
 /** A reload: the bundle starts again on the same board, the panel never opened, and the reader has looked elsewhere since. */
 const worksAfterAReload = async () => {
     const beforeReload = net.requests.length;
@@ -446,6 +467,7 @@ try {
         await opensReadAll(size);
     await goesHome();
     await rebuilds();
+    await clears();
     await worksAfterAReload();
     await keepsTheAddPayloadSmall(hono.added);
 } catch (err) {

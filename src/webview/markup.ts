@@ -140,7 +140,7 @@ code { padding: 0 3px; border-radius: 4px; font-size: 11.5px; line-height: 1; ba
 .step svg { width: 16px; height: 16px; }
 #next:not(:disabled) { background: var(--drawdy-primary); color: var(--drawdy-primary-foreground); border-color: transparent; }
 #next:not(:disabled) svg { stroke-width: 2.5; }
-#position { min-width: 52px; text-align: center; font-size: 11.5px; }
+#position { min-width: 52px; margin: 0 2px; text-align: center; font-size: 11.5px; }
 
 .card { min-height: 0; display: flex; flex-direction: column; gap: 2px; padding: 12px 14px 0; }
 .card-head { flex: none; display: flex; align-items: flex-start; justify-content: flex-end; gap: 10px; }
@@ -167,17 +167,19 @@ code { padding: 0 3px; border-radius: 4px; font-size: 11.5px; line-height: 1; ba
 .line { display: flex; align-items: center; gap: 8px; font-size: 12px; line-height: 16px; color: var(--drawdy-muted-foreground); }
 .line svg { flex: none; width: 16px; height: 16px; }
 .line.busy span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bar { display: flex; align-items: center; gap: 4px; }
+/* Five icon buttons, the rule and the stepper fit 320 wide: the icons 28 wide and 2 apart, the stepper 4 apart as ever. */
+.bar { display: flex; align-items: center; gap: 2px; }
 /* Icon buttons have no frame until hovered; the house's left edge lines up with the text above. */
-.icon { width: 30px; height: 30px; display: grid; place-items: center; margin: 0; padding: 0; border: 0; border-radius: var(--drawdy-radius-md); background: transparent; color: var(--drawdy-muted-foreground); }
+.icon { width: 28px; height: 30px; display: grid; place-items: center; margin: 0; padding: 0; border: 0; border-radius: var(--drawdy-radius-md); background: transparent; color: var(--drawdy-muted-foreground); }
 .icon svg { width: 16px; height: 16px; }
 .icon:hover:not(:disabled) { background: var(--hover); color: var(--drawdy-foreground); }
-#home { margin-left: -7px; }
+#home { margin-left: -6px; }
 .sep { width: 1px; height: 16px; margin: 0 4px; background: var(--shade); }
 .icon[aria-current="true"] { color: var(--drawdy-foreground); }
-.icon[aria-current="true"]::before { content: ""; position: absolute; left: 7px; right: 7px; bottom: 2px; height: 2px; border-radius: 1px; background: currentColor; }
-/* Rebuild held after its first press, until the second. */
-#rebuild.armed { background: var(--shade); color: var(--drawdy-foreground); }
+.icon[aria-current="true"]::before { content: ""; position: absolute; left: 6px; right: 6px; bottom: 2px; height: 2px; border-radius: 1px; background: currentColor; }
+/* Rebuild or Clear held after its first press, until the second; the line says what it does, so its tooltip, over the line, stays away. */
+#rebuild.armed, #clear.armed { background: var(--shade); color: var(--drawdy-foreground); }
+#rebuild.armed::after, #clear.armed::after { display: none; }
 [data-tip] { position: relative; }
 [data-tip]::after { content: attr(data-tip); position: absolute; bottom: calc(100% + 8px); left: 0; z-index: 1; padding: 3px 8px; border-radius: var(--drawdy-radius-sm); background: var(--drawdy-foreground); color: var(--drawdy-background); font: 11.5px/16px ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity .1s; }
 .step[data-tip]::after { left: auto; right: 0; }
@@ -267,6 +269,7 @@ export const PANEL_BODY = `
         <nav class="bar" aria-label="PR">
             ${homeButton("home")}
             ${toolButton("rebuild", "icon", "Rebuild", "Rebuild this board from GitHub", "refresh-cw")}
+            ${toolButton("clear", "icon", "Clear board", "Clear: remove this PR's cards", "brush-cleaning")}
             <span class="sep"></span>
             ${toolButton("overview", "icon", "Overview", "Overview: the whole board", "scan")}
             ${toolButton("description", "icon", "Description", "Description", "file-text")}

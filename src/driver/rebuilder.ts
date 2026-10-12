@@ -12,7 +12,7 @@
 import { githubFailure, parsePrUrl, prKey, prLabel } from "../lib/github.ts";
 import type { BoardPlan } from "../lib/layout.ts";
 import type { Review } from "../lib/model.ts";
-import { indexOf, readBoardOf, rectsOf, type BoardRef, type Index } from "./board.ts";
+import { indexOf, readBoardAt, readBoardOf, rectsOf, type BoardRef, type Index, type Sweeper } from "./board.ts";
 import type { Ddp } from "./ddp.ts";
 import type { Navigator } from "./navigator.ts";
 import { loadReview, pinBoard, type Loaders, type Pinning } from "./open.ts";
@@ -23,26 +23,18 @@ import { explain } from "./words.ts";
 
 const GONE = "GitHub can't find this PR any more.";
 
-export type Rebuilder = {
-    rebuild: () => Promise<void>;
-    /** Whether a removal Drawdy reports is a rebuild's own, of an old board: no reader's change. */
-    isOwnRemoval: (elements: readonly { id: string }[]) => boolean;
-};
+export type Rebuilder = { rebuild: () => Promise<void> };
 
-export type RebuilderDeps = { ddp: Ddp; guide: Navigator; panel: PanelFeed; loaders: Loaders; pinning: Pinning };
+export type RebuilderDeps = { ddp: Ddp; guide: Navigator; panel: PanelFeed; loaders: Loaders; pinning: Pinning; sweeper: Sweeper };
 
-export const createRebuilder = ({ ddp, guide, panel, loaders, pinning }: RebuilderDeps): Rebuilder => {
-    /** The elements rebuilds took off the board themselves. */
-    const swept = new Set<string>();
-
+export const createRebuilder = ({ ddp, guide, panel, loaders, pinning, sweeper }: RebuilderDeps): Rebuilder => {
     /** The new board where the old one's PR card stands, then the old board's elements off. */
     const replace = async (on: BoardRef, review: Review, plan: BoardPlan | null, progress: Progress): Promise<Index> => {
-        const old = (await readBoardOf(ddp, on.key)).filter((e) => e.mark.sha === on.sha);
+        const old = await readBoardAt(ddp, on);
         const card = old.find((e) => e.mark.part === "pr");
         const corner = card ? (await rectsOf(ddp, [card.id])).get(card.id) : undefined;
         await pinBoard(pinning, review, plan, progress, corner);
-        for (const e of old) swept.add(e.id);
-        await ddp.call("command:scene:remove-drawdy-elements", { drawdyElementIds: old.map((e) => e.id) });
+        await sweeper.remove(old.map((e) => e.id));
         const key = prKey(review.pr.ref);
         return indexOf(key, review.pr.headSha, await readBoardOf(ddp, key));
     };
@@ -84,11 +76,5 @@ export const createRebuilder = ({ ddp, guide, panel, loaders, pinning }: Rebuild
         }
     };
 
-    const isOwnRemoval = (elements: readonly { id: string }[]): boolean => {
-        if (elements.length === 0 || !elements.every((e) => swept.has(e.id))) return false;
-        for (const e of elements) swept.delete(e.id);
-        return true;
-    };
-
-    return { rebuild, isOwnRemoval };
+    return { rebuild };
 };

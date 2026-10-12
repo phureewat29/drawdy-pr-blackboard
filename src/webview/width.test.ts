@@ -60,6 +60,7 @@ const base: PanelView = {
     tag: { label: "prometheus/prometheus#18564", colour: "#E6522C" },
     pr: { title: segments("promql: support native histograms with smoothed/anchored rate"), state: "merged", additions: 667, deletions: 36 },
     total: 8,
+    cards: 10,
     current: -1,
     hasPrevious: false,
     hasNext: true,
@@ -69,6 +70,8 @@ const base: PanelView = {
 };
 const VIEWS: Record<string, PanelView> = {
     description: base,
+    // The widest position a board can show, 32 cards and every one a step but the PR card.
+    toolbar: { ...base, total: 31, current: 26, hasPrevious: true, cards: 32 },
     "code card": {
         ...base,
         current: 2,
@@ -126,6 +129,8 @@ type Measure = {
     rights: number[];
     /** Each file row's text as shown, and whether its text overflows its row. */
     files: { text: string; over: boolean }[];
+    /** The reading view's toolbar: each control's box, by its id. */
+    bar: Record<string, Box>;
 };
 
 /**
@@ -144,7 +149,8 @@ const measure = (): Record<string, Measure> => {
             codeScrolls: shown(pre) ? pre.scrollWidth > pre.clientWidth : null, tableScrolls: shown(table) ? table.scrollWidth > table.clientWidth : null,
             link: shown(link) ? { lines: link.getClientRects().length, right: Math.max(...[...link.getClientRects()].map((r) => r.right)) } : null,
             rights: ["name", "path"].map((i) => document.getElementById(i)).concat([...document.querySelectorAll("#links button, #load-steps li, .annotation, .summary, #load-tools button")]).filter(shown).map((el) => el.getBoundingClientRect().right),
-            files: [...document.querySelectorAll(".file")].map((f) => ({ text: f.textContent, over: f.scrollWidth > f.clientWidth })) }, "*");
+            files: [...document.querySelectorAll(".file")].map((f) => ({ text: f.textContent, over: f.scrollWidth > f.clientWidth })),
+            bar: Object.fromEntries([...document.querySelectorAll("#ready .tools .bar > [id]")].map((el) => [el.id, box(el)])) }, "*");
     }, 300));`;
     const frames = Object.entries(VIEWS).map(([id, view]) => {
         const api = `window.acquireDrawdyApi = () => ({ postMessage() {}, onMessage(f) { setTimeout(() => f({ type: "view", view: ${JSON.stringify(view).replace(/</g, "\\u003c")} })); return () => {}; } });`;
@@ -198,6 +204,15 @@ const measure = (): Record<string, Measure> => {
         expect(plugin).toBe("…/plugin.ts");
         expect(long).toMatch(/^…[a-z_]+types_module\.rs$/);
         expect([short, root]).toEqual(["src/a.ts", "README.md"]);
+    });
+
+    it("fits its toolbar at 27 / 31: the five icon buttons whole, the stepper as ever, and clear space between them", () => {
+        const { bar } = got.toolbar;
+        expect(["home", "rebuild", "clear", "overview", "description"].map((id) => bar[id].width)).toEqual([28, 28, 28, 28, 28]);
+        expect(["previous", "position", "next"].map((id) => bar[id].width)).toEqual([30, 52, 30]);
+        // The house lines up with the text above, 14 in; the stepper keeps its place at the right edge.
+        expect([bar.home.left + 6, bar.next.right, bar.position.left - bar.previous.right]).toEqual([14, 306, 4]);
+        expect(bar.previous.left - bar.description.right).toBeGreaterThanOrEqual(16);
     });
 
     it("keeps its width with a very long name, path and link names on a code card", () => {

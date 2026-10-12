@@ -57,6 +57,8 @@ export type PanelView = {
     pr: { title: Segment[]; state: PrState; additions: number; deletions: number } | null;
     /** How many steps the board has: its code cards, not the PR card or unchanged context. */
     total: number;
+    /** How many cards the board being read has on the canvas, the PR card and context included: what Clear removes. */
+    cards: number;
     /** The current card's step, or -1: none yet, the PR card, or an unchanged card, which are not steps. */
     current: number;
     hasPrevious: boolean;
@@ -85,6 +87,8 @@ export const webviewToDriver = g.union(
     g.object({ type: g.literal("read-all") }),
     /** Build the board again from GitHub, in the old one's place. */
     g.object({ type: g.literal("rebuild") }),
+    /** Take the board's cards, lines and labels off the canvas, then back to the start view. */
+    g.object({ type: g.literal("clear") }),
     /** Close Read all: Esc while the panel has focus. */
     g.object({ type: g.literal("close") })
 );

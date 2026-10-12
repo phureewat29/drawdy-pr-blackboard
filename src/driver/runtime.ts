@@ -1,6 +1,6 @@
 /**
  * The driver Drawdy activates: it registers the panel's button and the subscriptions the board needs, then routes
- * Drawdy's events and the panel's messages to the opener, the rebuilder and the navigator.
+ * Drawdy's events and the panel's messages to the opener, the rebuilder, the clearer and the navigator.
  */
 
 import type { DriverModule, DriverSubscriptionEvent } from "@drawdy/driver-protocol";
@@ -8,7 +8,9 @@ import { serial } from "../lib/fp.ts";
 import { createGithub } from "../lib/github.ts";
 import type { Point } from "../lib/layout.ts";
 import { appIcon } from "../shared/app-icon.ts";
+import { createSweeper } from "./board.ts";
 import { createChannel } from "./channel.ts";
+import { createClearer } from "./clearer.ts";
 import { createDdp } from "./ddp.ts";
 import { markOf } from "./elements.ts";
 import { createNavigator } from "./navigator.ts";
@@ -54,7 +56,9 @@ export const createRuntime = (args: Parameters<DriverModule["activate"]>[0]): Ru
     const guide = createNavigator({ ddp, popover, styling: () => styling, changed: () => panel.push(), loadReview: (key, sha) => reviewAt(loaders, key, sha, quiet), explain });
     const panel = createPanelFeed({ channel, guide, quota: net.quota });
     const opener = createOpener({ ddp, channel, guide, panel, loaders, pinning });
-    const rebuilder = createRebuilder({ ddp, guide, panel, loaders, pinning });
+    const sweeper = createSweeper(ddp);
+    const rebuilder = createRebuilder({ ddp, guide, panel, loaders, pinning, sweeper });
+    const clearer = createClearer({ ddp, guide, panel, sweeper });
 
     /** Runs a reader's action; a failure shows, in words, in the view on screen: on the toolbar's line, or under the start view's field. */
     const safely = async (action: () => Promise<unknown>) => {
@@ -93,6 +97,8 @@ export const createRuntime = (args: Parameters<DriverModule["activate"]>[0]): Ru
                 return void safely(() => guide.follow(message.link));
             case "rebuild":
                 return void rebuilder.rebuild();
+            case "clear":
+                return void safely(clearer.clear);
             default:
                 return void safely(moves[message.type]);
         }
@@ -115,7 +121,7 @@ export const createRuntime = (args: Parameters<DriverModule["activate"]>[0]): Ru
 
     /** Removed or replaced elements of the board being read: it is read again, and put away when no card is left. */
     const boardChanged = async (elements: readonly { id: string; meta?: unknown }[], replaced: boolean) => {
-        if (!replaced && rebuilder.isOwnRemoval(elements)) return;
+        if (!replaced && sweeper.isOwnRemoval(elements)) return;
         const on = guide.board();
         if (!on) return;
         if (!replaced && !elements.some((e) => markOf(e.meta)?.pr === on.key)) return;

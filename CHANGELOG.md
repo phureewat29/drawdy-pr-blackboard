@@ -9,6 +9,8 @@ First release.
   labelled lines.
 - Step through the code card by card from the panel, click a name to jump
   along its line, or press Overview to see the whole board.
+- Clear takes a PR's cards and lines off the board in one step; undo brings
+  them back.
 - Lines are drawn for TypeScript, JavaScript, Python, Go, Rust and Java, and
   only where the parser can prove the link.
 - 14 example PRs to try, from Hono, Vite, Node.js, Svelte, Bun, Prometheus,

@@ -72,8 +72,8 @@ does it on save). `npm run check` fails when the script is behind.
 ```
 src/
   index.ts        driver entry
-  driver/         runtime, opener, rebuilder, navigator, Read all, the
-                  panel's view and channel, parser download, camera,
+  driver/         runtime, opener, rebuilder, clearer, navigator, Read all,
+                  the panel's view and channel, parser download, camera,
                   storage, loading steps and warnings
   worker/         the parser worker and its generated script
   webview/        the panel

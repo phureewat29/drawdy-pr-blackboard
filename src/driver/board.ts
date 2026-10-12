@@ -1,4 +1,4 @@
-/** PR Blackboard's elements on the board, read from their marks: by PR, as an index of one board, and as clicked. */
+/** PR Blackboard's elements on the board, read from their marks: by PR, as an index of one board, and as clicked; and taken off. */
 
 import type { Fold, Theme } from "../lib/card.ts";
 import { catmullRomSpline } from "../lib/curve.ts";
@@ -71,6 +71,39 @@ export const readBoard = async (ddp: Ddp): Promise<Map<string, Marked[]>> => {
 
 /** Every PR Blackboard element of one PR's boards. */
 export const readBoardOf = async (ddp: Ddp, key: string): Promise<Marked[]> => (await readBoard(ddp)).get(key) ?? [];
+
+/** Every PR Blackboard element of one board: its PR at its head commit. */
+export const readBoardAt = async (ddp: Ddp, on: BoardRef): Promise<Marked[]> => (await readBoardOf(ddp, on.key)).filter((e) => e.mark.sha === on.sha);
+
+/** Takes PR Blackboard's own elements off the board, and knows Drawdy's report of that removal for what it is. */
+export type Sweeper = {
+    /** One removal, so one undo brings them all back. */
+    remove: (ids: readonly string[]) => Promise<void>;
+    /** Whether a removal Drawdy reports is `remove`'s, not the reader's: its elements are forgotten once reported. */
+    isOwnRemoval: (elements: readonly { id: string }[]) => boolean;
+};
+
+export const createSweeper = (ddp: Ddp): Sweeper => {
+    const swept = new Set<string>();
+    return {
+        remove: async (ids) => {
+            if (ids.length === 0) return;
+            // Drawdy may report the removal before the command answers.
+            for (const id of ids) swept.add(id);
+            try {
+                await ddp.call("command:scene:remove-drawdy-elements", { drawdyElementIds: [...ids] });
+            } catch (err) {
+                for (const id of ids) swept.delete(id);
+                throw err;
+            }
+        },
+        isOwnRemoval: (elements) => {
+            if (elements.length === 0 || !elements.every((e) => swept.has(e.id))) return false;
+            for (const e of elements) swept.delete(e.id);
+            return true;
+        },
+    };
+};
 
 /**
  * The one read a click costs: the clicked elements with their marks, where they are now, and, for a string, the

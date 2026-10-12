@@ -34,6 +34,8 @@ export type Navigator = {
     readMarks: () => Promise<void>;
     /** A drawn string's colour, by index into `STRING_COLOURS`; null for a link with no string. */
     colourOf: (link: string) => number | null;
+    /** How many of the board's cards are on the canvas, by their marks; by the review until the marks are read. */
+    cards: () => number;
     /** The current card's step, or -1: none yet, no review, the PR card or a context card, which are not steps. */
     current: () => number;
     currentPin: () => string | null;
@@ -324,6 +326,7 @@ export const createNavigator = (deps: NavigatorDeps): Navigator => {
         refresh,
         readMarks,
         colourOf: (link) => index?.links.get(link)?.colour ?? null,
+        cards: () => index?.pins.size ?? review?.pins.length ?? 0,
         current: () => (review && current ? stepsOf(review).indexOf(current) : -1),
         currentPin: () => current,
         hasPrevious: () => stepAfter(-1) !== null,

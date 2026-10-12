@@ -9,7 +9,8 @@ export type Panel = { show: (view: PanelView) => void };
 
 /**
  * The panel UI. The driver owns the state and sends a whole view each time it changes; the panel draws it and sends
- * back what the reader asks for. Its own state is small: a held Rebuild, each PR's warnings open or shut, the field.
+ * back what the reader asks for. Its own state is small: a held Rebuild or Clear, each PR's warnings open or shut, the
+ * field.
  *
  * Self-contained by design: the driver serializes this function into the webview, so it may only use its
  * parameters, browser globals and what it defines itself.
@@ -22,8 +23,12 @@ export const createPanel = ({ post, document: doc }: PanelDeps): Panel => {
     let dismissed: string | null = null;
     /** Home was pressed: the field takes focus once the start view is back. */
     let focusField = false;
-    /** Rebuild pressed once on a PR that costs more than 2 requests: held, its cost on the line, until a second press starts it, or Esc or any other control lets it go. */
-    let held = false;
+    /**
+     * Clear, or Rebuild on a PR that costs more than 2 requests, pressed once: held down, what it does on the line,
+     * until a second press starts it, or Esc or any other control lets it go. Held on one PR, by its tag: the panel
+     * moving to another lets it go, so a second press never acts on a board the line didn't name.
+     */
+    let held: { control: "rebuild" | "clear"; on: string | undefined } | null = null;
     /** The description on show, drawn again only when it changes. */
     let description: string | null | undefined;
     /** Whether the PR card was current: its description scrolls to its top only when it becomes current. */
@@ -294,24 +299,32 @@ export const createPanel = ({ post, document: doc }: PanelDeps): Panel => {
         if (card) renderCodeCard(card);
     };
 
-    /** The toolbar's line, shown only when needed: a rebuild's step under way, a held Rebuild's cost, or an error from an action. */
+    /** What a held control does, on the toolbar's line: a rebuild's cost, or the cards Clear takes off the board. */
+    const heldWords = (control: "rebuild" | "clear", v: PanelView): string | null => {
+        if (control === "rebuild")
+            return v.rebuildCost ? `Rebuilding reads ${v.rebuildCost.files.toLocaleString("en-US")} files: ${v.rebuildCost.requests} of 60 GitHub requests. Press Rebuild again to start.` : null;
+        const cards = v.cards === 1 ? "card" : `${v.cards.toLocaleString("en-US")} cards and their lines`;
+        return `Clear removes this PR's ${cards}. Your notes stay. Press Clear again.`;
+    };
+
+    /** The toolbar's line, shown only when needed: a rebuild's step under way, what a held control does, or an error from an action. */
     const renderLine = (v: PanelView) => {
         const busy = v.rebuilding !== null;
-        if (busy || !v.rebuildCost) held = false;
+        const words = held && !busy && held.on === v.tag?.label ? heldWords(held.control, v) : null;
+        if (!words) held = null;
         const line = byId("tools-line");
         if (busy) line.replaceChildren(mark("mark-active"), h("span", {}, v.rebuilding ?? ""));
-        else if (held && v.rebuildCost)
-            line.replaceChildren(
-                h("span", {}, `Rebuilding reads ${v.rebuildCost.files.toLocaleString("en-US")} files: ${v.rebuildCost.requests} of 60 GitHub requests. Press Rebuild again to start.`)
-            );
-        line.hidden = !busy && !held;
+        else if (words) line.replaceChildren(h("span", {}, words));
+        line.hidden = !busy && !words;
         line.classList.toggle("busy", busy);
         const error = byId("tools-error");
-        error.hidden = busy || held || !v.error;
+        error.hidden = busy || words !== null || !v.error;
         error.textContent = v.error ?? "";
-        const rebuild = byId<HTMLButtonElement>("rebuild");
-        rebuild.disabled = busy;
-        rebuild.classList.toggle("armed", held);
+        for (const control of ["rebuild", "clear"] as const) {
+            const button = byId<HTMLButtonElement>(control);
+            button.disabled = busy;
+            button.classList.toggle("armed", held?.control === control);
+        }
     };
 
     /** Where the reader is: Description is marked while the PR card is current; the position counts code steps only, `–` elsewhere. */
@@ -343,20 +356,20 @@ export const createPanel = ({ post, document: doc }: PanelDeps): Panel => {
         if (next.error !== dismissed) dismissed = null;
         // Opening something clears the field; a failure comes back to the start view with the link kept.
         if (view?.phase === "loading" && next.phase === "ready" && !next.error) startUrl.value = "";
-        if (next.phase !== "ready") held = false;
+        if (next.phase !== "ready") held = null;
         view = next;
         for (const phase of ["start", "loading", "ready"] as const) byId(phase).hidden = next.phase !== phase;
         RENDER[next.phase](next);
     };
 
-    /** Lets a held Rebuild go, as Esc and every other control do. */
+    /** Lets a held Rebuild or Clear go, as Esc and every other control do. */
     const release = () => {
         if (!held) return;
-        held = false;
+        held = null;
         if (view?.phase === "ready") renderTools(view);
     };
 
-    /** A control's message to the driver: any control but Rebuild lets a held Rebuild go. */
+    /** A control's message to the driver: any control but Rebuild and Clear lets a held one go. */
     const act = (message: WebviewToDriver) => {
         release();
         post(message);
@@ -382,18 +395,30 @@ export const createPanel = ({ post, document: doc }: PanelDeps): Panel => {
         setOpen(group, open);
     };
 
+    /** Holds `control` down on its first press, saying on the line what it does; true when it was held already, so this press is the second. */
+    const hold = (control: "rebuild" | "clear"): boolean => {
+        if (held?.control === control) return true;
+        held = { control, on: view?.tag?.label };
+        if (view?.phase === "ready") renderTools(view);
+        return false;
+    };
+
     /** Rebuild starts at once for the usual 2 requests; past that, the first press holds it and says the cost, the second starts it. */
     const pressRebuild = () => {
-        if (view?.rebuildCost && !held) {
-            held = true;
-            renderTools(view);
-            return;
-        }
-        held = false;
-        if (view?.phase === "ready") renderTools(view);
+        if (view?.rebuildCost && !hold("rebuild")) return;
+        release();
         // Off at once, before the driver's next view says a rebuild runs: a second press must not ask again.
         byId<HTMLButtonElement>("rebuild").disabled = true;
         post({ type: "rebuild" });
+    };
+
+    /** Clear takes the board off the canvas, so it always asks first: the first press holds it, the second clears and goes Home. */
+    const pressClear = () => {
+        if (!hold("clear")) return;
+        release();
+        byId<HTMLButtonElement>("clear").disabled = true;
+        focusField = true;
+        post({ type: "clear" });
     };
 
     const onKey = (e: KeyboardEvent) => {
@@ -430,6 +455,7 @@ export const createPanel = ({ post, document: doc }: PanelDeps): Panel => {
         if (view?.tag) open(view.tag.label);
     });
     onClick("rebuild", pressRebuild);
+    onClick("clear", pressClear);
     onClick("overview", () => act({ type: "overview" }));
     onClick("description", () => {
         byId("pr-body").scrollTop = 0;
