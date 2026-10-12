@@ -384,7 +384,7 @@ then nothing on its board links by name. A file can't be read when its
 leading comments carry `@flow`, or when ERROR and MISSING nodes cover more
 than 2 % of its bytes (request 40: React's Flow files broke A, 56 of 57
 with errors, and A pinned a card 1 300 lines long). The scored pull
-requests and the 15 examples peak at 0.6 % (elysia's `src/types.ts`,
+requests and the 14 examples peak at 0.6 % (elysia's `src/types.ts`,
 TypeScript's `in out` variance); React#37113's two changed source files,
 both `@flow`, measure 3.2 % and 100 %, so the line sits at 2 %
 (`MAX_ERROR_SHARE` in `syntax.ts`). The line patterns name cards as the
@@ -1481,23 +1481,23 @@ when both. A retry in the same session reuses the pull request and file
 list already read, so it costs no GitHub request.
 
 7.2.3 **Start view:** padding 14 14 0, gap 10: the field, the error, then
-the 15 example rows with no heading (requests 38 and 40), in the
+the 14 example rows with no heading (requests 38 and 40), in the
 operator's order: honojs/hono#5513 first, whose board shows the strings
 calmly, then prettier/prettier#20127, colinhacks/zod#6652,
 vitejs/vite#23586, nodejs/node#63047, TanStack/router#8573,
 withastro/astro#17955, sveltejs/svelte#18736, elysiajs/elysia#1734,
 oven-sh/bun#34519, sindresorhus/ky#823, excalidraw/excalidraw#12237,
 prometheus/prometheus#18564 and python/cpython#152451, the Go and Python
-ones the owner picked (request 56), and last oven-sh/bun#30412, the Rust
-rewrite the owner asked for. Every
+ones the owner picked (request 56). Each opens with the usual 2 GitHub
+requests: oven-sh/bun#30412, Bun's Rust rewrite, left the list on
+2026-10-12 because it takes 23 of the 60 an hour. Every
 example is by the project's creator or a member of its core team, merged,
 with its head commit still readable (requests 27, 28 and 40); the rule
 sits on `SUGGESTIONS` in `src/shared/suggestions.ts` too, so later changes
 keep it. Each draws strings on the board; mattpocock/skills#783 is gone
 (the owner: "too stupid easy"). The titles ship there exactly as GitHub's
 API gives them, so the start view costs no GitHub request. PR Blackboard keeps
-no list of opened pull requests. Row 13 ships only with request 40's
-big-PR fixes: its board must show its Rust.
+no list of opened pull requests.
 
 7.2.4 **Example rows** (request 29): each a button, the tag on a line of
 its own, first (request 26), then the title, 13/18 in the foreground, so
@@ -1507,19 +1507,6 @@ field; hover `--hover` (the foreground at 7 %). Inline code 11.5, padding
 0 3, line height 1, so lines stay 18; `:tada:` shows as 🎉 (5.5.2). Only the
 list scrolls, and its shadows, in `--shade` (the foreground at 16 %), show
 only while rows are hidden.
-
-**The cost, before the open** (request 40). A row whose pull request
-costs more than the usual 2 GitHub requests says so on its tag line,
-after the tag: 11/16 sans, muted, `23 of 60 GitHub requests`. Only
-oven-sh/bun#30412 does (1 for the pull request, 22 pages of 2,188 files).
-`SUGGESTIONS` ships each row's file count, and the cost is `1 +
-ceil(files / 100)`, so nothing is fetched to show it. A pasted link's
-cost shows once known, in the loading view (7.2.6).
-
-```
-│ [oven-sh/bun#30412]  23 of 60 GitHub requests │
-│ Rewrite Bun in Rust                           │
-```
 
 7.2.5 **Tags:** 11/16 mono, padding 0 6, radius 999, 1 px border. Neutral:
 muted text, `--drawdy-border`. An example project's tag (`.tag.hue`, `--c`
@@ -1594,8 +1581,7 @@ the serialized panel script draws no SVG of its own.
 
 1. `Reading the PR`. A pull request whose file list takes more than one
    page counts its GitHub requests as they come, `· GitHub requests 9 /
-   23`, then says what it took: `· 23 GitHub requests 2.8 s` (request 40;
-   its example row says the cost before the open, 7.2.4). It ends with a
+   23`, then says what it took: `· 23 GitHub requests 2.8 s` (request 40). It ends with a
    warning when this network's GitHub requests run low, 10 left or fewer,
    or GitHub lists fewer files than the pull request has (3,000 at most).
 2. `Downloading the parser`, or `Downloading 3 parsers`, only when bytes
@@ -1849,7 +1835,7 @@ request already on the board flies to it, silently.
 
 **Rebuild** (request 48) reads the pull request again (8.6). For the usual
 2 GitHub requests it starts at once: undo brings the old board back. On a
-pull request that costs more (oven-sh/bun#30412 is the one example), an
+pull request that costs more (oven-sh/bun#30412, for one), an
 icon has no room to say the cost, so the first press holds Rebuild down
 (`--shade` fill, its icon in the foreground) and the toolbar's line says
 `Rebuilding reads 2,188 files: 23 of 60 GitHub requests. Press Rebuild
@@ -1984,7 +1970,7 @@ clipped to the usable view; `excalidraw-overview.png` and
 description in its own column, the board landing on the code
 (`tall-overview.png`, `tall-1600-landed.png`); `hono-dragged.png`
 (`compose()` dragged 200 right: its string ends move, its bends stay,
-3.3.4); and the panel's states: the start view with its 15 example rows,
+3.3.4); and the panel's states: the start view with its 14 example rows,
 loading, reading at the PR card (its whole description), at `#dispatch()`
 (step 1) and at `compose()` (names in their strings' colours), a rebuild
 under way, held for its cost and failed, excalidraw's long description
@@ -2331,9 +2317,8 @@ the dev server on a local board. G: the score gate, outside the repository
     card. It never covers the toolbar or the panel: it is clipped to the
     usable view.
 17. (T) The panel, as 7.2 and 7.3 lay it out: the start view is the field
-    (no button), the error slot and the 15 example rows in 7.2.3's order,
-    with 7.2.5's colours, oven-sh/bun#30412's tag line ending `23 of 60
-    GitHub requests` and no other row carrying a cost, no
+    (no button), the error slot and the 14 example rows in 7.2.3's order,
+    with 7.2.5's colours, no row carrying a cost, no
     heading and no `Try` anywhere, each a button with its project-coloured
     tag on its own line then its title, the list alone scrolling; a paste
     or Enter posts `open` with whatever was typed; a failure shows in the
@@ -2373,9 +2358,8 @@ the dev server on a local board. G: the score gate, outside the repository
     states match 7.2 and 7.3 and the toolbar design's frames
     (`SCRATCH/toolbar/png`): the PR card current with its whole
     description, steps with names in their strings' colours, a rebuild
-    under way, held and failed, and keyboard focus with a tooltip. Each of the 15 examples' boards, rendered from
-    a saved copy (9.1), reads well and draws strings; oven-sh/bun#30412's
-    shows its Rust.
+    under way, held and failed, and keyboard focus with a tooltip. Each of the 14 examples' boards, rendered from
+    a saved copy (9.1), reads well and draws strings.
 20. (L) At 1920 × 1080, on a dark board in a light browser: the board
     arrives in one add call, cards dark; the PR card shows hono's
     description as Markdown; strings and labels look as in the preview, in

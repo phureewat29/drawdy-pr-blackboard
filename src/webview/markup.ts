@@ -47,8 +47,7 @@ code { padding: 0 3px; border-radius: 4px; font-size: 11.5px; line-height: 1; ba
 .prs button { width: 100%; display: grid; justify-items: start; gap: 4px; padding: 6px 8px; border: 0; border-radius: 8px; background: transparent; text-align: left; font-size: 13px; color: var(--drawdy-foreground); overflow-wrap: break-word; }
 .prs button:hover { background: var(--hover); }
 /* A big pull request says what it costs, after its tag. */
-.tagline { display: flex; align-items: center; gap: 8px; }
-.cost, .note { font: 11px/16px ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--drawdy-muted-foreground); }
+.note { font: 11px/16px ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--drawdy-muted-foreground); }
 .prs button:focus-visible, #links button:focus-visible { outline-offset: -2px; }
 /* Shadows only while there is more to scroll. */
 .scroll {
@@ -220,8 +219,7 @@ export const PANEL_MD_CSS = `
 /** The example rows: each a button, the project-coloured tag on its own line, then the title. */
 const exampleRows = SUGGESTIONS.map((s) => {
     const tag = `<span class="tag hue" style="--c: ${s.colour}">${escapeHtml(s.label)}</span>`;
-    const line = s.cost ? `<span class="tagline">${tag}<span class="cost">${s.cost}</span></span>` : tag;
-    return `<li><button type="button" data-url="${s.url}" data-label="${escapeHtml(s.label)}" title="${escapeHtml(s.url)}">${line}<span>${segmentsHtml(s.title)}</span></button></li>`;
+    return `<li><button type="button" data-url="${s.url}" data-label="${escapeHtml(s.label)}" title="${escapeHtml(s.url)}">${tag}<span>${segmentsHtml(s.title)}</span></button></li>`;
 }).join("");
 
 /** A frame of warnings: one row that counts them and opens or closes the list under it, which the panel fills. */

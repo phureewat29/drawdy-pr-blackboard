@@ -430,12 +430,10 @@ request" (request 60). A link that isn't a PR says so under the field,
 the link kept; an open that fails on the way stays on the loading view at
 its failed step; an action's error in the reading view shows on the
 toolbar's line.
-The start view lists the 15 examples under the field, no heading, each
-its tag in its project's colour (`SUGGESTIONS` ships label, title, colour
-and changed-file count; `projectColour` colours any pull request of those
-repositories), then its title; a row that costs more than the usual 2
-GitHub requests says so after its tag (`23 of 60 GitHub requests`, only
-Bun's rewrite). Loading shows the tag, then the steps as a CI job lists
+The start view lists the 14 examples under the field, no heading, each
+its tag in its project's colour (`SUGGESTIONS` ships label, title and
+colour; `projectColour` colours any pull request of those repositories),
+then its title. Each opens with the usual 2 GitHub requests. Loading shows the tag, then the steps as a CI job lists
 them (`driver/progress.ts`): a mark per state, a count while a step runs
 or the time it took, a row per parser downloading and per changed file
 read (10 at most, then `and N more`), and the warnings found so far as CI

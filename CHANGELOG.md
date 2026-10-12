@@ -11,6 +11,6 @@ First release.
   along its line, or press Overview to see the whole board.
 - Lines are drawn for TypeScript, JavaScript, Python, Go and Rust, and only
   where the parser can prove the link.
-- 15 example PRs to try, from Hono, Vite, Node.js, Svelte, Bun, Prometheus,
+- 14 example PRs to try, from Hono, Vite, Node.js, Svelte, Bun, Prometheus,
   CPython and more.
 - Read only: no account, no sign-in, and nothing is changed on GitHub.

@@ -74,7 +74,7 @@ in other languages get a card for every change.
 
 1. Click the **PR Blackboard** button on the right edge of the board: the
    stack of cards.
-2. Paste a link like `github.com/honojs/hono/pull/5513`, or pick one of 15
+2. Paste a link like `github.com/honojs/hono/pull/5513`, or pick one of 14
    examples from Hono, Vite, Node.js, Svelte, Bun, Prometheus, CPython and
    more.
 3. Press **›** and follow the lines.
@@ -83,8 +83,7 @@ in other languages get a card for every change.
 
 - Works with public PRs on GitHub. No account or sign-in.
 - GitHub allows 60 requests an hour without signing in. Opening a PR uses
-  2. A very big one uses more, and its example row says how many: Bun's
-  rewrite takes 23.
+  2, and a very big one more: Bun's 2,188-file rewrite takes 23.
 - The first PR in a language downloads that language's parser, once: 83 KB
   for the engine, then 38 KB for Go, 49 KB for JavaScript, 64 KB for
   Python, 114 KB for Rust or 133 KB for TypeScript. It stays on your device
