@@ -401,12 +401,12 @@ describe("panel", () => {
         expect([summary().textContent, ...open()]).toEqual(["1 warning", "false", false]);
         panel.show(withWarnings("oven-sh/bun#30412", [CARD_LIMIT, NOT_READ]));
         expect(open()).toEqual(["true", true]);
-        // The row is a control like any other: a held Rebuild lets go. The driver hears nothing of it.
+        // The row is a control like any other: an open confirm goes. The driver hears nothing of it.
         panel.show({ ...withWarnings("oven-sh/bun#30412", [CARD_LIMIT, NOT_READ]), rebuildCost: { files: 2188, requests: 23 } });
         $("rebuild").click();
-        expect($("rebuild").classList.contains("armed")).toBe(true);
+        expect($("tools-ask").hidden).toBe(false);
         summary().click();
-        expect([$("rebuild").classList.contains("armed"), ...open()]).toEqual([false, "false", false]);
+        expect([$("tools-ask").hidden, $("rebuild").classList.contains("asking"), ...open()]).toEqual([true, false, "false", false]);
         expect(post).not.toHaveBeenCalled();
     });
 
@@ -464,83 +464,106 @@ describe("panel", () => {
         expect(document.activeElement).not.toBe($("start-url"));
     });
 
-    it("rebuilds at once for 2 requests; past that, holds Rebuild down on the first press with the cost on its line, until the second press, Esc or another control", () => {
+    it("rebuilds at once for 2 requests; past that, asks first with the cost, focus on ✗, and only ✓ starts it, Rebuild off at once and focus on Overview", () => {
         panel.show(readyView);
         $("rebuild").click();
         expect(post).toHaveBeenLastCalledWith({ type: "rebuild" });
         post.mockClear();
-        const costly = { ...readyView, rebuildCost: { files: 2188, requests: 23 } };
-        panel.show(costly);
+        panel.show({ ...readyView, rebuildCost: { files: 2188, requests: 23 } });
         $("rebuild").click();
         expect(post).not.toHaveBeenCalled();
-        expect([$("rebuild").classList.contains("armed"), $("tools-line").hidden, $("tools-line").textContent]).toEqual([
-            true,
+        expect([$("tools-ask").hidden, $("ask-words").textContent, $("ask-yes").getAttribute("aria-label"), document.activeElement?.id]).toEqual([
             false,
-            "Rebuilding reads 2,188 files: 23 of 60 GitHub requests. Press Rebuild again to start.",
+            "Rebuild reads 2,188 files: 23 of 60 GitHub requests. Start it?",
+            "Rebuild",
+            "ask-no",
         ]);
-        document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
-        expect([$("rebuild").classList.contains("armed"), $("tools-line").hidden]).toEqual([false, true]);
+        expect([...$("ask-words").children].map((line) => line.textContent)).toEqual(["Rebuild reads 2,188 files:", "23 of 60 GitHub requests. Start it?"]);
+        expect([$<HTMLButtonElement>("rebuild").disabled, $("rebuild").classList.contains("asking"), $("tools-line").hidden]).toEqual([true, true, true]);
+        $("ask-yes").click();
+        $("ask-yes").click();
         $("rebuild").click();
-        $("overview").click();
-        expect($("rebuild").classList.contains("armed")).toBe(false);
-        $("rebuild").click();
-        $("rebuild").click();
-        expect(post.mock.calls.map(([m]) => m)).toEqual([{ type: "close" }, { type: "overview" }, { type: "rebuild" }]);
+        expect(post.mock.calls.map(([m]) => m)).toEqual([{ type: "rebuild" }]);
+        expect([$<HTMLButtonElement>("rebuild").disabled, $("rebuild").classList.contains("asking"), $("tools-ask").hidden, document.activeElement?.id]).toEqual([true, false, true, "overview"]);
     });
 
-    it("holds Clear down on the first press, saying what it removes, until the second press clears and goes Home with the field focused, or Esc or another control lets it go", () => {
+    it("asks before Clear: the question, then ✓ and ✗ in the cards' green and red, focus on ✗, Clear pressed and off; a double click never clears, only ✓ does, and the start view's field then has focus", () => {
         panel.show(readyView);
-        const line = () => [$("clear").classList.contains("armed"), $("tools-line").hidden, $("tools-line").textContent];
         $("clear").click();
         expect(post).not.toHaveBeenCalled();
-        expect(line()).toEqual([true, false, "Clear removes this PR's 10 cards and their lines. Your notes stay. Press Clear again."]);
-        expect($("tools-line").getAttribute("role")).toBe("status");
-        // Held, a control's tooltip would sit over the line: the line says it all.
-        expect(css).toContain("#rebuild.armed, #clear.armed { background: var(--shade); color: var(--drawdy-foreground); } #rebuild.armed::after, #clear.armed::after { display: none; }");
-        document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
-        expect(line()).toEqual([false, true, "Clear removes this PR's 10 cards and their lines. Your notes stay. Press Clear again."]);
+        expect([$("tools-ask").hidden, $("ask-words").textContent, $("tools-ask").getAttribute("role"), $("tools-ask").getAttribute("aria-labelledby")]).toEqual([
+            false,
+            "Clear this PR's 10 cards and lines? Your notes stay.",
+            "group",
+            "ask-words",
+        ]);
+        // Two lines, each fitting beside ✓ and ✗ at 320 wide (webview/width.test.ts).
+        expect([...$("ask-words").children].map((line) => line.textContent)).toEqual(["Clear this PR's 10 cards and lines?", "Your notes stay."]);
+        expect([$("ask-yes").getAttribute("aria-label"), $("ask-no").getAttribute("aria-label"), document.activeElement?.id]).toEqual(["Clear board", "Cancel", "ask-no"]);
+        expect([$<HTMLButtonElement>("clear").disabled, $("clear").classList.contains("asking"), $("tools-line").hidden]).toEqual([true, true, true]);
+        // Lucide check and x, stroked 2.5 in --add and --del on their own tints; pressed and off, Clear keeps its look and drops its tooltip.
+        expect([...$("tools-ask").querySelectorAll("svg")].map((svg) => [...svg.children].map((path) => path.getAttribute("d")).join(" "))).toEqual(["M20 6 9 17l-5-5", "M18 6 6 18 m6 6 12 12"]);
+        expect(css).toContain(".ask svg { width: 16px; height: 16px; stroke-width: 2.5; }");
+        expect(css).toContain("#ask-yes { color: var(--add); background: color-mix(in srgb, var(--add) 14%, transparent); }");
+        expect(css).toContain("#ask-no { color: var(--del); background: color-mix(in srgb, var(--del) 14%, transparent); }");
+        expect(css).toContain("#rebuild.asking, #clear.asking { background: var(--shade); color: var(--drawdy-foreground); opacity: 1; } #rebuild.asking::after, #clear.asking::after { display: none; }");
+        // It pops in, and stays still where motion is reduced.
+        expect(css).toContain("@keyframes ask { from { opacity: 0; transform: scale(.96); } }");
+        expect(css).toContain(".rows-wrap, .ask { animation: none !important; }");
+        // The second press of a double click finds Clear off, and its pointer leaves focus on ✗.
+        const down = new Event("pointerdown", { cancelable: true });
+        $("clear").dispatchEvent(down);
         $("clear").click();
-        $("next").click();
-        expect($("clear").classList.contains("armed")).toBe(false);
-        $("clear").click();
-        $("clear").click();
-        expect(post.mock.calls.map(([m]) => m)).toEqual([{ type: "close" }, { type: "next" }, { type: "clear" }]);
-        // Off at once, so a third press asks nothing; the driver answers with the start view, where the field takes focus.
-        expect([$<HTMLButtonElement>("clear").disabled, $("clear").classList.contains("armed"), $("tools-line").hidden]).toEqual([true, false, true]);
-        $("clear").click();
-        expect(post).toHaveBeenCalledTimes(3);
+        expect([post.mock.calls.length, down.defaultPrevented, document.activeElement?.id]).toEqual([0, true, "ask-no"]);
+        $("ask-yes").click();
+        $("ask-yes").click();
+        expect(post.mock.calls.map(([m]) => m)).toEqual([{ type: "clear" }]);
+        expect([$("tools-ask").hidden, $<HTMLButtonElement>("clear").disabled]).toEqual([true, true]);
         panel.show(startView);
         expect(document.activeElement).toBe($("start-url"));
         // Back on a board, Clear is on again; a board of one card says so.
         panel.show({ ...readyView, cards: 1 });
         expect($<HTMLButtonElement>("clear").disabled).toBe(false);
         $("clear").click();
-        expect($("tools-line").textContent).toBe("Clear removes this PR's card. Your notes stay. Press Clear again.");
+        expect($("ask-words").textContent).toBe("Clear this PR's card? Your notes stay.");
     });
 
-    it("lets a held Clear go when the panel moves to another PR, takes turns with a held Rebuild, and turns Clear off while a rebuild runs", () => {
+    it("dismisses a confirm on ✗, Esc, any other control or another PR, handing focus back to Clear; Rebuild's confirm takes the place of Clear's; a rebuild under way closes it", () => {
         panel.show(readyView);
+        const shut = () => [$("tools-ask").hidden, $("clear").classList.contains("asking"), $<HTMLButtonElement>("clear").disabled, document.activeElement?.id];
         $("clear").click();
-        // A click on another board moves the panel there: the line named hono's cards, so the hold goes.
+        $("ask-no").click();
+        expect(shut()).toEqual([true, false, false, "clear"]);
+        // Esc closes the confirm only, not Read all as well.
+        $("clear").click();
+        document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+        expect(shut()).toEqual([true, false, false, "clear"]);
+        expect(post).not.toHaveBeenCalled();
+        $("clear").click();
+        $("next").click();
+        expect(shut()).toEqual([true, false, false, "clear"]);
+        // A click on another board moves the panel there: the question named hono's cards, so it goes.
+        $("clear").click();
         panel.show({ ...readyView, tag: { label: "vitejs/vite#23586", colour: "#BD34FE" }, cards: 7 });
-        expect([$("clear").classList.contains("armed"), $("tools-line").hidden]).toEqual([false, true]);
+        expect(shut()).toEqual([true, false, false, "clear"]);
         $("clear").click();
-        expect($("tools-line").textContent).toBe("Clear removes this PR's 7 cards and their lines. Your notes stay. Press Clear again.");
-        // Rebuild past 2 requests takes the hold, and Clear takes it back; neither asks the driver anything.
+        expect($("ask-words").textContent).toBe("Clear this PR's 7 cards and lines? Your notes stay.");
+        // Rebuild past 2 requests asks in Clear's place, and Clear in Rebuild's.
         panel.show({ ...readyView, rebuildCost: { files: 2188, requests: 23 } });
         $("clear").click();
         $("rebuild").click();
-        expect([$("clear").classList.contains("armed"), $("rebuild").classList.contains("armed"), $("tools-line").textContent]).toEqual([
+        expect([$("ask-words").textContent, $("clear").classList.contains("asking"), $("rebuild").classList.contains("asking"), $<HTMLButtonElement>("clear").disabled]).toEqual([
+            "Rebuild reads 2,188 files: 23 of 60 GitHub requests. Start it?",
             false,
             true,
-            "Rebuilding reads 2,188 files: 23 of 60 GitHub requests. Press Rebuild again to start.",
+            false,
         ]);
         $("clear").click();
-        expect([$("clear").classList.contains("armed"), $("rebuild").classList.contains("armed")]).toEqual([true, false]);
-        expect(post).not.toHaveBeenCalled();
-        // A rebuild under way turns Clear off and lets it go.
+        expect([$("ask-words").textContent, $("clear").classList.contains("asking"), $("rebuild").classList.contains("asking")]).toEqual(["Clear this PR's 10 cards and lines? Your notes stay.", true, false]);
+        expect(post.mock.calls.map(([m]) => m)).toEqual([{ type: "next" }]);
+        // A rebuild under way closes it and turns Clear off.
         panel.show({ ...readyView, rebuilding: "Reading the PR" });
-        expect([$<HTMLButtonElement>("clear").disabled, $("clear").classList.contains("armed"), $("tools-line").textContent]).toEqual([true, false, "Reading the PR"]);
+        expect([$("tools-ask").hidden, $("clear").classList.contains("asking"), $<HTMLButtonElement>("clear").disabled, $("tools-line").textContent]).toEqual([true, false, true, "Reading the PR"]);
         panel.show(readyView);
         expect($<HTMLButtonElement>("clear").disabled).toBe(false);
     });
@@ -556,12 +579,6 @@ describe("panel", () => {
         expect([post.mock.calls.length, $<HTMLButtonElement>("rebuild").disabled]).toEqual([1, true]);
         panel.show(readyView);
         expect($<HTMLButtonElement>("rebuild").disabled).toBe(false);
-        // Past 2 requests, the second press is the one that asks, and it turns Rebuild off too.
-        panel.show({ ...readyView, rebuildCost: { files: 2188, requests: 23 } });
-        $("rebuild").click();
-        $("rebuild").click();
-        $("rebuild").click();
-        expect([post.mock.calls.length, $<HTMLButtonElement>("rebuild").disabled, $("rebuild").classList.contains("armed")]).toEqual([2, true, false]);
     });
 
     it("says a rebuild's step under way on the toolbar's line, the loading view's mark turning, with Rebuild off; and an error there", () => {

@@ -9,8 +9,7 @@ export type Panel = { show: (view: PanelView) => void };
 
 /**
  * The panel UI. The driver owns the state and sends a whole view each time it changes; the panel draws it and sends
- * back what the reader asks for. Its own state is small: a held Rebuild or Clear, each PR's warnings open or shut, the
- * field.
+ * back what the reader asks for. Its own state is small: an open confirm, each PR's warnings open or shut, the field.
  *
  * Self-contained by design: the driver serializes this function into the webview, so it may only use its
  * parameters, browser globals and what it defines itself.
@@ -24,11 +23,12 @@ export const createPanel = ({ post, document: doc }: PanelDeps): Panel => {
     /** Home was pressed: the field takes focus once the start view is back. */
     let focusField = false;
     /**
-     * Clear, or Rebuild on a PR that costs more than 2 requests, pressed once: held down, what it does on the line,
-     * until a second press starts it, or Esc or any other control lets it go. Held on one PR, by its tag: the panel
-     * moving to another lets it go, so a second press never acts on a board the line didn't name.
+     * Clear, or Rebuild on a PR that costs more than 2 requests, asks first: a confirm in the toolbar's line, the
+     * question and then ✓ and ✗, while the control that asked shows pressed and off, so no second press can go
+     * ahead. Only ✓ does; ✗, Esc, any other control or the panel moving to another PR dismisses it. Asked on one PR,
+     * by its tag, so ✓ never acts on a board the question didn't name.
      */
-    let held: { control: "rebuild" | "clear"; on: string | undefined } | null = null;
+    let asking: { control: "rebuild" | "clear"; on: string | undefined } | null = null;
     /** The description on show, drawn again only when it changes. */
     let description: string | null | undefined;
     /** Whether the PR card was current: its description scrolls to its top only when it becomes current. */
@@ -299,32 +299,46 @@ export const createPanel = ({ post, document: doc }: PanelDeps): Panel => {
         if (card) renderCodeCard(card);
     };
 
-    /** What a held control does, on the toolbar's line: a rebuild's cost, or the cards Clear takes off the board. */
-    const heldWords = (control: "rebuild" | "clear", v: PanelView): string | null => {
+    /**
+     * A confirm's question, which ✓ answers, in two lines that each fit beside ✓ and ✗ at 320 wide: what a rebuild
+     * reads and costs, or the cards Clear takes off the board and what stays.
+     */
+    const question = (control: "rebuild" | "clear", v: PanelView): [string, string] | null => {
         if (control === "rebuild")
-            return v.rebuildCost ? `Rebuilding reads ${v.rebuildCost.files.toLocaleString("en-US")} files: ${v.rebuildCost.requests} of 60 GitHub requests. Press Rebuild again to start.` : null;
-        const cards = v.cards === 1 ? "card" : `${v.cards.toLocaleString("en-US")} cards and their lines`;
-        return `Clear removes this PR's ${cards}. Your notes stay. Press Clear again.`;
+            return v.rebuildCost ? [`Rebuild reads ${v.rebuildCost.files.toLocaleString("en-US")} files:`, `${v.rebuildCost.requests} of 60 GitHub requests. Start it?`] : null;
+        return [v.cards === 1 ? "Clear this PR's card?" : `Clear this PR's ${v.cards.toLocaleString("en-US")} cards and lines?`, "Your notes stay."];
     };
 
-    /** The toolbar's line, shown only when needed: a rebuild's step under way, what a held control does, or an error from an action. */
+    /**
+     * The toolbar's line, shown only when needed: a rebuild's step under way, a confirm, or an error from an action.
+     * A confirm that closes while it has focus hands it back to the control that asked.
+     */
     const renderLine = (v: PanelView) => {
         const busy = v.rebuilding !== null;
-        const words = held && !busy && held.on === v.tag?.label ? heldWords(held.control, v) : null;
-        if (!words) held = null;
+        const asked = asking?.control;
+        const words = asking && !busy && asking.on === v.tag?.label ? question(asking.control, v) : null;
+        if (!words) asking = null;
+        const ask = byId("tools-ask");
+        const refocus = !words && asked !== undefined && ask.contains(doc.activeElement);
+        ask.hidden = !words;
+        if (words) {
+            const [first, second] = byId("ask-words").children;
+            setText(first, words[0]);
+            setText(second, words[1]);
+            byId("ask-yes").setAttribute("aria-label", asked === "clear" ? "Clear board" : "Rebuild");
+        }
         const line = byId("tools-line");
         if (busy) line.replaceChildren(mark("mark-active"), h("span", {}, v.rebuilding ?? ""));
-        else if (words) line.replaceChildren(h("span", {}, words));
-        line.hidden = !busy && !words;
-        line.classList.toggle("busy", busy);
+        line.hidden = !busy;
         const error = byId("tools-error");
         error.hidden = busy || words !== null || !v.error;
         error.textContent = v.error ?? "";
         for (const control of ["rebuild", "clear"] as const) {
             const button = byId<HTMLButtonElement>(control);
-            button.disabled = busy;
-            button.classList.toggle("armed", held?.control === control);
+            button.disabled = busy || asking?.control === control;
+            button.classList.toggle("asking", asking?.control === control);
         }
+        if (refocus) byId(asked).focus();
     };
 
     /** Where the reader is: Description is marked while the PR card is current; the position counts code steps only, `–` elsewhere. */
@@ -356,22 +370,44 @@ export const createPanel = ({ post, document: doc }: PanelDeps): Panel => {
         if (next.error !== dismissed) dismissed = null;
         // Opening something clears the field; a failure comes back to the start view with the link kept.
         if (view?.phase === "loading" && next.phase === "ready" && !next.error) startUrl.value = "";
-        if (next.phase !== "ready") held = null;
+        if (next.phase !== "ready") asking = null;
         view = next;
         for (const phase of ["start", "loading", "ready"] as const) byId(phase).hidden = next.phase !== phase;
         RENDER[next.phase](next);
     };
 
-    /** Lets a held Rebuild or Clear go, as Esc and every other control do. */
-    const release = () => {
-        if (!held) return;
-        held = null;
+    /** Opens `control`'s confirm, focus on ✗: the safe answer to a question that removes or costs something. */
+    const ask = (control: "rebuild" | "clear") => {
+        asking = { control, on: view?.tag?.label };
         if (view?.phase === "ready") renderTools(view);
+        byId("ask-no").focus();
     };
 
-    /** A control's message to the driver: any control but Rebuild and Clear lets a held one go. */
+    /** Closes the confirm, as ✗, Esc and every other control do: after ✗ and Esc, or when it had focus, the control that asked takes it back. */
+    const dismiss = (refocus = false) => {
+        const asked = asking?.control;
+        if (!asked) return;
+        const focused = byId("tools-ask").contains(doc.activeElement);
+        asking = null;
+        if (view?.phase === "ready") renderTools(view);
+        if (refocus || focused) byId(asked).focus();
+    };
+
+    /** ✓: the control that asked goes ahead, off at once so nothing asks again before the driver's next view. */
+    const confirm = () => {
+        const asked = asking?.control;
+        if (!asked) return;
+        dismiss();
+        byId<HTMLButtonElement>(asked).disabled = true;
+        // After Clear the start view's field takes focus; during a rebuild, Overview, the next control that can.
+        if (asked === "clear") focusField = true;
+        else byId("overview").focus();
+        post({ type: asked });
+    };
+
+    /** A control's message to the driver: any control but Rebuild and Clear dismisses a confirm. */
     const act = (message: WebviewToDriver) => {
-        release();
+        dismiss();
         post(message);
     };
 
@@ -388,44 +424,35 @@ export const createPanel = ({ post, document: doc }: PanelDeps): Panel => {
 
     /** A frame's row opens or shuts its warnings, and the panel keeps that for this PR while it lives. */
     const toggleNotes = (at: keyof typeof opened) => {
-        release();
+        dismiss();
         const group = byId(at).firstElementChild!;
         const open = !group.classList.contains("open");
         opened[at].set(view?.tag?.label ?? "", open);
         setOpen(group, open);
     };
 
-    /** Holds `control` down on its first press, saying on the line what it does; true when it was held already, so this press is the second. */
-    const hold = (control: "rebuild" | "clear"): boolean => {
-        if (held?.control === control) return true;
-        held = { control, on: view?.tag?.label };
-        if (view?.phase === "ready") renderTools(view);
-        return false;
-    };
-
-    /** Rebuild starts at once for the usual 2 requests; past that, the first press holds it and says the cost, the second starts it. */
+    /** Rebuild starts at once for the usual 2 requests; past that, it asks first, with the cost. */
     const pressRebuild = () => {
-        if (view?.rebuildCost && !hold("rebuild")) return;
-        release();
+        dismiss();
+        if (view?.rebuildCost) return ask("rebuild");
         // Off at once, before the driver's next view says a rebuild runs: a second press must not ask again.
         byId<HTMLButtonElement>("rebuild").disabled = true;
         post({ type: "rebuild" });
     };
 
-    /** Clear takes the board off the canvas, so it always asks first: the first press holds it, the second clears and goes Home. */
+    /** Clear takes the board off the canvas, so it always asks first. */
     const pressClear = () => {
-        if (!hold("clear")) return;
-        release();
-        byId<HTMLButtonElement>("clear").disabled = true;
-        focusField = true;
-        post({ type: "clear" });
+        dismiss();
+        ask("clear");
     };
 
     const onKey = (e: KeyboardEvent) => {
         if (view?.phase !== "ready" || e.metaKey || e.ctrlKey || e.altKey) return;
         if (e.key === "Escape") {
             e.preventDefault();
-            act({ type: "close" });
+            // One layer at a time: an open confirm, else Read all.
+            if (asking) dismiss(true);
+            else post({ type: "close" });
             return;
         }
         const message: WebviewToDriver | null = e.key === "ArrowRight" ? { type: "next" } : e.key === "ArrowLeft" ? { type: "previous" } : null;
@@ -456,6 +483,13 @@ export const createPanel = ({ post, document: doc }: PanelDeps): Panel => {
     });
     onClick("rebuild", pressRebuild);
     onClick("clear", pressClear);
+    onClick("ask-yes", confirm);
+    onClick("ask-no", () => dismiss(true));
+    // The second click of a double click lands on the control that asked, now off: Chrome would move focus off ✗.
+    for (const control of ["rebuild", "clear"] as const)
+        byId(control).addEventListener("pointerdown", (e) => {
+            if (asking?.control === control) e.preventDefault();
+        });
     onClick("overview", () => act({ type: "overview" }));
     onClick("description", () => {
         byId("pr-body").scrollTop = 0;

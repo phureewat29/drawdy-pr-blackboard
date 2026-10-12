@@ -136,7 +136,7 @@ body { background-image: radial-gradient(${BOARD[theme].grid} 1.2px, transparent
 /**
  * The PR Blackboard panel's webview in a 320 × 534 frame, showing `view`;
  * with `focus`, that element has focus once the view is in, and with
- * `click`, that button has been pressed (a held Rebuild).
+ * `click`, that button has been pressed (Rebuild or Clear asking).
  */
 const panelFrame = (view: PanelView, theme: Theme, at: Point, focus?: string, click?: string) => {
     const then = [click ? `document.getElementById(${JSON.stringify(click)}).click();` : "", focus ? `document.getElementById(${JSON.stringify(focus)}).focus();` : ""].join("");
@@ -447,6 +447,7 @@ const states: [PanelView, string?][] = [
     [readingView(hono.light, "src/compose.ts:18")],
     [readingView(hono.light, "src/compose.ts:18", { rebuilding: "Reading 4 changed files" })],
     [readingView(hono.light, "src/compose.ts:18", { rebuildCost: { files: 2188, requests: 23 } }), "rebuild"],
+    [readingView(hono.light, "src/compose.ts:18"), "clear"],
     [readingView(hono.light, "src/compose.ts:18", { error: LIMITED })],
     [readingView(excalidraw.light, "pr")],
     [readingView(excalidraw.light, resize)],

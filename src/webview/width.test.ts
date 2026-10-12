@@ -72,6 +72,9 @@ const VIEWS: Record<string, PanelView> = {
     description: base,
     // The widest position a board can show, 32 cards and every one a step but the PR card.
     toolbar: { ...base, total: 31, current: 26, hasPrevious: true, cards: 32 },
+    // The confirms at their widest: 32 cards, and a rebuild of 3,000 files, 31 of 60 requests.
+    "clear confirm": { ...base, total: 31, current: 26, hasPrevious: true, cards: 32 },
+    "rebuild confirm": { ...base, total: 31, current: 26, hasPrevious: true, cards: 32, rebuildCost: { files: 3000, requests: 31 } },
     "code card": {
         ...base,
         current: 2,
@@ -118,6 +121,9 @@ const VIEWS: Record<string, PanelView> = {
 };
 
 type Box = { left: number; right: number; width: number };
+
+/** Views shown with a control pressed once they are in: the confirms. */
+const PRESS: Record<string, string> = { "clear confirm": "clear", "rebuild confirm": "rebuild" };
 type Measure = {
     /** How wide the panel's document lays out: wider than the panel means something spills past its right edge. */
     width: number;
@@ -131,6 +137,8 @@ type Measure = {
     files: { text: string; over: boolean }[];
     /** The reading view's toolbar: each control's box, by its id. */
     bar: Record<string, Box>;
+    /** An open confirm: its question's lines, each its text's box and its height, and ✓ and ✗; null when none is open. */
+    ask: { lines: (Box & { height: number })[]; yes: Box; no: Box } | null;
 };
 
 /**
@@ -150,11 +158,15 @@ const measure = (): Record<string, Measure> => {
             link: shown(link) ? { lines: link.getClientRects().length, right: Math.max(...[...link.getClientRects()].map((r) => r.right)) } : null,
             rights: ["name", "path"].map((i) => document.getElementById(i)).concat([...document.querySelectorAll("#links button, #load-steps li, .annotation, .summary, #load-tools button")]).filter(shown).map((el) => el.getBoundingClientRect().right),
             files: [...document.querySelectorAll(".file")].map((f) => ({ text: f.textContent, over: f.scrollWidth > f.clientWidth })),
-            bar: Object.fromEntries([...document.querySelectorAll("#ready .tools .bar > [id]")].map((el) => [el.id, box(el)])) }, "*");
+            bar: Object.fromEntries([...document.querySelectorAll("#ready .tools .bar > [id]")].map((el) => [el.id, box(el)])),
+            ask: shown(document.getElementById("tools-ask")) ? { lines: [...document.querySelectorAll("#ask-words span")].map((el) => { const text = document.createRange(); text.selectNodeContents(el); return { ...box(text), height: el.getBoundingClientRect().height }; }), yes: box(document.getElementById("ask-yes")), no: box(document.getElementById("ask-no")) } : null }, "*");
     }, 300));`;
     const frames = Object.entries(VIEWS).map(([id, view]) => {
-        const api = `window.acquireDrawdyApi = () => ({ postMessage() {}, onMessage(f) { setTimeout(() => f({ type: "view", view: ${JSON.stringify(view).replace(/</g, "\\u003c")} })); return () => {}; } });`;
-        const html = webviewHtml(themeCss(DARK)).replace('<script type="module">', `<script>${api}${probe(id)}</script><script type="module">`);
+        const press = PRESS[id] ? `document.getElementById(${JSON.stringify(PRESS[id])}).click();` : "";
+        const api = `window.acquireDrawdyApi = () => ({ postMessage() {}, onMessage(f) { setTimeout(() => { f({ type: "view", view: ${JSON.stringify(view).replace(/</g, "\\u003c")} }); ${press} }); return () => {}; } });`;
+        // A confirm is measured as it settles, not mid-way through its pop-in's scale.
+        const settled = PRESS[id] ? "<style>.ask { animation: none !important; }</style>" : "";
+        const html = webviewHtml(themeCss(DARK)).replace('<script type="module">', `${settled}<script>${api}${probe(id)}</script><script type="module">`);
         return `<iframe srcdoc="${attr(html)}" style="width:${PANEL.width}px;height:${PANEL.height}px;border:0"></iframe>`;
     });
     const page = `<!doctype html><meta charset="utf-8"><body><pre id="out"></pre>${frames.join("")}<script>
@@ -213,6 +225,19 @@ const measure = (): Record<string, Measure> => {
         // The house lines up with the text above, 14 in; the stepper keeps its place at the right edge.
         expect([bar.home.left + 6, bar.next.right, bar.position.left - bar.previous.right]).toEqual([14, 306, 4]);
         expect(bar.previous.left - bar.description.right).toBeGreaterThanOrEqual(16);
+    });
+
+    it("sets each confirm's question in two lines beside ✓ and ✗, at their widest, ✗ under Next's right edge and the toolbar as it was", () => {
+        for (const id of ["clear confirm", "rebuild confirm"]) {
+            const { ask, bar } = got[id];
+            expect(ask).not.toBeNull();
+            const { lines, yes, no } = ask!;
+            expect(lines.map((line) => line.height)).toEqual([16, 16]);
+            for (const line of lines) expect(line.right).toBeLessThanOrEqual(yes.left - 4);
+            expect([yes.width, no.width, no.left - yes.right, no.right]).toEqual([28, 28, 4, bar.next.right]);
+            expect([bar.next.right, bar.home.left]).toEqual([306, 8]);
+        }
+        expect(got["toolbar"].ask).toBeNull();
     });
 
     it("keeps its width with a very long name, path and link names on a code card", () => {

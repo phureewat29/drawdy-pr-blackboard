@@ -1992,9 +1992,9 @@ aligned for Previous and Next); 11.5/16 sans, padding 3 8, radius sm,
 PR`, `Rebuild this board from GitHub`, `Clear: remove this PR's cards`,
 `Overview: the whole board`, `Description`, `Previous (←)`, `Next (→)`.
 Accessible names: `Home`, `Rebuild`, `Clear board`, `Overview`,
-`Description`, `Previous card`, `Next card`. A held Rebuild or Clear
-shows no tooltip: the pointer rests on it after the first press, and its
-tooltip would cover the line that says what the second press does. The
+`Description`, `Previous card`, `Next card`. A Rebuild or Clear whose
+confirm is open shows no tooltip: the pointer rests on it after the
+press, and the tooltip would cover the question. The
 focus ring everywhere in the panel is 2 px, 2 px out,
 `color-mix(in oklab, var(--drawdy-ring) 55%, var(--drawdy-foreground))`:
 `#546a06` on white (6.1:1; Drawdy's lime alone is 1.5:1 there) and
@@ -2010,52 +2010,67 @@ request already on the board flies to it, silently.
 
 **Rebuild** (request 48) reads the pull request again (8.6). For the usual
 2 GitHub requests it starts at once: undo brings the old board back. On a
-pull request that costs more (oven-sh/bun#30412, for one), an
-icon has no room to say the cost, so the first press holds Rebuild down
-(`--shade` fill, its icon in the foreground) and the toolbar's line says
-`Rebuilding reads 2,188 files: 23 of 60 GitHub requests. Press Rebuild
-again to start.`; the second press starts it; Esc or any other control
-lets it go. Holding is the panel's own state. The press that sends
-`rebuild` turns Rebuild off at once, before the driver's next view, so a
-double press asks once. Under way, Rebuild is off and the line shows the
-loading view's turning mark and the step's words (`Reading 4 changed
-files`), a step too long for the line ending in `…`; on another board's
-reading view, the words name the board being rebuilt (`honojs/hono#5513
-· Reading 4 changed files`). The rest of the panel and the old board keep
-working.
+pull request that costs more (oven-sh/bun#30412, for one), an icon has no
+room to say the cost, so it asks first, in a confirm (below): `Rebuild
+reads 2,188 files: 23 of 60 GitHub requests. Start it?`, and only ✓ starts
+it. The press or the ✓ that sends `rebuild` turns Rebuild off at once,
+before the driver's next view, so a double press asks once; after ✓, focus
+goes to Overview, the next control that can take it while the rebuild
+runs. Under way, Rebuild is off and the line shows the loading view's
+turning mark and the step's words (`Reading 4 changed files`), a step too
+long for the line ending in `…`; on another board's reading view, the
+words name the board being rebuilt (`honojs/hono#5513 · Reading 4 changed
+files`). The rest of the panel and the old board keep working.
 
 **Clear** (8.7) takes the board off the canvas and goes Home. It always
-asks first, as Rebuild does on a costly pull request: the first press
-holds Clear down (the same `--shade` fill) and the toolbar's line says
-`Clear removes this PR's 10 cards and their lines. Your notes stay. Press
-Clear again.` (`this PR's card` for a board of one card); the second press
-sends `clear`, turns Clear off at once, and the start view comes back
-with the field focused, as after Home. Esc or any other control lets it
-go, and so does the panel moving to another pull request, so a second
-press never clears a board the line didn't name. Holding one of Rebuild
-and Clear lets the other go. Clear is off while a rebuild runs.
+asks first: `Clear this PR's 10 cards and lines? Your notes stay.` (`Clear
+this PR's card?` for a board of one card). Only ✓ sends `clear`; Clear
+stays off until the start view comes back with the field focused, as after
+Home. Clear is off while a rebuild runs.
+
+**The confirm** (owner requests 11 to 13) takes the toolbar's line
+(7.3.4): the question at left, 12/16 in the foreground, in two lines
+broken where each fits beside the buttons, the question and then what
+stays or what it costs; at its right end ✓ and ✗, 28 × 30 icon buttons 4
+apart, ✗ under Next's right edge. They are Lucide `check` and `x` stroked
+2.5 in the cards' `--add` green and `--del` red, on a 14 % tint of their
+colour, 26 % on hover: the icon stays 3.5:1 or more on its tint in both
+themes. ✓ goes ahead, the only way to; ✗ only dismisses. The control that
+asked shows pressed (`--shade`, its icon in the foreground) and is off,
+without the faded look (opacity .4) of a button that is off, so a second
+press, the second click of a double click too, does nothing, and focus
+stays on ✗ (its `pointerdown` is cancelled, which Chrome would otherwise
+take as a reason to move focus). ✗, Esc, any other control, or the panel
+moving to another pull request dismisses it; pressing Rebuild while Clear
+asks, or Clear while Rebuild does, asks the new question instead. It pops
+in, 120 ms of fade from a 0.96 scale, and appears at once where motion is
+reduced. It is a `role="group"` named by its question, ✓ named `Clear
+board` or `Rebuild` and ✗ `Cancel`; focus moves to ✗, the safe answer, and
+Enter or Space press the focused one. After ✗ or Esc, or when it closes
+while it has focus, the control that asked takes focus back. The confirm
+is the panel's own state: the driver hears only `clear` or `rebuild`.
 
 **Overview** (4.4) and **Description** (4.5) move the camera; Previous and
 Next step (4.2).
 
 7.3.4 **The toolbar's line,** above the buttons, margin 0 0 8, shows only
-when needed: a rebuild's progress (12/16 muted, `role="status"`), a held
-Rebuild's cost or a held Clear's words (the same), or an error from an
-action in the reading view (the start view's error box, `role="alert"`): a
-rebuild that failed, or a step, a follow or Read all that did. It clears
-at the reader's next action, in the panel or a click on the board. A
-failed rebuild leaves the board as it was; one that fails while the reader
-is on another board says so on that board's line, `honojs/hono#5513 ·
-failed: GitHub can't find this PR any more.`
+when needed: a rebuild's progress (12/16 muted, `role="status"`), a
+confirm (7.3.3), or an error from an action in the reading view (the start
+view's error box, `role="alert"`): a rebuild that failed, or a step, a
+follow or Read all that did. It clears at the reader's next action, in the
+panel or a click on the board. A failed rebuild leaves the board as it
+was; one that fails while the reader is on another board says so on that
+board's line, `honojs/hono#5513 · failed: GitHub can't find this PR any
+more.`
 
-7.3.5 **Keys:** `←` and `→` step, `Esc` closes Read all and lets a held
-Rebuild or Clear go, while the reading view has focus; but in the
-description or the link names, any region that scrolls (`.scroll`), `←`
-and `→` are left to it, so a wide code block or table scrolls sideways
+7.3.5 **Keys:** `←` and `→` step; `Esc` dismisses an open confirm, and
+only that, else it closes Read all; while the reading view has focus. In
+the description or the link names, any region that scrolls (`.scroll`),
+`←` and `→` are left to it, so a wide code block or table scrolls sideways
 from the keyboard (UI review round 1). No other key: the cut list keeps
 the `Home` key out. Tab: the card area's controls (`Read all`, the link
-names, or the description's own summaries), then Home, Rebuild, Clear,
-Overview, Description, Previous, Next.
+names, or the description's own summaries), then ✓ and ✗ while a confirm
+is open, then Home, Rebuild, Clear, Overview, Description, Previous, Next.
 
 7.3.6 **Messages** from the panel: `ready`, `open`, `start` (Home), `next`,
 `previous`, `overview`, `description`, `follow`, `read-all`, `close`,
@@ -2116,8 +2131,9 @@ which snapshots before every scene command: the add, then the removal,
 in that order, so a failed add leaves the old board whole. A removal the
 rebuild made is not the reader's: the board stays picked up. The panel's
 view carries `rebuildCost`, `{ files, requests }` when reading GitHub
-again costs more than 2 requests (1 plus a page per 100 files), else
-null, and `rebuilding`, the loading step's words while a rebuild runs;
+again costs more than 2 requests (1 plus a page per 100 files), and the
+panel asks first then (7.3.3), else null, and `rebuilding`, the loading
+step's words while a rebuild runs;
 the reading view stays. Any failure (GitHub, the parser, the pin) leaves
 the old board as it was, puts the error on the toolbar's line, `GitHub
 can't find this PR any more.` when it is gone, and clears it at the
@@ -2141,8 +2157,8 @@ the pull request; the panel picks up the newest, last in Drawdy's scene
 order, and no board is removed for it: the next Rebuild removes both
 when they share a commit (UI review round 2).
 
-8.7 **Clear** (the toolbar's control is 7.3.3). `clear` from the panel
-removes the board being read: the elements whose mark names its pull
+8.7 **Clear** (the toolbar's control is 7.3.3). `clear` from the panel,
+sent only by its confirm's ✓, removes the board being read: the elements whose mark names its pull
 request at its head commit, its cards, strings and labels, read just
 before, in one `remove-drawdy-elements` call, so one undo brings the
 board back, and a click on one of its cards then reads it again. A note
@@ -2176,7 +2192,7 @@ description in its own column, the board landing on the code
 3.3.4); and the panel's states: the start view with its 14 example rows,
 loading, reading at the PR card (its whole description), at `#dispatch()`
 (step 1) and at `compose()` (names in their strings' colours), a rebuild
-under way, held for its cost and failed, excalidraw's long description
+under way, asking with its cost and failed, Clear asking, excalidraw's long description
 and a card with three string colours, and a failure under the field;
 `panel-home-*.png` show the start view as Home leaves it, the field
 focused, and `panel-focus-*.png` Rebuild with keyboard focus and its
@@ -2547,8 +2563,8 @@ the dev server on a local board. G: the score gate, outside the repository
     posts `start`; the start view then has the field focused, and there is
     no field or popover in the reading view. After `start` the board
     stays, and a click on one of its cards brings the reading view back.
-    Rebuild on a 2,188-file pull request: the first press posts nothing
-    and shows the cost line; Esc releases it; the second press posts
+    Rebuild on a 2,188-file pull request: the press posts nothing and
+    opens its confirm with the cost; Esc dismisses it; ✓ posts
     `rebuild`; under way, Rebuild is off and the line shows the step. Every
     icon is a Lucide SVG, with no `‹` or `›` glyph. The protocol accepts
     only the messages in 7.3.6. No context menu is registered.
@@ -2561,7 +2577,7 @@ the dev server on a local board. G: the score gate, outside the repository
     states match 7.2 and 7.3 and the toolbar design's frames
     (`SCRATCH/toolbar/png`): the PR card current with its whole
     description, steps with names in their strings' colours, a rebuild
-    under way, held and failed, and keyboard focus with a tooltip. Each of the 14 examples' boards, rendered from
+    under way, asking and failed, Clear asking, and keyboard focus with a tooltip. Each of the 14 examples' boards, rendered from
     a saved copy (9.1), reads well and draws strings.
 20. (L) At 1920 × 1080, on a dark board in a light browser: the board
     arrives in one add call, cards dark; the PR card shows hono's
@@ -2701,21 +2717,24 @@ the dev server on a local board. G: the score gate, outside the repository
     javac's sure calls found; the other groups give the same numbers as
     before, and hono#5513's and excalidraw#12237's review and plan stay
     as they were, byte for byte.
-35. (T, C, G, L) Clear (7.3.3, 8.7). T: the first press holds Clear and
-    says on the line what it removes, posting nothing, and no tooltip
-    covers the line; Esc, another control or the panel moving to another
-    pull request lets it go, and holding Rebuild lets it go too; the
-    second press posts `clear` and turns Clear off, and the start view
-    then has the field focused; Clear is off while a rebuild runs. On
-    hono: one removal of exactly the board's elements, the reader's note
-    kept, the board not read again for Drawdy's report of the removal,
-    the start view; opening the PR again costs 1 GitHub request, no file
-    read and one add; one undo and a click on a card read it again; a
-    `clear` while a rebuild runs removes nothing, and the rebuild lands.
-    In Chrome, the toolbar at `27 / 31` keeps its five icon buttons 28
-    wide, the stepper where it was and 19 px clear before Previous. C:
-    the marketplace bundle does the same on hono. G: no link changes.
-    L: on drawdy.io, light and dark, Clear takes hono's 10 cards off, a
-    rectangle of the reader's stays, one ⌘Z brings the board back, a
-    click on its PR card reads it again, and opening it again costs 1
-    GitHub request.
+35. (T, C, G, L) Clear (7.3.3, 8.7). T: Clear asks first, its question
+    and ✓ ✗ in the toolbar's line, posting nothing, Clear pressed and
+    off, focus on ✗, no tooltip over the question; a double click sends
+    nothing; only ✓ posts `clear`, and the start view then has the field
+    focused; ✗, Esc, another control or the panel moving to another pull
+    request dismisses it, focus back on Clear; Rebuild's confirm takes
+    its place; Clear is off while a rebuild runs. On hono: one removal of
+    exactly the board's elements, the reader's note kept, the board not
+    read again for Drawdy's report of the removal, the start view;
+    opening the PR again costs 1 GitHub request, no file read and one
+    add; one undo and a click on a card read it again; a `clear` while a
+    rebuild runs removes nothing, and the rebuild lands. In Chrome, the
+    toolbar at `27 / 31` keeps its five icon buttons 28 wide, the stepper
+    where it was and 19 px clear before Previous, and each confirm's
+    question sets in two lines beside ✓ and ✗ at its widest (32 cards;
+    3,000 files and 31 requests), ✗ under Next's right edge. C: the
+    marketplace bundle does the same on hono, Clear pressed in its own
+    panel and ✓ answering. G: no link changes. L: on drawdy.io, light and
+    dark, Clear takes hono's 10 cards off, a rectangle of the reader's
+    stays, one ⌘Z brings the board back, a click on its PR card reads it
+    again, and opening it again costs 1 GitHub request.

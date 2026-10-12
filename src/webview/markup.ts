@@ -115,7 +115,7 @@ code { padding: 0 3px; border-radius: 4px; font-size: 11.5px; line-height: 1; ba
 @keyframes open { from { grid-template-rows: 0fr; } }
 @keyframes shut { to { grid-template-rows: 0fr; } }
 @keyframes spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .steps svg, .line svg, .rows-wrap { animation: none !important; } .warnings-wrap, .warnings-list { transition: none !important; } }
+@media (prefers-reduced-motion: reduce) { .steps svg, .line svg, .rows-wrap, .ask { animation: none !important; } .warnings-wrap, .warnings-list { transition: none !important; } }
 .sr { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
 /* The one column never grows past the panel, whatever the description holds. */
@@ -163,7 +163,7 @@ code { padding: 0 3px; border-radius: 4px; font-size: 11.5px; line-height: 1; ba
 #pr-body .none { color: var(--drawdy-muted-foreground); font-style: italic; }
 
 .tools { padding: 8px 14px; border-top: 1px solid var(--drawdy-border); }
-.tools .error, .line { margin: 0 0 8px; }
+.tools .error, .line, .ask { margin: 0 0 8px; }
 .line { display: flex; align-items: center; gap: 8px; font-size: 12px; line-height: 16px; color: var(--drawdy-muted-foreground); }
 .line svg { flex: none; width: 16px; height: 16px; }
 .line.busy span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -177,9 +177,20 @@ code { padding: 0 3px; border-radius: 4px; font-size: 11.5px; line-height: 1; ba
 .sep { width: 1px; height: 16px; margin: 0 4px; background: var(--shade); }
 .icon[aria-current="true"] { color: var(--drawdy-foreground); }
 .icon[aria-current="true"]::before { content: ""; position: absolute; left: 6px; right: 6px; bottom: 2px; height: 2px; border-radius: 1px; background: currentColor; }
-/* Rebuild or Clear held after its first press, until the second; the line says what it does, so its tooltip, over the line, stays away. */
-#rebuild.armed, #clear.armed { background: var(--shade); color: var(--drawdy-foreground); }
-#rebuild.armed::after, #clear.armed::after { display: none; }
+/* Rebuild or Clear while its confirm is open: pressed, and off without the faded look; its tooltip would cover the question. */
+#rebuild.asking, #clear.asking { background: var(--shade); color: var(--drawdy-foreground); opacity: 1; }
+#rebuild.asking::after, #clear.asking::after { display: none; }
+/* A confirm in the line's place: the question, then ✓ (green, goes ahead) and ✗ (red, only dismisses), 28 × 30 as the toolbar's icons, their colour's tint behind and a stronger one on hover. It pops in. */
+.ask { display: flex; align-items: center; gap: 4px; transform-origin: 100% 50%; animation: ask .12s ease-out; }
+.ask p { flex: 1; min-width: 0; margin: 0 6px 0 0; font-size: 12px; line-height: 16px; }
+.ask p span { display: block; }
+.ask button { flex: none; width: 28px; height: 30px; display: grid; place-items: center; margin: 0; padding: 0; border: 0; border-radius: var(--drawdy-radius-md); }
+.ask svg { width: 16px; height: 16px; stroke-width: 2.5; }
+#ask-yes { color: var(--add); background: color-mix(in srgb, var(--add) 14%, transparent); }
+#ask-yes:hover { background: color-mix(in srgb, var(--add) 26%, transparent); }
+#ask-no { color: var(--del); background: color-mix(in srgb, var(--del) 14%, transparent); }
+#ask-no:hover { background: color-mix(in srgb, var(--del) 26%, transparent); }
+@keyframes ask { from { opacity: 0; transform: scale(.96); } }
 [data-tip] { position: relative; }
 [data-tip]::after { content: attr(data-tip); position: absolute; bottom: calc(100% + 8px); left: 0; z-index: 1; padding: 3px 8px; border-radius: var(--drawdy-radius-sm); background: var(--drawdy-foreground); color: var(--drawdy-background); font: 11.5px/16px ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity .1s; }
 .step[data-tip]::after { left: auto; right: 0; }
@@ -266,6 +277,11 @@ export const PANEL_BODY = `
     <div class="tools">
         <p id="tools-line" class="line" role="status" hidden></p>
         <p id="tools-error" class="error" role="alert" hidden></p>
+        <div id="tools-ask" class="ask" role="group" aria-labelledby="ask-words" hidden>
+            <p id="ask-words"><span></span> <span></span></p>
+            <button id="ask-yes" type="button" aria-label="Clear board">${icon("check", 16)}</button>
+            <button id="ask-no" type="button" aria-label="Cancel">${icon("x", 16)}</button>
+        </div>
         <nav class="bar" aria-label="PR">
             ${homeButton("home")}
             ${toolButton("rebuild", "icon", "Rebuild", "Rebuild this board from GitHub", "refresh-cw")}

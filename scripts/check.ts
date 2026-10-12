@@ -6,7 +6,8 @@
  *    script (src/worker/script.ts) behind its sources;
  * 3. boots the bundle in a fake Drawdy host, runs the generated webview in jsdom until it reports `ready`, opens a
  *    saved PR (honojs/hono#5513) from a fake GitHub and jsDelivr, and walks the board: the one add call, the
- *    strings, the steps, Description, the link names' colours, Read all, Home, a rebuild and Clear. Node has no Worker, so
+ *    strings, the steps, Description, the link names' colours, Read all, Home, a rebuild and Clear, pressed in the bundled
+ *    panel itself, its confirm answered with ✓. Node has no Worker, so
  *    the parser worker's script runs on the driver's thread, as where no worker can start. Then it boots the bundle
  *    again, as after a reload, and checks the board works with the panel never opened and nothing from jsDelivr;
  * 4. checks a 32-card board's add payload stays small;
@@ -155,6 +156,28 @@ const runWebview = async (html: string): Promise<string[]> => {
     dom.window.eval(script);
     await wait(50);
     return posted;
+};
+
+/**
+ * The webview's page in jsdom, as the reader sees it: `show` hands it a view the driver sent, and what the reader then
+ * presses comes back in `posted`, the panel's own `ready` left out.
+ */
+const panelPage = async (html: string) => {
+    const script = /<script type="module">([\s\S]*)<\/script>/.exec(html)?.[1];
+    if (!script) throw new Error("the webview HTML has no module script");
+    const dom = new JSDOM(html.replace(/<script type="module">[\s\S]*<\/script>/, ""), { runScripts: "outside-only" });
+    const posted: { type: string }[] = [];
+    let listener: (message: unknown) => void = () => undefined;
+    Object.assign(dom.window, {
+        acquireDrawdyApi: () => ({
+            postMessage: (message: { type: string }) => message.type !== "ready" && posted.push(message),
+            onMessage: (f: (message: unknown) => void) => ((listener = f), () => undefined),
+        }),
+    });
+    dom.window.eval(script);
+    await wait(20);
+    const byId = (id: string) => dom.window.document.getElementById(id) as HTMLElement;
+    return { posted, byId, active: () => dom.window.document.activeElement?.id, show: (view: unknown) => listener({ type: "view", view }) };
 };
 
 const bootsWithItsPanelAndIcon = async () => {
@@ -397,8 +420,19 @@ const rebuilds = async () => {
 const clears = async () => {
     const ours = () => [...host.elements].filter(([, e]) => e.schema.meta?.prBlackboard).map(([id]) => id);
     const before = ours();
+    // Clear pressed in the bundled panel: it asks, focus on ✗, and only ✓ sends `clear` on to the driver.
+    const page = await panelPage((webview as unknown as { html: string }).html);
+    page.show(shown());
+    page.byId("clear").click();
+    page.byId("clear").click();
+    const asked = !page.byId("tools-ask").hidden && page.active() === "ask-no" && page.posted.length === 0;
+    page.byId("ask-yes").click();
+    expectThat(
+        asked && page.posted.length === 1 && page.posted[0].type === "clear",
+        `the bundled panel asks before Clear, focus on ✗, a double click sends nothing, and ✓ sends ${JSON.stringify(page.posted)}`
+    );
     const clearing = host.calls.length;
-    await tell({ type: "clear" }, 100);
+    await tell(page.posted[0], 100);
     const scene = host.calls.slice(clearing).filter((c) => /^command:scene:(add|remove|update)-/.test(c.type));
     const removed = new Set<string>(scene[0]?.req.drawdyElementIds ?? []);
     expectThat(
