@@ -1,6 +1,6 @@
 {
     "name": "pr-blackboard",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "description": "Drawdy extension that lays a GitHub PR out as one Drawdy board.",
     "author": "Phureewat A <a.phureewat@gmail.com>",
     "license": "MIT",
