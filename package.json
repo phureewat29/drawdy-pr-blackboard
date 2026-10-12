@@ -1,7 +1,7 @@
 {
     "name": "pr-blackboard",
-    "version": "0.1.0",
-    "description": "Drawdy extension: pin a public GitHub pull request to the board as an investigation board of linked code cards",
+    "version": "1.0.0",
+    "description": "Drawdy extension: pin a public GitHub PR to the board as an investigation board of linked code cards",
     "author": "Phureewat A <a.phureewat@gmail.com>",
     "license": "MIT",
     "private": true,

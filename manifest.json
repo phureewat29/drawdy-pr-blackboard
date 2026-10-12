@@ -1,8 +1,8 @@
 {
     "driverId": "a.pr-blackboard",
     "driverName": "PR Blackboard",
-    "driverVersion": "0.1.0",
-    "description": "Pin a public GitHub pull request to your board like an investigation board: the PR, each changed function, the code that calls it and the tests as cards, joined by labelled strings. Follow the strings, step through in board order, and make notes with Drawdy's own sticky notes and pen.",
+    "driverVersion": "1.0.0",
+    "description": "Pin a public GitHub PR to your board like an investigation board: the PR, each changed function, the code that calls it and the tests as cards, joined by labelled strings. Follow the strings, step through in board order, and make notes with Drawdy's own sticky notes and pen.",
     "icon": "assets/icon.png",
     "main": "main.js",
     "permissions": ["dom", "scene", "storage"]
