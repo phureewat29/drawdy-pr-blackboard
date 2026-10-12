@@ -4,7 +4,8 @@
  * marketplace builds the extension from src/index.ts alone and allows no
  * import but @drawdy/driver-protocol, so the worker's code reaches the
  * driver as a string, which it starts as a worker from a blob: URL
- * (src/driver/parser.ts).
+ * (src/driver/parser.ts). The script is minified: the marketplace can't
+ * shrink a string, and it is most of the bundle's 1 MB.
  *
  * Usage: node scripts/worker.ts          write it, when it is behind its sources
  *        node scripts/worker.ts --check  fail when it is behind its sources
@@ -27,7 +28,7 @@ export const workerScriptFile = async (): Promise<string> => {
         format: "iife",
         platform: "browser",
         target: "es2020",
-        minify: false,
+        minify: true,
         write: false,
         logLevel: "silent",
     });

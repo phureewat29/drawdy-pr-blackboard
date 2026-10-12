@@ -141,7 +141,7 @@ An uncertain link is neither drawn nor listed.
 | `lib/symbols.ts` | Cards by line patterns, for files no parser reads (2.2.7), with each pack's patterns; card names (`labelOf`); `testCases` | |
 | `driver/grammars.ts` | The parser's files: the pins (the runtime's, and each pack's grammars), the download, kv-storage, the SHA-256 check (2.2.2) | |
 | `worker/serve.ts` | The parser worker (2.2.2): the read tier, the parse, the links and the review with its board's plan, asking the driver for the parser's files | |
-| `worker/script.ts` | `serve` and all it uses, bundled by `npm run worker` into one script kept as text; a test and `npm run check` fail while it is behind its sources | |
+| `worker/script.ts` | `serve` and all it uses, bundled and minified by `npm run worker` into one script kept as text; a test and `npm run check` fail while it is behind its sources | |
 | `driver/parser.ts` | Starts the worker from that script, or runs the script on the driver's thread where no worker starts; answers its asks for files; reports the download | |
 | `driver/words.ts` | `inWords`: an error whose message the panel shows as it is; `explain` and `failureOf`: any failure in the reader's words | the runtime's `IN_WORDS` |
 | `driver/open.ts` | `loadReview`: the pull request and its files from GitHub, then the parser's review and plan; `reviewAt`, a pinned board's review; `pinBoard`, the one add call | |

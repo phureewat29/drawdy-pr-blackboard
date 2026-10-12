@@ -24,7 +24,7 @@ npm run check          # the marketplace build, size and smoke test
 npm run build          # dist/a-pr-blackboard.drawdyx
 npm run preview        # serve the marketplace build on :5174
 npm run preview:board  # render a board to PNG (needs Google Chrome)
-npm run worker         # bundle the parser worker into src/worker/script.ts
+npm run worker         # bundle and minify the parser worker into src/worker/script.ts
 npm run icon -- <512px.png> <256px.png> <64px.png>
 ```
 
