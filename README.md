@@ -12,7 +12,7 @@ reaches, and from every test to the code it covers. The board reads left to
 right, from where the change starts to the code it calls, so you can walk
 through a big PR one card at a time.
 
-![honojs/hono#5513 on the board: step through it card by card, jump along a line from the panel, open the overview, then boards from Python, Go and JavaScript PRs](https://raw.githubusercontent.com/phureewat29/drawdy-pr-blackboard/main/.github/assets/demo.gif)
+![honojs/hono#5513 on the board: step through it card by card, jump along a line from the panel, open the overview, then big PRs in TypeScript, JavaScript, Python, Go and Rust](https://raw.githubusercontent.com/phureewat29/drawdy-pr-blackboard/main/.github/assets/demo.gif)
 
 ## Why a board
 
