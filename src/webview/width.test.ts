@@ -143,7 +143,7 @@ const measure = (): Record<string, Measure> => {
         parent.postMessage({ id: ${JSON.stringify(id)}, width: document.documentElement.scrollWidth, next: box(document.getElementById("next")),
             codeScrolls: shown(pre) ? pre.scrollWidth > pre.clientWidth : null, tableScrolls: shown(table) ? table.scrollWidth > table.clientWidth : null,
             link: shown(link) ? { lines: link.getClientRects().length, right: Math.max(...[...link.getClientRects()].map((r) => r.right)) } : null,
-            rights: ["name", "path"].map((i) => document.getElementById(i)).concat([...document.querySelectorAll("#links button, #load-steps li, .annotation, #load-tools button")]).filter(shown).map((el) => el.getBoundingClientRect().right),
+            rights: ["name", "path"].map((i) => document.getElementById(i)).concat([...document.querySelectorAll("#links button, #load-steps li, .annotation, .summary, #load-tools button")]).filter(shown).map((el) => el.getBoundingClientRect().right),
             files: [...document.querySelectorAll(".file")].map((f) => ({ text: f.textContent, over: f.scrollWidth > f.clientWidth })) }, "*");
     }, 300));`;
     const frames = Object.entries(VIEWS).map(([id, view]) => {

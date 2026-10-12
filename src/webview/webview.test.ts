@@ -272,6 +272,27 @@ describe("panel", () => {
         expect($("load-tools").hidden).toBe(true);
     });
 
+    it("heads the warnings with one row that counts them and opens or shuts them: open while loading, so each arrives in sight", () => {
+        const summary = () => $("load-notes").querySelector<HTMLButtonElement>(".summary")!;
+        panel.show({ ...readyView, phase: "loading", loading: reading, annotations: [] });
+        expect(summary().parentElement!.hidden).toBe(true);
+        panel.show({ ...readyView, phase: "loading", loading: reading, annotations: [NOT_READ] });
+        expect([summary().tagName, summary().type, summary().textContent, summary().getAttribute("aria-expanded"), summary().getAttribute("aria-controls")]).toEqual(["BUTTON", "button", "1 warning", "true", "load-warnings"]);
+        expect($("load-warnings").querySelectorAll(".annotation")).toHaveLength(1);
+        panel.show({ ...readyView, phase: "loading", loading: reading, annotations: [CARD_LIMIT, NOT_READ, RATE_LIMITED] });
+        expect([summary().textContent, summary().parentElement!.classList.contains("open")]).toEqual(["2 warnings", true]);
+        // Lucide triangle-alert first, chevron-down last; the row is plain words, with nothing else in it to press.
+        expect([...summary().querySelectorAll("svg")].map((svg) => svg.firstElementChild!.getAttribute("d"))).toEqual(["m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3", "m6 9 6 6 6-6"]);
+        // The reader shuts them: the next view keeps them shut, and the failure, never under the row, stays.
+        summary().click();
+        panel.show({ ...readyView, phase: "loading", loading: reading, annotations: [CARD_LIMIT, NOT_READ, RATE_LIMITED] });
+        expect([summary().getAttribute("aria-expanded"), summary().parentElement!.classList.contains("open")]).toEqual(["false", false]);
+        expect([...$("load-notes").querySelectorAll(".failures .annotation")].map((a) => a.querySelector(".title")!.textContent)).toEqual([RATE_LIMITED.title]);
+        expect(css).toContain(".warnings-wrap { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .14s ease-in; }");
+        expect(css).toContain(".warnings-list { min-height: 0; overflow: hidden; visibility: hidden; transition: visibility 0s .14s; }");
+        expect(post).not.toHaveBeenCalled();
+    });
+
     it("keeps a failed open on the loading view, its failed step and why in the error box, with Home and Try again, which opens the PR again", () => {
         panel.show({ ...readyView, phase: "loading", tag: { label: "oven-sh/bun#30412", colour: "#A67F38" }, loading: [{ key: "pr", label: "Reading the PR", note: "23 GitHub requests", state: "failed", meta: "1.2 s" }, reading[2], reading[3]], annotations: [RATE_LIMITED] });
         const failure = document.querySelector("#load-notes .failures .annotation")!;
@@ -363,6 +384,31 @@ describe("panel", () => {
         expect([...$("card").children].map((c) => c.id).filter((id) => ["about", "pr-notes", "pr-body"].includes(id))).toEqual(["about", "pr-notes", "pr-body"]);
         panel.show(readyView);
         expect($("pr-notes").hidden).toBe(true);
+    });
+
+    it("shuts the PR card's warnings under a row that counts them, and keeps each PR's open or shut while the panel lives", () => {
+        const withWarnings = (label: string, warnings: Annotation[]): PanelView => ({ ...readyView, tag: { label, colour: null }, current: -1, card: { ...(prCard as Exclude<PanelView["card"], CodeCard | null>), warnings } });
+        const summary = () => $("pr-notes").querySelector<HTMLButtonElement>(".summary")!;
+        const open = () => [summary().getAttribute("aria-expanded"), $("pr-warnings").parentElement!.parentElement!.classList.contains("open")];
+        panel.show(withWarnings("oven-sh/bun#30412", [CARD_LIMIT, NOT_READ]));
+        expect([summary().textContent, summary().getAttribute("aria-controls"), ...open()]).toEqual(["2 warnings", "pr-warnings", "false", false]);
+        summary().click();
+        expect(open()).toEqual(["true", true]);
+        // A step away and back, and the driver's views meanwhile, keep Bun's open; another PR's start shut.
+        panel.show(readyView);
+        panel.show(withWarnings("oven-sh/bun#30412", [CARD_LIMIT, NOT_READ]));
+        expect(open()).toEqual(["true", true]);
+        panel.show(withWarnings("honojs/hono#5513", [CARD_LIMIT]));
+        expect([summary().textContent, ...open()]).toEqual(["1 warning", "false", false]);
+        panel.show(withWarnings("oven-sh/bun#30412", [CARD_LIMIT, NOT_READ]));
+        expect(open()).toEqual(["true", true]);
+        // The row is a control like any other: a held Rebuild lets go. The driver hears nothing of it.
+        panel.show({ ...withWarnings("oven-sh/bun#30412", [CARD_LIMIT, NOT_READ]), rebuildCost: { files: 2188, requests: 23 } });
+        $("rebuild").click();
+        expect($("rebuild").classList.contains("armed")).toBe(true);
+        summary().click();
+        expect([$("rebuild").classList.contains("armed"), ...open()]).toEqual([false, "false", false]);
+        expect(post).not.toHaveBeenCalled();
     });
 
     it("ends the reading view in one toolbar: Home, Rebuild, a rule, Overview, Description, then Previous, the position and Next", () => {

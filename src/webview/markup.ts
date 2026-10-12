@@ -87,19 +87,30 @@ code { padding: 0 3px; border-radius: 4px; font-size: 11.5px; line-height: 1; ba
 .rows .active > svg circle + circle { fill: currentColor; }
 .steps .done > svg { color: var(--drawdy-primary-foreground); }
 .steps .done > svg circle { fill: var(--drawdy-primary); stroke: var(--drawdy-primary); }
-.steps .warning > svg, .annotation.warning svg { color: #090909; }
-.steps .warning > svg path:first-child, .annotation.warning svg path:first-child { fill: var(--amber); stroke: var(--amber); }
+.steps .warning > svg, .annotation.warning svg, .summary > svg:first-child { color: #090909; }
+.steps .warning > svg path:first-child, .annotation.warning svg path:first-child, .summary > svg:first-child path:first-child { fill: var(--amber); stroke: var(--amber); }
 .steps .failed > svg, .annotation.failure svg { color: #fff; }
 .steps .failed > svg circle, .annotation.failure svg circle { fill: var(--drawdy-destructive); stroke: var(--drawdy-destructive); }
 .rows .done > svg { color: var(--drawdy-muted-foreground); }
 .rows .warning > svg { color: var(--amber-ink); }
 .rows .failed > svg { color: var(--drawdy-destructive); }
-/* CI annotations: each a mark, a short title and a plain detail line. Warnings share one frame, a rule between them; a failure is the open's error box. */
+/* CI annotations: each a mark, a short title and a plain detail line. Warnings share one frame under a row that counts them and opens or shuts them, a rule between each; a failure is the open's error box, never shut. */
 .annotations { display: grid; gap: 8px; }
 .annotations > div:empty { display: none; }
-.warnings { border: 1px solid var(--drawdy-border); border-radius: var(--drawdy-radius-md); }
+.warnings { border: 1px solid var(--drawdy-border); border-radius: var(--drawdy-radius-md); overflow: hidden; }
+.summary { display: grid; grid-template-columns: 16px minmax(0, 1fr) 16px; column-gap: 10px; align-items: center; width: 100%; margin: 0; padding: 8px 10px; border: 0; background: transparent; text-align: left; }
+.summary:hover { background: var(--hover); }
+.summary:focus-visible { outline-offset: -2px; }
+.summary svg { width: 16px; height: 16px; }
+.summary svg:last-child { color: var(--drawdy-muted-foreground); }
+.warnings.open .summary svg:last-child { transform: rotate(180deg); }
+/* The list slides open and shut as the step rows do, and while shut is gone from the page's reading order. */
+.warnings-wrap { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .14s ease-in; }
+.warnings.open .warnings-wrap { grid-template-rows: 1fr; transition: grid-template-rows .18s ease-out; }
+.warnings-list { min-height: 0; overflow: hidden; visibility: hidden; transition: visibility 0s .14s; }
+.warnings.open .warnings-list { visibility: visible; transition: none; }
+.warnings-list > .annotation { border-top: 1px solid var(--drawdy-border); }
 .annotation { display: grid; grid-template-columns: 16px minmax(0, 1fr); column-gap: 10px; padding: 8px 10px; }
-.annotation + .annotation { border-top: 1px solid var(--drawdy-border); }
 .annotation.failure { border-radius: var(--drawdy-radius-md); background: color-mix(in srgb, var(--drawdy-destructive) 14%, transparent); }
 .annotation svg { width: 16px; height: 16px; margin-top: 1px; }
 .annotation p { margin: 0; }
@@ -112,7 +123,7 @@ code { padding: 0 3px; border-radius: 4px; font-size: 11.5px; line-height: 1; ba
 @keyframes open { from { grid-template-rows: 0fr; } }
 @keyframes shut { to { grid-template-rows: 0fr; } }
 @keyframes spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .steps svg, .line svg, .rows-wrap { animation: none !important; } }
+@media (prefers-reduced-motion: reduce) { .steps svg, .line svg, .rows-wrap { animation: none !important; } .warnings-wrap, .warnings-list { transition: none !important; } }
 .sr { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
 /* Reading: the pull request, the current card (it scrolls), then the toolbar with every control. The one column never grows past the panel, whatever the description holds. */
@@ -213,6 +224,10 @@ const exampleRows = SUGGESTIONS.map((s) => {
     return `<li><button type="button" data-url="${s.url}" data-label="${escapeHtml(s.label)}" title="${escapeHtml(s.url)}">${line}<span>${segmentsHtml(s.title)}</span></button></li>`;
 }).join("");
 
+/** A frame of warnings: one row that counts them and opens or closes the list under it, which the panel fills. */
+const warningsGroup = (list: string) =>
+    `<div class="warnings" hidden><button class="summary" type="button" aria-expanded="false" aria-controls="${list}">${icon("triangle-alert", 16)}<span></span>${icon("chevron-down", 16)}</button><div class="warnings-wrap"><div id="${list}" class="warnings-list"></div></div></div>`;
+
 export const PANEL_BODY = `
 <section id="start" hidden>
     <div class="field">${icon("link", 14)}<input id="start-url" type="text" inputmode="url" enterkeyhint="go" autocomplete="off" spellcheck="false" aria-label="GitHub PR link" placeholder="Paste a GitHub PR link" /></div>
@@ -223,7 +238,7 @@ export const PANEL_BODY = `
     <div class="load-body scroll">
         <span id="loading-tag" class="tag"></span>
         <ol id="load-steps" class="steps" aria-label="Steps"></ol>
-        <div id="load-notes" class="annotations" aria-live="polite"><div class="warnings"></div><div class="failures"></div></div>
+        <div id="load-notes" class="annotations" aria-live="polite">${warningsGroup("load-warnings")}<div class="failures"></div></div>
     </div>
     <p id="load-status" class="sr" aria-live="polite"></p>
     <div id="load-tools" class="tools" hidden>
@@ -254,7 +269,7 @@ export const PANEL_BODY = `
         <div id="path" class="path mono"></div>
         <div id="links" class="scroll"></div>
         <p id="about" class="about"></p>
-        <div id="pr-notes" class="annotations"><div class="warnings"></div></div>
+        <div id="pr-notes" class="annotations">${warningsGroup("pr-warnings")}</div>
         <div id="pr-body" class="md scroll"></div>
     </div>
     <div class="tools">

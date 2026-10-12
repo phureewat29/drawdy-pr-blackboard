@@ -197,23 +197,48 @@ export const createPanel = ({ post, document: doc }: PanelDeps): Panel => {
         paintRows(li, step);
     };
 
-    /** CI annotations: a warning's amber triangle, or a failure's red disc, then the title and a plain detail line; the warnings in one frame. */
+    /**
+     * Whether each PR's warnings are open, by its tag, while the panel lives:
+     * on the loading view they start open, so each comes into sight as it is
+     * found; at the PR card they start shut, one row that counts them.
+     */
+    const opened = { "load-notes": new Map<string, boolean>(), "pr-notes": new Map<string, boolean>() };
+    const OPEN_AT_FIRST = { "load-notes": true, "pr-notes": false };
+
+    /** Opens or shuts a frame of warnings: its row says which, and its list slides open or shut. */
+    const setOpen = (group: Element, open: boolean) => {
+        group.classList.toggle("open", open);
+        group.firstElementChild!.setAttribute("aria-expanded", String(open));
+    };
+
+    const syncNotes = (list: Element, notes: readonly Annotation[]) =>
+        sync(
+            list,
+            notes,
+            (n) => n.title,
+            (n) => h("div", { class: `annotation ${n.level}`, ...(n.level === "failure" ? { role: "alert" } : {}) }, mark(n.level === "failure" ? "mark-failed" : "mark-warning"), h("div", {}, h("p", { class: "title" }), h("p", { class: "detail" }))),
+            (el, n) => {
+                const [title, detail] = el.children[1].children;
+                setText(title, n.title);
+                setText(detail, n.detail);
+            }
+        );
+
+    /**
+     * CI annotations: a warning's amber triangle, or a failure's red disc,
+     * then the title and a plain detail line. The warnings share a frame
+     * under one row that counts them and opens or shuts them; a failure is
+     * never shut.
+     */
     const paintNotes = (box: HTMLElement, notes: readonly Annotation[]) => {
-        for (const [i, level] of (["warning", "failure"] as const).entries()) {
-            const group = box.children[i];
-            if (group)
-                sync(
-                    group,
-                    notes.filter((n) => n.level === level),
-                    (n) => n.title,
-                    () => h("div", { class: `annotation ${level}`, ...(level === "failure" ? { role: "alert" } : {}) }, mark(level === "failure" ? "mark-failed" : "mark-warning"), h("div", {}, h("p", { class: "title" }), h("p", { class: "detail" }))),
-                    (el, n) => {
-                        const [title, detail] = el.children[1].children;
-                        setText(title, n.title);
-                        setText(detail, n.detail);
-                    }
-                );
-        }
+        const at = box.id as keyof typeof opened;
+        const [group, failures] = box.children as unknown as [HTMLElement, HTMLElement | undefined];
+        const warnings = notes.filter((n) => n.level === "warning");
+        group.hidden = warnings.length === 0;
+        setText(group.querySelector(".summary > span")!, `${warnings.length.toLocaleString("en-US")} ${warnings.length === 1 ? "warning" : "warnings"}`);
+        setOpen(group, opened[at].get(view?.tag?.label ?? "") ?? OPEN_AT_FIRST[at]);
+        syncNotes(group.querySelector(".warnings-list")!, warnings);
+        if (failures) syncNotes(failures, notes.filter((n) => n.level === "failure"));
     };
 
     /**
@@ -379,6 +404,16 @@ export const createPanel = ({ post, document: doc }: PanelDeps): Panel => {
             focusField = true;
             act({ type: "start" });
         });
+    // A frame's row opens or shuts its warnings, and the panel keeps that for this PR while it lives.
+    for (const at of ["load-notes", "pr-notes"] as const) {
+        const group = byId(at).firstElementChild!;
+        group.firstElementChild!.addEventListener("click", () => {
+            release();
+            const open = !group.classList.contains("open");
+            opened[at].set(view?.tag?.label ?? "", open);
+            setOpen(group, open);
+        });
+    }
     // A failed open's Try again opens the same PR, by the tag it showed.
     byId("retry").addEventListener("click", () => {
         if (view?.tag) open(view.tag.label);

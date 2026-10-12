@@ -439,7 +439,9 @@ Bun's rewrite). Loading shows the tag, then the steps as a CI job lists
 them (`driver/progress.ts`): a mark per state, a count while a step runs
 or the time it took, a row per parser downloading and per changed file
 read (10 at most, then `and N more`), and the warnings found so far as CI
-annotations (`driver/warnings.ts`); a failed open stays there, at its
+annotations (`driver/warnings.ts`), in a frame whose first row counts
+them and opens or shuts them, open while loading and shut at the PR card,
+each PR's choice kept while the panel lives; a failed open stays there, at its
 failed step, with Home and Try again. The reading
 view is three rows: the header (tag, `+additions −deletions`, state,
 title); the card area, which scrolls: at a code card its name and chip,

@@ -1646,6 +1646,20 @@ and the PR card keeps them so in the reading view (7.3.1). What reading
 left out (not read, too long, not found) is kept for the reviews this
 session read; a stored review shows the rest.
 
+The frame opens and shuts (request 62): its first row counts the warnings,
+`3 warnings` or `1 warning`, beside the amber triangle, with a Lucide
+`chevron-down` at its right, pointing up while open. The whole row is the
+control: a `<button>` with `aria-expanded` and `aria-controls` naming the
+list, its hover the panel's `--hover`, its focus ring inside the frame.
+On the loading view the frame starts open, so each warning comes into
+sight as it is found; at the PR card it starts shut, one row 34 high. The
+panel keeps each PR's choice, by its tag, for as long as it lives, with
+nothing stored: a step away and back, or the driver's next view, leaves
+it as the reader set it. The list slides open in 0.18 s and shut in
+0.14 s, its height only, as the steps' rows do, and nothing else moves;
+shut, it is out of the reading order. A failure is never under the row:
+it stays whole, in the error box.
+
 **A failure** keeps the loading view (request 61): the step it failed on
 shows `circle-x` (a counted step, where it stopped: `9 / 23`), what ran
 beside it goes back to to-do, and why goes under the steps in the error
@@ -1672,8 +1686,9 @@ stroke: `link` in the field, `house`, `refresh-cw`, `scan` and
 `file-text` for Home, Rebuild, Overview and Description, `chevron-left`
 and `chevron-right` for Previous and Next, `circle`, `loader-circle`,
 `circle-check`, `triangle-alert` and `circle-x` for the loading steps, and
-`circle`, `circle-dot`, `check`, `triangle-alert` and `x` for their rows
-(`loader-circle` also on the toolbar's line while a rebuild runs), `x` for Read all's close button (an image of the
+`circle`, `circle-dot`, `check`, `triangle-alert` and `x` for their rows,
+`chevron-down` on the warnings' row (`loader-circle` also on the toolbar's
+line while a rebuild runs), `x` for Read all's close button (an image of the
 SVG, since a schema has no SVG node, stroked in the pinned theme's ink). The
 extension's own icon is the one exception: a generated image (requests
 43, 45 and 59: a stack of diff cards tied with a red string), `assets/icon.png` for the listing, 512 px,
@@ -1756,7 +1771,8 @@ panel's theme, and gives the panel, from the cards' palette, `--add`,
 The **PR card** (request 55), current wherever a board lands: an
 `.about` line, 11.5/16 muted, `usualoma · 4 files`, and under it, 10
 below, what the board can't show, the loading view's warnings in their
-frame (7.2.6), the card limit first (request 61). Then the whole description, as GitHub-like Markdown
+frame (7.2.6), the card limit first (request 61), shut until the reader
+opens it (request 62). Then the whole description, as GitHub-like Markdown
 (`markdownHtml(…, "page")`, rendered once per review by the driver): 13/20
 text, h1 16 and h2 15 with the bottom rule, h3 14; blocks 12 apart;
 headings 16 above, 8 below; lists 1.5em in; code blocks 11.5/17 mono and
@@ -1781,9 +1797,8 @@ area is never empty.
 ├──────────────────────────────┤
 │ dwelle · 11 files            │ about
 │ ┌──────────────────────────┐ │ the warnings, when the board
-│ │⚠ Card limit reached      │ │ can't show the whole PR
-│ │  The board holds 32 ca…  │ │
-│ └──────────────────────────┘ │
+│ │⚠ 1 warning             ⌄ │ │ can't show the whole PR: shut,
+│ └──────────────────────────┘ │ one row that opens them
 │ • Alt+click on the selected  │ the whole description,
 │   element (or group) selects │ scrolling
 │   …                          │
