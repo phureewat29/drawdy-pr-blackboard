@@ -7537,6 +7537,109 @@ export const WORKER_SCRIPT = `"use strict";
     }
     return -1;
   };
+  var inherentImpl = (t, fn) => {
+    const list = t.parent[fn];
+    const impl = list >= 0 && t.type[list] === "declaration_list" ? t.parent[list] : -1;
+    return impl >= 0 && t.type[impl] === "impl_item" && child(t, impl, "trait") < 0 ? impl : -1;
+  };
+  var typeArgs = (t, type) => t.type[type] === "generic_type" ? namedChildren(t, child(t, type, "type_arguments")).filter((c) => t.type[c] !== "lifetime" && !t.type[c].endsWith("comment")) : [];
+  var ownParams = (t, impl) => new Set(namedChildren(t, child(t, impl, "type_parameters")).flatMap((p) => t.type[p] === "type_parameter" || t.type[p] === "const_parameter" ? [textOf(t, child(t, p, "name"))] : []));
+  var forEvery = (t, impl) => {
+    const own = ownParams(t, impl);
+    return typeArgs(t, child(t, impl, "type")).every((a) => t.type[a] === "type_identifier" && own.delete(textOf(t, a)));
+  };
+  var typeParts = (t, n) => {
+    const out2 = [];
+    for (let c = t.first[n]; c >= 0; c = t.next[c]) {
+      if (t.type[c] === "lifetime") {
+        if (t.next[c] >= 0 && t.type[t.next[c]] === ",") c = t.next[c];
+      } else if (!t.type[c].endsWith("comment")) out2.push(c);
+    }
+    return out2;
+  };
+  var typeText = (t, n) => t.first[n] < 0 ? textOf(t, n) : typeParts(t, n).map((c) => typeText(t, c)).join(" ");
+  var covers = (mt, p, r, own, bound, names) => {
+    const rt2 = r.f.flat;
+    if (mt.type[p] === "type_identifier" && own.has(textOf(mt, p))) {
+      const was = bound.get(textOf(mt, p));
+      bound.set(textOf(mt, p), typeText(rt2, r.n));
+      return was === void 0 || was === typeText(rt2, r.n);
+    }
+    if (mt.type[p] !== rt2.type[r.n]) return false;
+    const ps = typeParts(mt, p);
+    const rs = typeParts(rt2, r.n);
+    if (ps.length === 0) {
+      if (rs.length > 0 || textOf(mt, p) !== textOf(rt2, r.n)) return false;
+      if (/^[A-Za-z_]\\w*$/.test(textOf(mt, p))) names.push(r);
+      return true;
+    }
+    return ps.length === rs.length && ps.every((c, i2) => covers(mt, c, { f: r.f, n: rs[i2] }, own, bound, names));
+  };
+  var defaultsOf = (f2, type) => {
+    const t = f2.flat;
+    const name2 = t.type[type] === "generic_type" ? child(t, type, "type") : type;
+    if (name2 < 0 || t.type[name2] !== "type_identifier") return [];
+    for (let s = scopeAround(f2, type); s; s = s.parent) {
+      const bs = s.names.get(textOf(t, name2));
+      if (!bs) {
+        if (s.kind === "module") return [];
+        continue;
+      }
+      const decl = bs.length === 1 && bs[0].unit ? bs[0].unit.node : -1;
+      if (decl < 0 || !(t.type[decl] === "struct_item" || t.type[decl] === "enum_item" || t.type[decl] === "union_item")) return [];
+      const params2 = namedChildren(t, child(t, decl, "type_parameters")).filter((p) => t.type[p] === "type_parameter" || t.type[p] === "const_parameter");
+      const names = new Set(params2.map((p) => textOf(t, child(t, p, "name"))));
+      return params2.map((p) => {
+        const d = child(t, p, t.type[p] === "type_parameter" ? "default_type" : "value");
+        return d >= 0 && !typeText(t, d).split(" ").some((x2) => names.has(x2)) ? { f: f2, n: d } : null;
+      });
+    }
+    return [];
+  };
+  var meaningAt = (f2, n, names) => {
+    for (let s = scopeAround(f2, n); s; s = s.parent) {
+      if (s.kind === "module") return s;
+      const scope = s;
+      if (names.some((x2) => scope.names.has(x2))) return null;
+    }
+    return null;
+  };
+  var isSelf = (t, n) => t.type[n] === "self" || (t.type[n] === "identifier" || t.type[n] === "type_identifier") && (textOf(t, n) === "self" || textOf(t, n) === "Self");
+  var pointee = (t, n) => {
+    let x2 = n;
+    while (x2 >= 0 && (t.type[x2] === "reference_type" || t.type[x2] === "pointer_type")) x2 = child(t, x2, "type");
+    return x2;
+  };
+  var writtenType = (t, receiver, declared) => {
+    let x2 = pointee(t, receiver >= 0 && isSelf(t, receiver) ? receiver : declared);
+    if (x2 >= 0 && isSelf(t, x2)) {
+      const impl = selfClass2(t, x2);
+      x2 = impl >= 0 && t.type[impl] === "impl_item" ? pointee(t, child(t, impl, "type")) : -1;
+    }
+    return x2 >= 0 && (t.type[x2] === "generic_type" || t.type[x2] === "type_identifier" || t.type[x2] === "scoped_type_identifier") ? x2 : -1;
+  };
+  var lendsTo = (call, receiver, declared, method, unitNode) => {
+    const mt = method.flat;
+    const impl = inherentImpl(mt, unitNode);
+    if (impl < 0) return true;
+    const type = writtenType(call.flat, receiver, declared);
+    const args2 = type >= 0 ? typeArgs(call.flat, type).map((n) => ({ f: call, n })) : [];
+    const own = child(mt, impl, "type");
+    const want = typeArgs(mt, own);
+    if (forEvery(mt, impl)) return args2.length <= want.length;
+    if (type < 0) return false;
+    if (call === method && type === own) return true;
+    if (args2.length < want.length) {
+      const defaults = defaultsOf(method, own);
+      for (let i2 = args2.length; i2 < want.length && defaults[i2]; i2++) args2.push(defaults[i2]);
+    }
+    const params2 = ownParams(mt, impl);
+    const bound = /* @__PURE__ */ new Map();
+    const names = [];
+    if (args2.length !== want.length || !want.every((p, i2) => covers(mt, p, args2[i2], params2, bound, names))) return false;
+    const meaning = meaningAt(method, own, names.map((x2) => textOf(x2.f.flat, x2.n)));
+    return meaning !== null && meaningAt(call, type, []) === meaning && names.every((x2) => meaningAt(x2.f, x2.n, [textOf(x2.f.flat, x2.n)]) === meaning);
+  };
   var RUST_TYPING = {
     hint: hint3,
     typeName: typeName3,
@@ -7565,7 +7668,8 @@ export const WORKER_SCRIPT = `"use strict";
       if (mode === null) return false;
       if (mode === "other" || modes.has("other")) return modes.size > 0;
       return FIRST[receiverKind(call, receiver, declared)][mode].some((m2) => modes.has(m2));
-    }
+    },
+    lendsTo
   };
   var RUST_RESOLVER = { typing: RUST_TYPING, moduleFiles: () => [] };
 
@@ -8051,10 +8155,14 @@ export const WORKER_SCRIPT = `"use strict";
       if (s.shape === "member" && s.ref !== "call" && ty.memberIsField?.(f2.flat, s.node)) return units.filter((u) => u.kind !== "function" && u.kind !== "method");
       if (ty.typeOnly?.(f2.flat, s.node)) return units.filter((u) => CLASSY.has(u.kind) || u.kind === "namespace");
       const modes = s.shape === "member" && ty.shadowed ? traitModesOf(f2).get(s.name) : void 0;
-      if (modes) {
+      const lends = s.shape !== "bare" && ty.lendsTo;
+      if (modes || lends) {
         const r = s.receiver;
         const declared = r >= 0 && f2.flat.type[r] === "identifier" ? bindingAt(s.scope, textOf(f2.flat, r), f2.flat.start[r])?.typeNode ?? -1 : -1;
-        return units.filter((u) => !ty.shadowed(f2.flat, r, declared, fileOfUnit.get(u.id).flat, u.node, modes));
+        return units.filter((u) => {
+          const g = fileOfUnit.get(u.id);
+          return (!lends || lends(f2, r, declared, g, u.node)) && (!modes || !ty.shadowed(f2.flat, r, declared, g.flat, u.node, modes));
+        });
       }
       return units;
     };
@@ -10644,11 +10752,11 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
         (p) => laneRank(p, review.files)[1],
         (p) => laneRank(p, review.files)[2]
       );
-      const covers = (t) => review.links.find((l3) => l3.from === t.id && l3.kind === "tests" && rest.some((p) => p.id === l3.to))?.to;
+      const covers2 = (t) => review.links.find((l3) => l3.from === t.id && l3.kind === "tests" && rest.some((p) => p.id === l3.to))?.to;
       const sequence = [];
       for (const p of ranked) {
-        if (p.kind === "test" && covers(p)) continue;
-        sequence.push(p, ...ranked.filter((t) => t.kind === "test" && covers(t) === p.id));
+        if (p.kind === "test" && covers2(p)) continue;
+        sequence.push(p, ...ranked.filter((t) => t.kind === "test" && covers2(t) === p.id));
       }
       const rowRight = codeLeft + Math.max(L2.minRowWidth, widest() - codeLeft);
       let x2 = codeLeft;
@@ -10656,7 +10764,7 @@ header { position: sticky; top: 0; z-index: 1; padding-right: \${CLOSE_ROOM}px; 
       let rowBottom = rowTop;
       sequence.forEach((p, i2) => {
         const size = sizeOf(p.id);
-        const gap2 = i2 > 0 && p.kind === "test" && covers(p) === sequence[i2 - 1].id ? L2.restTestSpacing : L2.restSpacing;
+        const gap2 = i2 > 0 && p.kind === "test" && covers2(p) === sequence[i2 - 1].id ? L2.restTestSpacing : L2.restSpacing;
         if (i2 > 0 && x2 + gap2 + size.width > rowRight) {
           rowTop = rowBottom + L2.restSpacing;
           x2 = codeLeft;

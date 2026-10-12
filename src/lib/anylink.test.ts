@@ -536,4 +536,52 @@ describe("Rust", () => {
         const cast = await targets({ "src/c.rs": "pub struct Version;\n\nimpl Version {\n    pub fn flags(&self) -> u32 {\n        0\n    }\n}\n\npub fn mask(x: u8, v: Version) {\n    assert_eq!(x as u32 | 1, v.flags());\n}\n" });
         expect(cast.filter((l) => l.includes(" call "))).toEqual(["src/c.rs:10 call src/c.rs:4"]);
     });
+
+    it("lends an impl for some of a type's instances only to a receiver proven one of them: `self`, `Self`, a name written with the same arguments (typst#4505's `Packed<FlowElem>`)", async () => {
+        const found = await targets({
+            "src/flow.rs":
+                "use crate::foundations::Packed;\nuse crate::model::ParElem;\n\npub struct FlowElem;\n\nimpl Packed<FlowElem> {\n    pub fn layout(&self) -> u32 {\n        self.measure()\n    }\n\n    fn measure(&self) -> u32 {\n        Self::size(self)\n    }\n\n    fn size(&self) -> u32 {\n        0\n    }\n\n    fn same(&self, other: &Self) -> u32 {\n        other.size()\n    }\n}\n\nimpl std::fmt::Debug for Packed<FlowElem> {\n    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {\n        self.layout();\n        Ok(())\n    }\n}\n\npub fn handle(par: &Packed<ParElem>, flow: &'static Packed<FlowElem>, flows: &[Packed<FlowElem>]) -> u32 {\n    par.layout();\n    flow.layout();\n    Packed::layout(flow);\n    flows[0].layout()\n}\n\nimpl std::fmt::Display for &Packed<FlowElem> {\n    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {\n        self.size();\n        Ok(())\n    }\n}\n",
+        });
+        // `par` is a `Packed<ParElem>`; `Packed::layout` and `flows[0]` don't say which instance.
+        expect(found.filter((l) => l.includes(" call "))).toEqual(["src/flow.rs:8 call src/flow.rs:11", "src/flow.rs:12 call src/flow.rs:15", "src/flow.rs:20 call src/flow.rs:15", "src/flow.rs:26 call src/flow.rs:7", "src/flow.rs:33 call src/flow.rs:7", "src/flow.rs:40 call src/flow.rs:15"]);
+    });
+
+    it("reads an impl's own parameter as any type, and an argument left out as the default the type's declaration gives: `impl<T> Once<T, ()>` lends to `Self` in `impl<T> Default for Once<T, ()>`, a `Once<u8, ()>` and a `Once<u8>`, not a `Once<u8, fn(u8) -> u8>` (bun#30412's `Once`)", async () => {
+        const found = await targets({
+            "src/once.rs":
+                "pub struct Once<T, F = ()> {\n    v: Option<T>,\n    f: F,\n}\n\nimpl<T> Once<T, ()> {\n    pub const fn new() -> Self {\n        todo!()\n    }\n\n    pub fn peek(&self) -> Option<&T> {\n        None\n    }\n}\n\nimpl<T> Default for Once<T, ()> {\n    fn default() -> Self {\n        Self::new()\n    }\n}\n\npub fn read(a: &Once<u8, ()>, b: &Once<u8, fn(u8) -> u8>, c: &Once<u8>) {\n    a.peek();\n    b.peek();\n    c.peek();\n}\n",
+        });
+        expect(found.filter((l) => l.includes(" call "))).toEqual(["src/once.rs:18 call src/once.rs:7", "src/once.rs:23 call src/once.rs:11", "src/once.rs:25 call src/once.rs:11"]);
+        // A default that names another parameter, or one declared in another module, isn't read.
+        const other = await targets({
+            "src/pair.rs":
+                "use crate::cell::Cell;\n\npub struct Pair<T, U = T>(T, U);\n\nimpl Pair<u8, u8> {\n    pub fn sum(&self) -> u8 {\n        0\n    }\n}\n\nimpl Cell<u8, ()> {\n    pub fn get(&self) -> u8 {\n        0\n    }\n}\n\npub fn read(p: &Pair<u8>, c: &Cell<u8>) {\n    p.sum();\n    c.get();\n}\n",
+        });
+        expect(other.filter((l) => l.includes(" call "))).toEqual([]);
+    });
+
+    it("lends an impl for every instance to any receiver, but not to one written with more arguments than the impl: those it leaves out are defaults the receiver may not share", async () => {
+        const found = await targets({
+            "src/buf.rs":
+                "pub struct Global;\npub struct Arena;\n\npub struct Buf<T, A = Global>(T, A);\n\nimpl<T> Buf<T> {\n    pub fn put(&mut self, v: T) {}\n}\n\nimpl<T, A> Buf<T, A> {\n    pub fn make() -> Self {\n        todo!()\n    }\n\n    pub fn size(&self) -> usize {\n        self.cells()\n    }\n\n    fn cells(&self) -> usize {\n        0\n    }\n}\n\npub struct Cfg<T = u8>(T);\n\nimpl Cfg {\n    pub fn level(&self) -> u32 {\n        0\n    }\n}\n\npub fn fill(a: &mut Buf<u8>, b: &mut Buf<u8, Arena>, c: &Cfg, d: &Cfg<u16>) {\n    a.put(1);\n    b.put(1);\n    a.size();\n    b.size();\n    c.level();\n    d.level();\n    let e = Buf::make();\n    e.size();\n}\n",
+        });
+        // `b.put`: `impl<T> Buf<T>` is for the default allocator; `d.level`: `impl Cfg` is for the default `u8`.
+        expect(found.filter((l) => l.includes(" call "))).toEqual([
+            "src/buf.rs:16 call src/buf.rs:19",
+            "src/buf.rs:33 call src/buf.rs:7",
+            "src/buf.rs:35 call src/buf.rs:15",
+            "src/buf.rs:36 call src/buf.rs:15",
+            "src/buf.rs:37 call src/buf.rs:27",
+            "src/buf.rs:39 call src/buf.rs:11",
+            "src/buf.rs:40 call src/buf.rs:15",
+        ]);
+    });
+
+    it("compares a receiver's type arguments with an impl's only where their names mean the same declarations: not a function's type parameter, a block's `use` or another module's", async () => {
+        const found = await targets({
+            "src/scope.rs":
+                "use crate::model::Elem;\n\npub struct Packed<T>(T);\n\nimpl Packed<Elem> {\n    pub fn show(&self) {}\n}\n\npub fn plain(x: &Packed<Elem>) {\n    x.show();\n}\n\npub fn generic<Elem>(x: &Packed<Elem>) {\n    x.show();\n}\n\npub fn local(x: &Packed<Elem>) {\n    use crate::other::Elem;\n    let y: &Packed<Elem> = todo!();\n    y.show();\n}\n\nmod inner {\n    use super::*;\n    use crate::other::Elem;\n\n    pub fn nested(x: &Packed<Elem>) {\n        x.show();\n    }\n}\n",
+        });
+        expect(found.filter((l) => l.includes(" call "))).toEqual(["src/scope.rs:10 call src/scope.rs:6"]);
+    });
 });

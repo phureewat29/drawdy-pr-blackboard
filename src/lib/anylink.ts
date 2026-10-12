@@ -85,6 +85,8 @@ export type Typing = {
     traitModes?: (files: readonly GFile[]) => ReadonlyMap<string, ReadonlySet<string>>;
     /** Whether a trait method of one of these modes would answer `x.f()` before this method (Rust's method probe order): then the call names nothing sure. `declared` is the type x's binding writes, or -1. */
     shadowed?: (call: Flat, receiver: number, declared: number, method: Flat, unitNode: number, modes: ReadonlySet<string>) => boolean;
+    /** Whether the unit holding a member lends it to the receiver of `x.f` or `T::f` (Rust: an impl for some of a generic type's instances only to a receiver proven one of them). `declared` is the type x's binding writes, or -1. */
+    lendsTo?: (call: GFile, receiver: number, declared: number, method: GFile, unitNode: number) => boolean;
     /** Whether a site is a class body's annotation (Python), read after the body ran when annotations are deferred: "deferred" when the file defers them, "unknown" when the Python version decides. */
     deferredAnnotation?: (t: Flat, site: number) => "deferred" | "unknown" | null;
     /** Whether code in one file is built together with a declaration in another (Go's build constraints). */
@@ -679,11 +681,16 @@ const createProgram = (files: readonly GFile[], langOf: (f: GFile) => Resolver, 
         if (ty.typeOnly?.(f.flat, s.node)) return units.filter((u) => CLASSY.has(u.kind) || u.kind === "namespace");
         // `x.f()`: a trait's method found at an earlier step of the probe than an inherent one wins (Rust).
         const modes = s.shape === "member" && ty.shadowed ? traitModesOf(f).get(s.name) : undefined;
-        if (modes) {
+        // `x.f`, `T::f`: the unit holding f may lend it to some receivers only (Rust's impls for some of a type's instances).
+        const lends = s.shape !== "bare" && ty.lendsTo;
+        if (modes || lends) {
             // A receiver written as a name: the type its one binding declares, a parameter's or a local's.
             const r = s.receiver;
             const declared = r >= 0 && f.flat.type[r] === "identifier" ? (bindingAt(s.scope, textOf(f.flat, r), f.flat.start[r])?.typeNode ?? -1) : -1;
-            return units.filter((u) => !ty.shadowed!(f.flat, r, declared, fileOfUnit.get(u.id)!.flat, u.node, modes));
+            return units.filter((u) => {
+                const g = fileOfUnit.get(u.id)!;
+                return (!lends || lends(f, r, declared, g, u.node)) && (!modes || !ty.shadowed!(f.flat, r, declared, g.flat, u.node, modes));
+            });
         }
         return units;
     };
