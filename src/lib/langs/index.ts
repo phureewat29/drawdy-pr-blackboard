@@ -9,6 +9,7 @@
 import { C } from "./c/index.ts";
 import { CPP } from "./cpp/index.ts";
 import { CSHARP } from "./csharp/index.ts";
+import { ELIXIR } from "./elixir/index.ts";
 import { FORMATS } from "./formats.ts";
 import { GO } from "./go/index.ts";
 import { HASKELL } from "./haskell/index.ts";
@@ -23,4 +24,4 @@ import { RUST } from "./rust/index.ts";
 import { SCALA } from "./scala/index.ts";
 import { SWIFT } from "./swift/index.ts";
 
-export const PACKS: readonly LanguagePack[] = [TYPESCRIPT, JAVASCRIPT, PYTHON, GO, RUST, JAVA, KOTLIN, SWIFT, RUBY, PHP, CSHARP, C, CPP, SCALA, HASKELL, ...FORMATS];
+export const PACKS: readonly LanguagePack[] = [TYPESCRIPT, JAVASCRIPT, PYTHON, GO, RUST, JAVA, ELIXIR, KOTLIN, SWIFT, RUBY, PHP, CSHARP, C, CPP, SCALA, HASKELL, ...FORMATS];

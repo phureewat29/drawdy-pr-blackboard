@@ -68,15 +68,20 @@ const readable = (t: Flat): boolean => !/@flow\b/.test(LEADING_COMMENTS.exec(t.t
 
 let runtime: Promise<void> | null = null;
 
-/** A grammar's `tags.scm` with only what defines something left on: no references are matched or captured. */
+const defines = (capture: string) => capture.startsWith("definition.");
+
+/**
+ * A grammar's `tags.scm` with only the patterns that define something left
+ * on: no references are matched. Their other captures stay on, since a
+ * predicate may read one (`(#any-of? @ignore "def" …)` fails on a
+ * capture turned off); `parse` keeps the definitions' alone.
+ */
 const definitions = (lang: Lang, source: string): TagQuery => {
     const query = new Query(lang, source);
     const names: string[] = query.captureNames;
-    const defines = (name: string) => name.startsWith("definition.");
     (query.captureQuantifiers as number[][]).forEach((used, pattern) => {
         if (!used.some((q, capture) => q !== 0 && defines(names[capture]))) query.disablePattern(pattern);
     });
-    for (const name of names) if (!defines(name)) query.disableCapture(name);
     return query;
 };
 
@@ -109,7 +114,7 @@ export const createSyntax = async (runtimeBytes: Uint8Array): Promise<Syntax> =>
             if (!tree) return null;
             try {
                 const query = queries.get(g);
-                const flat = flatten(tree, text, lang, query ? query.captures(tree.rootNode) : null);
+                const flat = flatten(tree, text, lang, query ? query.captures(tree.rootNode).filter((c: { name: string }) => defines(c.name)) : null);
                 return readable(flat) ? flat : null;
             } finally {
                 tree.delete();

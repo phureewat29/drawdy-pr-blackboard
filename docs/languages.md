@@ -14,6 +14,7 @@ knows no language. It reads them through two lists and one contract,
 | Java | `java/` | parsed | rule table, own resolver |
 | C# | `csharp/` | parsed | rule table, own resolver |
 | PHP | `php/` | parsed | rule table, own resolver |
+| Elixir | `elixir/` | parsed | rule table, own resolver |
 | Kotlin, C, C++, Scala, Haskell | `kotlin/`, `c/`, `cpp/`, `scala/`, `haskell/` | parsed | none: units only |
 | Swift, Ruby | `swift/`, `ruby/` | line patterns | none |
 | CSS, HTML, JSON, YAML, TOML, Markdown, shell, SQL | `formats.ts` | whole files | none |
@@ -90,9 +91,10 @@ in the worker's script. Measured in the bundle, a pattern-only pack costs
 about 1 KB; a units-only pack 4 to 8 KB, and `units-only.ts` 5 KB; a pack
 with a rule table 20 to 40 KB (Go 23 KB, Rust 33 KB, Python 36 KB); PHP,
 with its own resolver and tables of PHP's functions and PHPUnit's
-assertions, 45 KB; C#, with its own resolver, 88 KB; Java, with its own
-resolver and the JDK's
-types, 135 KB; JavaScript and TypeScript, 85 KB. A grammar's wasm file is
+assertions, 45 KB; Elixir, which also reads Mix projects and the quotes a
+`use` injects, 53 KB; C#, with its own resolver, 88 KB; Java, with its own
+resolver and the JDK's types, 135 KB; JavaScript and TypeScript, 85 KB. A
+grammar's wasm file is
 downloaded apart, once. The bundle's check is 1 MB.
 
 ## Add a language
@@ -138,8 +140,8 @@ On a branch, until the last step:
    truth and a scorer in `scorers.ts`. Take truth from the language's own
    compiler or type checker where one runs (`java40`: javac's references,
    `scoreJava`), else check every link by hand (`typst`: a fixture,
-   `scoreRust`). The group must show 0 wrong lines, and its recall bar must
-   hold.
+   `scoreRust`; `elixir`: every call on its boards' cards, `scoreJava`).
+   The group must show 0 wrong lines, and its recall bar must hold.
 7. **Review.** Have someone who didn't write the linker hunt for wrong
    lines: synthetic cases for every rule, and a whole-repository comparison
    with the compiler where one exists, as Java's review did. Fix every

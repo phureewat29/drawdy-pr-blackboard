@@ -60,8 +60,8 @@ const GENERATED = [
     /\.generated\.[^/]+$/,
 ];
 
-/** Test folders and suffixes every language shares, Elixir's `_test.exs` until Elixir has a pack, then each pack's own (`_test.go`). */
-const TEST = [/(^|\/)(__tests__|__mocks__|tests?|spec|specs|e2e|testdata|fixtures)\//i, /\.(test|spec|e2e)\.[^/]+$/i, /_test\.exs?$/, ...PACKS.flatMap((p) => p.tests ?? [])];
+/** Test folders and suffixes every language shares, then each pack's own (`_test.go`). */
+const TEST = [/(^|\/)(__tests__|__mocks__|tests?|spec|specs|e2e|testdata|fixtures)\//i, /\.(test|spec|e2e)\.[^/]+$/i, ...PACKS.flatMap((p) => p.tests ?? [])];
 
 const DOCS = [/\.(md|mdx|rst|txt|adoc)$/i, /(^|\/)(docs?|documentation)\//i, /(^|\/)(LICENSE|CHANGELOG|README|CONTRIBUTING)(\.[^/]*)?$/i];
 
