@@ -16,19 +16,16 @@ through a big PR one card at a time.
 
 ## Why a board
 
-A diff lists the changed files in alphabetical order. Where the change
-starts, what calls it and which test covers it are left for you to piece
-together, and on a big PR that takes most of the review.
+GitHub lists a PR's files from A to Z, and the reviewer rebuilds the call
+order in their head. PR Blackboard draws it for you.
 
-- **The whole change in one place.** Where the change starts, then what it
-  calls, then what that calls, from left to right.
 - **Calls you can follow.** A line runs from each call to the exact
   function it reaches, in whatever file it lives.
 - **Callers included.** Code that didn't change but calls into the change
   gets a card too.
 - **Tests next to the code.** Each test sits under the code it tests.
-- **Big PRs too.** Bun's 2,188-file rewrite in Rust opens as one board you
-  can step through.
+- **Big PRs too.** Excalidraw's 2,611-line PR (#12237, one of the examples)
+  opens as one board you can step through.
 
 ## How it works
 
