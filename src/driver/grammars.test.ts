@@ -23,6 +23,7 @@ describe("the parser's files", () => {
             "tree-sitter-rust@0.24.0/tree-sitter-rust.wasm",
             "tree-sitter-java@0.23.5/tree-sitter-java.wasm",
             "@tree-sitter-grammars/tree-sitter-kotlin@1.1.0/tree-sitter-kotlin.wasm",
+            "tree-sitter-c-sharp@0.23.5/tree-sitter-c_sharp.wasm",
             "tree-sitter-c@0.24.1/tree-sitter-c.wasm",
             "tree-sitter-cpp@0.23.4/tree-sitter-cpp.wasm",
             "tree-sitter-scala@0.24.0/tree-sitter-scala.wasm",
