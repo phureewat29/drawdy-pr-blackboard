@@ -4,11 +4,13 @@ import { planBoard } from "../lib/layout.ts";
 import { fakeFetch } from "../test/fake-fetch.ts";
 import { fakeHost, keptStorage } from "../test/fake-host.ts";
 import { excalidrawFixture, honoFixture, reviewOf } from "../test/fixture.ts";
-import { connectSource } from "../test/parser.ts";
-import { serve, unreadCount } from "../worker/serve.ts";
+import { nodeWorkers } from "../test/node-worker.ts";
+import { connectSource, connectSourceWith } from "../test/parser.ts";
+import { WORKER_SCRIPT } from "../worker/script.ts";
+import { unreadCount, type FromWorker } from "../worker/serve.ts";
 import type { PrFile } from "../lib/github.ts";
 import { workerScriptFile, SCRIPT_FILE } from "../../scripts/worker.ts";
-import { createParser, onThisThread, type Connect, type ParserProgress } from "./parser.ts";
+import { createParser, type Connect, type ParserProgress } from "./parser.ts";
 import { quiet } from "./progress.ts";
 
 const storage = () => fakeHost(undefined, keptStorage());
@@ -51,7 +53,16 @@ describe("the parser", () => {
         const { pr, files } = honoFixture();
         const net = fakeFetch("hono-5513.json");
         const { seen, progress } = told();
-        const built = await createParser({ ddp: storage().ddp, fetch: net.fetch, connect: connectSource }).analyse(pr, files, progress);
+        // The worker makes no request: the files it reads come through the parser's fetch, none through the global one.
+        const realFetch = globalThis.fetch;
+        const own: string[] = [];
+        globalThis.fetch = (async (url: string) => (own.push(url), Promise.reject(new Error("a request of the worker's own")))) as typeof fetch;
+        const built = await createParser({ ddp: storage().ddp, fetch: net.fetch, connect: connectSource })
+            .analyse(pr, files, progress)
+            .finally(() => (globalThis.fetch = realFetch));
+        expect(own).toEqual([]);
+        const raw = `https://raw.githubusercontent.com/${pr.headRepo}/${pr.headSha}/`;
+        expect(net.requests).toEqual(expect.arrayContaining(["src/compose.ts", "src/hono-base.ts", "src/compose.test.ts", "src/hono.test.ts"].map((path) => raw + path)));
         const local = await reviewOf(honoFixture());
         expect(built.review.links).toEqual(local.links);
         expect(built.review.order).toEqual(local.order);
@@ -81,23 +92,61 @@ describe("the parser", () => {
         await expect(createParser({ ddp: storage().ddp, fetch: down, connect: connectSource }).analyse(pr, files, quiet)).rejects.toThrow(
             "Couldn't download the TypeScript parser from cdn.jsdelivr.net. Try again."
         );
-        const wontRun = onThisThread((scope) => serve(scope, async () => Promise.reject(new Error("CompileError"))));
+        const wontRun = connectSourceWith(async () => Promise.reject(new Error("CompileError")));
         await expect(createParser({ ddp: storage().ddp, fetch: net.fetch, connect: wontRun }).analyse(pr, files, quiet)).rejects.toThrow("Couldn't parse this PR's TypeScript.");
     }, SLOW);
 
-    it("runs its script on this thread when the worker breaks, and builds the same board", async () => {
+    it("runs its script in a worker, on a thread of its own, and builds the same board as its source", async () => {
+        const { pr, files } = honoFixture();
+        const workers = nodeWorkers();
+        const script: Connect = (receive) => {
+            const worker = new workers.Worker(URL.createObjectURL(new Blob([WORKER_SCRIPT], { type: "text/javascript" })));
+            worker.onmessage = (e) => receive(e.data as FromWorker);
+            return { post: (message) => worker.postMessage(message) };
+        };
+        try {
+            const built = await createParser({ ddp: storage().ddp, fetch: fakeFetch("hono-5513.json").fetch, connect: script }).analyse(pr, files, quiet);
+            const source = await createParser({ ddp: storage().ddp, fetch: fakeFetch("hono-5513.json").fetch, connect: connectSource }).analyse(pr, files, quiet);
+            expect(json(built)).toEqual(json(source));
+        } finally {
+            await workers.stop();
+        }
+    }, SLOW);
+
+    it("starts a fresh worker when one breaks, and builds the same board", async () => {
         const { pr, files } = honoFixture();
         let started = 0;
-        const breaks: Connect = (_fetch, _receive, broken) => {
-            started++;
-            setTimeout(() => broken(new Error("no worker here")));
+        const breaksFirst: Connect = (receive, broken) => {
+            if (started++ > 0) return connectSource(receive, broken);
+            setTimeout(() => broken(new Error("the worker broke")));
             return { post: () => undefined, close: () => undefined };
         };
-        const built = await createParser({ ddp: storage().ddp, fetch: fakeFetch("hono-5513.json").fetch, connect: breaks }).analyse(pr, files, quiet);
+        const built = await createParser({ ddp: storage().ddp, fetch: fakeFetch("hono-5513.json").fetch, connect: breaksFirst }).analyse(pr, files, quiet);
         const source = await createParser({ ddp: storage().ddp, fetch: fakeFetch("hono-5513.json").fetch, connect: connectSource }).analyse(pr, files, quiet);
-        expect(started).toBe(1);
+        expect(started).toBe(2);
         expect(json(built)).toEqual(json(source));
     }, SLOW);
+
+    it("fails an open in words when its fresh worker breaks too, and starts no third; the next open starts afresh", async () => {
+        const { pr, files } = honoFixture();
+        let started = 0;
+        const breaks: Connect = (_receive, broken) => {
+            started++;
+            setTimeout(() => broken(new Error("the worker broke")));
+            return { post: () => undefined, close: () => undefined };
+        };
+        const parser = createParser({ ddp: storage().ddp, fetch: fakeFetch("hono-5513.json").fetch, connect: breaks });
+        await expect(parser.analyse(pr, files, quiet)).rejects.toThrow("The parser stopped while reading this PR. Try again.");
+        expect(started).toBe(2);
+        await expect(parser.analyse(pr, files, quiet)).rejects.toThrow("The parser stopped while reading this PR. Try again.");
+        expect(started).toBe(4);
+    });
+
+    it("fails in words where no worker can start", async () => {
+        const { pr, files } = honoFixture();
+        expect(typeof Worker).toBe("undefined");
+        await expect(createParser({ ddp: storage().ddp, fetch: fakeFetch("hono-5513.json").fetch }).analyse(pr, files, quiet)).rejects.toThrow("PR Blackboard can't start its parser in this browser.");
+    });
 
     it("tells each changed file in reading order, one not found and one too long to use as such, and counts the other files read", async () => {
         const { pr, files } = honoFixture();

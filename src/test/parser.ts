@@ -1,11 +1,11 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { onThisThread, type Connect } from "../driver/parser.ts";
+import type { Connect } from "../driver/parser.ts";
 import { PACKS } from "../lib/langs/index.ts";
 import { linkerOfGrammar, parseFile } from "../lib/linking.ts";
 import type { Parse } from "../lib/sources.ts";
 import { createSyntax, type Syntax } from "../lib/syntax.ts";
-import { serve } from "../worker/serve.ts";
+import { serve, type WorkerScope } from "../worker/serve.ts";
 
 const GRAMMARS = PACKS.flatMap((p) => p.grammars ?? []);
 
@@ -26,5 +26,28 @@ export const testSyntax = (): Promise<Syntax> =>
 
 export const testParse: Parse = async (path, text) => parseFile(await testSyntax(), path, text);
 
+/**
+ * The parser worker served from its source on this thread, `start` standing in for tree-sitter's when given, each
+ * message copied and delivered later, as a worker's would be.
+ */
+export const connectSourceWith =
+    (start?: (runtime: Uint8Array) => Promise<Syntax>): Connect =>
+    (receive) => {
+        const scope: WorkerScope = {
+            postMessage: (message) => {
+                const copy = structuredClone(message);
+                setTimeout(() => receive(copy));
+            },
+            onmessage: null,
+        };
+        serve(scope, start);
+        return {
+            post: (message) => {
+                const copy = structuredClone(message);
+                setTimeout(() => scope.onmessage?.({ data: copy }));
+            },
+        };
+    };
+
 /** The parser worker served from its source on this thread: what the tests and the score gate run in place of its script. */
-export const connectSource: Connect = onThisThread((scope) => serve(scope));
+export const connectSource: Connect = connectSourceWith();

@@ -7,8 +7,8 @@
  * 3. boots the bundle in a fake Drawdy host, runs the generated webview in jsdom until it reports `ready`, opens a
  *    saved PR (honojs/hono#5513) from a fake GitHub and jsDelivr, and walks the board: the one add call, the
  *    strings, the steps, Description, the link names' colours, Read all, Home, a rebuild and Clear, pressed in the bundled
- *    panel itself, its confirm answered with ✓. Node has no Worker, so
- *    the parser worker's script runs on the driver's thread, as where no worker can start. Then it boots the bundle
+ *    panel itself, its confirm answered with ✓. The host's Worker runs the bundle's parser worker script on a
+ *    thread of its own, with no fetch (src/test/node-worker.ts). Then it boots the bundle
  *    again, as after a reload, and checks the board works with the panel never opened and nothing from jsDelivr;
  * 4. checks a 32-card board's add payload stays small;
  * 5. packs dist/marketplace/<driver-id>.drawdyx (see `npm run preview`).
@@ -29,6 +29,7 @@ import { LIMITS } from "../src/lib/model.ts";
 import { fakeFetch } from "../src/test/fake-fetch.ts";
 import { fakeHost, keptStorage } from "../src/test/fake-host.ts";
 import { reviewOf } from "../src/test/fixture.ts";
+import { nodeWorkers } from "../src/test/node-worker.ts";
 import { crowded } from "../src/test/synthetic.ts";
 import { SCRIPT_FILE, workerScriptFile } from "./worker.ts";
 
@@ -97,9 +98,9 @@ const built = await bundle();
 console.log("Marketplace build (esbuild, cjs, es2020, unminified)");
 await checkBundle(built);
 
-// The smoke test's world: GitHub and jsDelivr served from a saved PR, and a Drawdy host with a webview and storage.
+// The smoke test's world: GitHub and jsDelivr served from a saved PR, and a Drawdy host with workers, a webview and storage.
 const net = fakeFetch("hono-5513.json");
-Object.assign(globalThis, { fetch: net.fetch });
+Object.assign(globalThis, { fetch: net.fetch, Worker: nodeWorkers().Worker });
 const jsdelivr = (from = 0) => net.requests.slice(from).filter((url) => url.startsWith("https://cdn.jsdelivr.net/")).length;
 const kv = new Map<string, unknown>();
 let webview: { id: string; html: string } | null = null;

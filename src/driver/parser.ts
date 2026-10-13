@@ -1,15 +1,15 @@
 /**
  * Reading, parsing and linking a PR off Drawdy's driver worker, which every extension shares, so a big PR stalls
- * none of them: in a worker of PR Blackboard's own, started from its script (`../worker/script.ts`). Where no worker
- * can start, the same script runs on this thread. Either way the driver answers the worker's asks for the parser's
- * files (`grammars.ts`), which only it can keep.
+ * none of them: in a worker of PR Blackboard's own, started from its script (`../worker/script.ts`). The worker
+ * makes no request: the driver reads each file it asks for, and answers its asks for the parser's files
+ * (`grammars.ts`), which only the driver can keep.
  */
 
 import { serial } from "../lib/fp.ts";
-import type { Fetch, PrFile, PrInfo } from "../lib/github.ts";
+import { createGithub, type Fetch, type PrFile, type PrInfo } from "../lib/github.ts";
 import type { Built } from "../lib/model.ts";
 import { WORKER_SCRIPT } from "../worker/script.ts";
-import type { FromWorker, ParserFile, ToWorker, WorkerScope } from "../worker/serve.ts";
+import type { FromWorker, ParserFile, ToWorker } from "../worker/serve.ts";
 import type { Ddp } from "./ddp.ts";
 import { createGrammars, languagesOf } from "./grammars.ts";
 import type { Download, Progress } from "./progress.ts";
@@ -18,8 +18,8 @@ import { inWords } from "./words.ts";
 /** The driver's end of a channel to the worker's side; `close` ends a real worker. */
 export type Port = { post: (message: ToWorker) => void; close?: () => void };
 
-/** Starts the worker's side: `receive` gets each message it sends, and `broken` is called when it can't run at all. */
-export type Connect = (fetch: Fetch, receive: (message: FromWorker) => void, broken: (err: unknown) => void) => Port;
+/** Starts the worker's side, or throws in words: `receive` gets each message it sends, and `broken` is called when it can't run at all. */
+export type Connect = (receive: (message: FromWorker) => void, broken: (err: unknown) => void) => Port;
 
 /** What the parser tells the loading view: each language's parser downloading, the changed files read, and the files read to follow imports. */
 export type ParserProgress = Pick<Progress, "parser" | "reading" | "read" | "followed">;
@@ -32,40 +32,21 @@ export type Parser = {
 /** How long an idle worker lives. Drawdy tells a driver nothing when it unloads, so a reloaded driver's worker ends on its own. */
 const IDLE_MS = 30_000;
 
-/** The worker's side run on this thread by `start`, each message copied and delivered later, as a worker's would be. */
-export const onThisThread =
-    (start: (scope: WorkerScope) => void): Connect =>
-    (fetch, receive) => {
-        const scope: WorkerScope = {
-            fetch,
-            postMessage: (message) => {
-                const copy = structuredClone(message);
-                setTimeout(() => receive(copy));
-            },
-            onmessage: null,
-        };
-        start(scope);
-        return {
-            post: (message) => {
-                const copy = structuredClone(message);
-                setTimeout(() => scope.onmessage?.({ data: copy }));
-            },
-        };
-    };
+const PARSER_FAILED = "Parser failed";
 
-const connectHere = onThisThread((scope) => new Function("self", WORKER_SCRIPT)(scope));
+const noWorker = () => inWords("PR Blackboard can't start its parser in this browser.", PARSER_FAILED);
 
-/** A worker of PR Blackboard's own, from its script as a blob: URL; where none can start, the script on this thread. */
-const connectWorker: Connect = (fetch, receive, broken) => {
-    if (typeof Worker !== "function") return connectHere(fetch, receive, broken);
+/** A worker of PR Blackboard's own, from its script as a blob: URL. */
+const connectWorker: Connect = (receive, broken) => {
+    if (typeof Worker !== "function") throw noWorker();
     const url = URL.createObjectURL(new Blob([WORKER_SCRIPT], { type: "text/javascript" }));
     let worker: Worker;
     try {
         worker = new Worker(url);
     } catch (err) {
         URL.revokeObjectURL(url);
-        console.warn("[pr-blackboard] no parser worker, so parsing on this thread", err);
-        return connectHere(fetch, receive, broken);
+        console.warn("[pr-blackboard] no parser worker", err);
+        throw noWorker();
     }
     // The script is read once the worker runs it, which its first message shows.
     worker.onmessage = (e: MessageEvent<FromWorker>) => {
@@ -91,6 +72,8 @@ type Analysis = {
     failure: unknown;
     /** Each parser file this open downloads: files from storage are not here. */
     downloads: Map<ParserFile, Download>;
+    /** Whether a worker broke during this open, so it runs in a fresh one. */
+    restarted: boolean;
     /** Each language's row as last told. */
     rows: Map<string, Download>;
     done: (built: Built) => void;
@@ -100,16 +83,16 @@ type Analysis = {
 /** A failure outweighs a download under way, which outweighs one done. */
 const worse = (a: Download | undefined, b: Download): Download => (a === "failed" || b === "failed" ? "failed" : a === "active" || b === "active" ? "active" : "done");
 
-/** `connect` starts the worker's side: a worker by default, the module itself in the tests and the score gate. */
+/**
+ * `fetch` makes the requests: the files the worker reads and the parser's files. `connect` starts the worker's side: a
+ * worker by default, the module itself in the tests and the score gate.
+ */
 export const createParser = (deps: { ddp: Ddp; fetch: Fetch; connect?: Connect }): Parser => {
     const { ddp, fetch, connect = connectWorker } = deps;
     const grammars = createGrammars({ ddp, fetch });
+    const github = createGithub(fetch);
     const queue = serial();
     let port: Port | null = null;
-    // Each connection's messages count only while it is the current one.
-    let generation = 0;
-    // A worker that broke is not started again: the script runs on this thread from then on.
-    let here = false;
     let idle: ReturnType<typeof setTimeout> | null = null;
     let analysis: Analysis | null = null;
 
@@ -149,6 +132,14 @@ export const createParser = (deps: { ddp: Ddp; fetch: Fetch; connect?: Connect }
     };
 
     const receive = (to: Port, message: FromWorker) => {
+        // Reads don't wait on the open under way: one that ended may still have some in flight.
+        if (message.type === "raw") {
+            github.raw(message.repo, message.sha, message.path).then(
+                (text) => to.post({ type: "raw", ask: message.ask, text }),
+                () => to.post({ type: "raw", ask: message.ask, text: null, failed: true })
+            );
+            return;
+        }
         const a = analysis;
         if (!a) return;
         switch (message.type) {
@@ -183,28 +174,36 @@ export const createParser = (deps: { ddp: Ddp; fetch: Fetch; connect?: Connect }
             case "failed":
                 if (message.id !== a.request.id) return;
                 if (a.failure) a.fail(a.failure);
-                else if (message.parser) a.fail(inWords(`Couldn't parse this PR's ${languagesOf(a.grammars).code}.`, "Parser failed"));
+                else if (message.parser) a.fail(inWords(`Couldn't parse this PR's ${languagesOf(a.grammars).code}.`, PARSER_FAILED));
                 else a.fail(new Error(message.message));
                 return;
         }
     };
 
+    /** Starts the worker's side. A connection's messages count only while it is the current one. */
     const open = (): Port => {
-        const mine = ++generation;
-        const current = (here ? connectHere : connect)(
-            fetch,
-            (message) => mine === generation && receive(current, message),
-            (err) => mine === generation && broken(err)
+        const current = connect(
+            (message) => port === current && receive(current, message),
+            (err) => port === current && broken(err)
         );
         return current;
     };
 
+    /** A worker that broke is ended. The open under way goes on in a fresh one, and fails in words when that one breaks too. */
     const broken = (err: unknown) => {
-        console.warn("[pr-blackboard] the parser worker stopped, so parsing on this thread", err);
+        console.warn("[pr-blackboard] the parser worker stopped", err);
         port?.close?.();
-        here = true;
-        port = open();
-        if (analysis) port.post(analysis.request);
+        port = null;
+        const a = analysis;
+        if (!a) return;
+        if (a.restarted) return a.fail(inWords("The parser stopped while reading this PR. Try again.", PARSER_FAILED));
+        a.restarted = true;
+        try {
+            port = open();
+            port.post(a.request);
+        } catch (failure) {
+            a.fail(failure);
+        }
     };
 
     let ids = 0;
@@ -214,11 +213,11 @@ export const createParser = (deps: { ddp: Ddp; fetch: Fetch; connect?: Connect }
                 if (idle) clearTimeout(idle);
                 try {
                     const built = await new Promise<Built>((done, fail) => {
-                        analysis = { request: { type: "analyse", id: ids++, pr, files: [...files] }, progress, grammars: [], loading: Promise.resolve(), failure: null, downloads: new Map(), rows: new Map(), done, fail };
+                        analysis = { request: { type: "analyse", id: ids++, pr, files: [...files] }, progress, grammars: [], loading: Promise.resolve(), failure: null, downloads: new Map(), restarted: false, rows: new Map(), done, fail };
                         port ??= open();
                         port.post(analysis.request);
                     });
-                    // A file the changed files need and couldn't be had fails the open, as on this thread.
+                    // A parser file the changed files need that couldn't be had fails the open.
                     await analysis!.loading;
                     return built;
                 } finally {

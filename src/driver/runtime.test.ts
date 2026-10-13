@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it, jest } from "@jest/globals";
+import { afterAll, afterEach, beforeAll, describe, expect, it, jest } from "@jest/globals";
 import type { DriverSubscriptionEvent, ModuleStyling } from "@drawdy/driver-protocol";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -7,6 +7,7 @@ import { parse } from "../lib/guard.ts";
 import { webviewToDriver, type CodeCard, type LoadStep, type PanelView } from "../shared/protocol.ts";
 import { fakeFetch } from "../test/fake-fetch.ts";
 import { fakeHost, keptStorage } from "../test/fake-host.ts";
+import { nodeWorkers } from "../test/node-worker.ts";
 import { STRING_COLOURS } from "../lib/layout.ts";
 import { Lexer } from "../vendor/marked.ts";
 import { rebuildCostOf } from "./panel-view.ts";
@@ -68,13 +69,24 @@ const boot = async (options: { panel?: boolean; extra?: Record<string, (req: any
 const cardsOf = (host: ReturnType<typeof fakeHost>) =>
     new Map([...host.elements].filter(([, e]) => e.schema.type === "component").map(([id, e]) => [e.schema.meta.prBlackboard.pin as string, { id, rect: e.rect, mark: e.schema.meta.prBlackboard }]));
 
-// GitHub and jsDelivr serve the saved hono#5513, unless a test serves its own.
+// GitHub and jsDelivr serve the saved hono#5513, unless a test serves its own; the parser worker's script runs on a thread of its own.
 const realFetch = globalThis.fetch;
+const realSetTimeout = globalThis.setTimeout;
+const workers = nodeWorkers();
 beforeAll(() => {
     globalThis.fetch = fakeGithub as typeof fetch;
+    Object.assign(globalThis, { Worker: workers.Worker });
+    // The parser ends a worker idle for 30 s: a timer that long doesn't hold the test run open after the last test.
+    globalThis.setTimeout = ((handler: () => void, ms?: number) => {
+        const timer = realSetTimeout(handler, ms);
+        return (ms ?? 0) >= 30_000 ? timer.unref() : timer;
+    }) as typeof setTimeout;
 });
+afterEach(() => workers.stop());
 afterAll(() => {
     globalThis.fetch = realFetch;
+    globalThis.setTimeout = realSetTimeout;
+    delete (globalThis as { Worker?: unknown }).Worker;
 });
 
 describe("the runtime on hono#5513", () => {
