@@ -427,7 +427,7 @@ then nothing on its board links by name. A file can't be read when its
 leading comments carry `@flow`, or when ERROR and MISSING nodes cover more
 than 2 % of its bytes (request 40: React's Flow files broke A, 56 of 57
 with errors, and A pinned a card 1 300 lines long). The scored pull
-requests and the 14 examples peak at 0.6 % (elysia's `src/types.ts`,
+requests and the 13 examples peak at 0.6 % (elysia's `src/types.ts`,
 TypeScript's `in out` variance); React#37113's two changed source files,
 both `@flow`, measure 3.2 % and 100 %, so the line sits at 2 %
 (`MAX_ERROR_SHARE` in `syntax.ts`). The line patterns name cards as the
@@ -1661,14 +1661,14 @@ when both. A retry in the same session reuses the pull request and file
 list already read, so it costs no GitHub request.
 
 7.2.3 **Start view:** padding 14 14 0, gap 10: the field, the error, then
-the 14 example rows with no heading (requests 38 and 40), in the
-operator's order: honojs/hono#5513 first, whose board shows the strings
-calmly, then prettier/prettier#20127, colinhacks/zod#6652,
+the 13 example rows with no heading (requests 38 and 40), in the
+owner's order: elysiajs/elysia#1734 first, the PR the README and the video
+show, then honojs/hono#5513, prettier/prettier#20127, colinhacks/zod#6652,
 vitejs/vite#23586, nodejs/node#63047, TanStack/router#8573,
-withastro/astro#17955, sveltejs/svelte#18736, elysiajs/elysia#1734,
-oven-sh/bun#34519, sindresorhus/ky#823, excalidraw/excalidraw#12237,
-prometheus/prometheus#18564 and python/cpython#152451, the Go and Python
-ones the owner picked (request 56). Each opens with the usual 2 GitHub
+withastro/astro#17955, sveltejs/svelte#18736, oven-sh/bun#34519,
+excalidraw/excalidraw#12237, prometheus/prometheus#18564 and
+python/cpython#152451, the Go and Python ones the owner picked (request
+56). sindresorhus/ky#823 left the list on 2026-10-13. Each opens with the usual 2 GitHub
 requests: oven-sh/bun#30412, Bun's Rust rewrite, left the list on
 2026-10-12 because it takes 23 of the 60 an hour. Every
 example is by the project's creator or a member of its core team, merged,
@@ -1696,7 +1696,7 @@ repository picks the colour (`projectColour`), so any honojs/hono pull
 request has an orange tag while loading and reading; other repositories
 stay neutral. These are not the string colours (3.4.4).
 
-Fifteen rows share the hue circle, so a brand colour stays only where it
+The rows share the hue circle, so a brand colour stays only where it
 is clear of the rows next to it; otherwise the row takes a free hue.
 Contrast is computed for text on its fill over Drawdy's backgrounds
 (`#ffffff`, `#1f1f23`): 5.7:1 or more at rest and 5.0:1 or more on hover,
@@ -1705,25 +1705,22 @@ in both themes (`SCRATCH/links-ux/tags.py`; rows 13 and 14,
 
 | Row | Project | `--c` | Hue | Source |
 |---|---|---|---|---|
-| 1 | honojs/hono | `#E36002` | 46 | hono.dev brand |
-| 2 | prettier/prettier | `#41A0A1` | 196 | the teal of Prettier's logo, `#56B3B4`, darkened to 5.9:1 in light. Its red `#EA5E5E` sits next to hono's orange |
-| 3 | colinhacks/zod | `#3A6AFF` | 266 | gradient start of Zod's `logo.svg` |
-| 4 | vitejs/vite | `#BD34FE` | 311 | Vite's logo |
-| 5 | nodejs/node | `#5FA04E` | 139 | Node's logo |
-| 6 | TanStack/router | `#0891B2` | 222 | a free hue: Router's green `#39AF46` is 6° from Node's, the row above |
-| 7 | withastro/astro | `#F041FF` | 325 | end of Astro's gradient |
-| 8 | sveltejs/svelte | `#FF3E00` | 34 | Svelte's logo |
-| 9 | elysiajs/elysia | `#F06292` | 2 | elysiajs.com |
-| 10, 15 | oven-sh/bun | `#A67F38` | 80 | Bun's logo, darkened; both rows, never next to each other |
-| 11 | sindresorhus/ky | `#288DD4` | 245 | a free hue |
-| 12 | excalidraw/excalidraw | `#6965DB` | 281 | Excalidraw's logo |
-| 13 | prometheus/prometheus | `#D64B5A` | 18 | a free hue: Prometheus's `#E6522C` is Svelte's hue and nearer to hono's orange than any two rows are |
-| 14 | python/cpython | `#3A7AB0` | 247 | Python's blue `#3776AB`, lightened to 5.1:1 on dark hover. Its yellow `#FFD43B`, darkened enough to read in light, is Bun's gold in the row below |
+| 1 | elysiajs/elysia | `#F06292` | 2 | elysiajs.com |
+| 2 | honojs/hono | `#E36002` | 46 | hono.dev brand |
+| 3 | prettier/prettier | `#41A0A1` | 196 | the teal of Prettier's logo, `#56B3B4`, darkened to 5.9:1 in light. Its red `#EA5E5E` sits next to hono's orange |
+| 4 | colinhacks/zod | `#3A6AFF` | 266 | gradient start of Zod's `logo.svg` |
+| 5 | vitejs/vite | `#BD34FE` | 311 | Vite's logo |
+| 6 | nodejs/node | `#5FA04E` | 139 | Node's logo |
+| 7 | TanStack/router | `#0891B2` | 222 | a free hue: Router's green `#39AF46` is 6° from Node's, the row above |
+| 8 | withastro/astro | `#F041FF` | 325 | end of Astro's gradient |
+| 9 | sveltejs/svelte | `#FF3E00` | 34 | Svelte's logo |
+| 10 | oven-sh/bun | `#A67F38` | 80 | Bun's logo, darkened |
+| 11 | excalidraw/excalidraw | `#6965DB` | 281 | Excalidraw's logo |
+| 12 | prometheus/prometheus | `#D64B5A` | 18 | a free hue: Prometheus's `#E6522C` is Svelte's hue and nearer to hono's orange than any two rows are |
+| 13 | python/cpython | `#3A7AB0` | 247 | Python's blue `#3776AB`, lightened to 5.1:1 on dark hover |
 
-Rows next to each other are at least 32° apart in hue (svelte and elysia,
-which also differ in lightness) or 0.11 apart in OKLab (ky and
-excalidraw, as before). Only neighbours are held apart: cpython's blue is
-ky's hue, three rows up.
+Rows next to each other are at least 32° apart in hue: the nearest are
+elysia and hono, 44° apart, which also differ in lightness.
 
 7.2.6 **Loading** (request 61), as a CI job: padding 14, gap 14: the tag
 of the pull request being opened (known from the link), the steps 10
@@ -2202,7 +2199,7 @@ clipped to the usable view; `excalidraw-overview.png` and
 description in its own column, the board landing on the code
 (`tall-overview.png`, `tall-1600-landed.png`); `hono-dragged.png`
 (`compose()` dragged 200 right: its string ends move, its bends stay,
-3.3.4); and the panel's states: the start view with its 14 example rows,
+3.3.4); and the panel's states: the start view with its 13 example rows,
 loading, reading at the PR card (its whole description), at `#dispatch()`
 (step 1) and at `compose()` (names in their strings' colours), a rebuild
 under way, asking with its cost and failed, Clear asking, excalidraw's long description
@@ -2549,7 +2546,7 @@ the dev server on a local board. G: the score gate, outside the repository
     card. It never covers the toolbar or the panel: it is clipped to the
     usable view.
 17. (T) The panel, as 7.2 and 7.3 lay it out: the start view is the field
-    (no button), the error slot and the 14 example rows in 7.2.3's order,
+    (no button), the error slot and the 13 example rows in 7.2.3's order,
     with 7.2.5's colours, no row carrying a cost, no
     heading and no `Try` anywhere, each a button with its project-coloured
     tag on its own line then its title, the list alone scrolling; a paste
@@ -2590,7 +2587,7 @@ the dev server on a local board. G: the score gate, outside the repository
     states match 7.2 and 7.3 and the toolbar design's frames
     (`SCRATCH/toolbar/png`): the PR card current with its whole
     description, steps with names in their strings' colours, a rebuild
-    under way, asking and failed, Clear asking, and keyboard focus with a tooltip. Each of the 14 examples' boards, rendered from
+    under way, asking and failed, Clear asking, and keyboard focus with a tooltip. Each of the 13 examples' boards, rendered from
     a saved copy (9.1), reads well and draws strings.
 20. (L) At 1920 × 1080, on a dark board in a light browser: the board
     arrives in one add call, cards dark; the PR card shows hono's

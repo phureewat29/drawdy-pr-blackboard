@@ -110,10 +110,11 @@ describe("panel", () => {
         expect(document.querySelector("form, header, label")).toBeNull();
     });
 
-    it("lists the 14 vetted pull requests in their order, each its tag in its project's colour on a line of its own, then its title, and none a cost", () => {
+    it("lists the 13 vetted pull requests in their order, each its tag in its project's colour on a line of its own, then its title, and none a cost", () => {
         panel.show(startView);
         const rows = [...document.querySelectorAll<HTMLButtonElement>("#try button")];
         expect(rows.map((b) => b.querySelector(".tag")!.textContent)).toEqual([
+            "elysiajs/elysia#1734",
             "honojs/hono#5513",
             "prettier/prettier#20127",
             "colinhacks/zod#6652",
@@ -122,26 +123,23 @@ describe("panel", () => {
             "TanStack/router#8573",
             "withastro/astro#17955",
             "sveltejs/svelte#18736",
-            "elysiajs/elysia#1734",
             "oven-sh/bun#34519",
-            "sindresorhus/ky#823",
             "excalidraw/excalidraw#12237",
             "prometheus/prometheus#18564",
             "python/cpython#152451",
         ]);
         expect(rows.map((b) => b.querySelector<HTMLElement>(".tag")!.style.getPropertyValue("--c"))).toEqual([
-            "#E36002", "#41A0A1", "#3A6AFF", "#BD34FE", "#5FA04E", "#0891B2", "#F041FF", "#FF3E00", "#F06292", "#A67F38", "#288DD4", "#6965DB", "#D64B5A", "#3A7AB0",
+            "#F06292", "#E36002", "#41A0A1", "#3A6AFF", "#BD34FE", "#5FA04E", "#0891B2", "#F041FF", "#FF3E00", "#A67F38", "#6965DB", "#D64B5A", "#3A7AB0",
         ]);
         expect(rows.every((b) => b.firstElementChild!.className === "tag hue")).toBe(true);
-        expect([...rows[0].children].map((c) => c.textContent)).toEqual(["honojs/hono#5513", "fix(hono): handle non-Error throws with onError"]);
-        expect(document.querySelector("#try .cost")).toBeNull();
         // GitHub shows :tada: as the emoji, and a colon pair that names no emoji stays.
-        expect(rows[8].children[1].textContent).toBe("🎉 feat: graceful cookie transition");
+        expect([...rows[0].children].map((c) => c.textContent)).toEqual(["elysiajs/elysia#1734", "🎉 feat: graceful cookie transition"]);
+        expect(document.querySelector("#try .cost")).toBeNull();
         expect(rows[9].children[1].textContent).toContain("node:events: single listeners");
-        expect([...rows[10].querySelectorAll("code")].map((c) => c.textContent)).toEqual(["data", "HTTPError"]);
+        expect([...rows[4].querySelectorAll("code")].map((c) => c.textContent)).toEqual(["renderBuiltUrl"]);
         expect(document.body.textContent).not.toContain("mattpocock");
         rows[10].click();
-        expect(post).toHaveBeenCalledWith({ type: "open", url: "https://github.com/sindresorhus/ky/pull/823" });
+        expect(post).toHaveBeenCalledWith({ type: "open", url: "https://github.com/excalidraw/excalidraw/pull/12237" });
     });
 
     it("styles the rows as the design says: a grid button, tag above title, the list alone scrolling with shadows only while rows are hidden", () => {

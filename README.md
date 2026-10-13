@@ -76,8 +76,8 @@ languages get a card for every change.
 1. Click the **PR Blackboard** button on the right edge of the board: the
    stack of cards.
 2. Paste a link like `github.com/elysiajs/elysia/pull/1734`, or pick one of
-   14 examples from Hono, Vite, Node.js, Svelte, Bun, Prometheus, CPython
-   and more.
+   13 examples from Elysia, Hono, Vite, Node.js, Svelte, Bun, Prometheus,
+   CPython and more.
 3. Press **›** and follow the lines.
 
 ## Good to know
