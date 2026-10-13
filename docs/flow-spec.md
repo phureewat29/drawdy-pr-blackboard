@@ -128,7 +128,7 @@ An uncertain link is neither drawn nor listed.
 
 | Module | What it does | Replaces |
 |---|---|---|
-| `vendor/web-tree-sitter.ts` | web-tree-sitter 0.27.1's `web-tree-sitter.js` (MIT), vendored as `marked` is, with its patches: its Node-only branches go (`import("module")`, `import("fs/promises")`, the `fs` loader), `import.meta.url` reads `undefined`, and the doc comments esbuild would keep in the bundle are gone (24 KB). Unpatched, the marketplace build refuses the bare imports `module` and `fs/promises`. Header: version, the npm file's SHA-256 (`7c49e3c1…4b8110`), the patches, `// @ts-nocheck` | |
+| `vendor/web-tree-sitter.ts` | web-tree-sitter 0.27.1's `web-tree-sitter.js` (MIT), vendored as `marked` is, with its patches: its Node-only branches go (`import("module")`, `import("fs/promises")`, the `fs` loader), and so do its web loaders (`Language.load`'s URL branch, `readAsync`, `readBinary`, the streaming instantiation), since it gets every file as bytes; a grammar's EM_ASM or EM_JS code throws instead of reaching `eval` (no pinned grammar has any); `import.meta.url` reads `undefined`, and the doc comments esbuild would keep in the bundle are gone (24 KB). Unpatched, the marketplace build refuses the bare imports `module` and `fs/promises`, and Drawdy's static scan flags the loaders' `fetch` and `XMLHttpRequest` and the `eval`. Header: version, the npm file's SHA-256 (`7c49e3c1…4b8110`), the patches, `// @ts-nocheck` | |
 | `lib/sha256.ts` | SHA-256 in plain TypeScript; the driver's worker has no `crypto.subtle` | |
 | `lib/syntax.ts` | A's: `createSyntax(runtimeBytes)` (`Parser.init` with `wasmBinary` and a `locateFile`, which the bundle needs since it has no module URL), each grammar loaded with what its linker asks: a text repair (tree-sitter-typescript 0.23.2's call signatures) and a units query (the grammar's `tags.scm`, its definitions only, moved onto the flat tree); the tree flattened into typed arrays | the JS patterns in `findDecls` for parsed files |
 | `lib/langs/pack.ts` | The contract between the core and the languages ([languages.md](languages.md)): a `LanguagePack` (extensions, grammar pins, colours, line patterns, test names, card names) that the driver and the worker read, and a `Linker` (a rule table for the shared linker, or a linker of its own) that only the worker reads | |
@@ -144,9 +144,10 @@ An uncertain link is neither drawn nor listed.
 | `lib/model.ts` | Cards and links from A's `board.ts`, in `lib/model/`: line ownership (`changes.ts`), threads and their columns (`threads.ts`), the cards with the context caller and file cards (`cards.ts`), links by region (`links.ts`), where tests and file cards hang (`place.ts`), the card limit (`limit.ts`). `Review`, `Pin` and `Link` keep their shape; a parsed unit becomes a `ChangedSymbol`, id `path:nameLine` | `symbolBoard`, `fileBoard`, `addTests` and the mention block |
 | `lib/symbols.ts` | Cards by line patterns, for files no parser reads (2.2.7), with each pack's patterns; card names (`labelOf`); `testCases` | |
 | `driver/grammars.ts` | The parser's files: the pins (the runtime's, and each pack's grammars), the download, kv-storage, the SHA-256 check (2.2.2) | |
-| `worker/serve.ts` | The parser worker (2.2.2): the read tier, the parse, the links and the review with its board's plan, asking the driver for the parser's files | |
+| `worker/serve.ts` | The parser worker (2.2.2): the read tier, the parse, the links and the review with its board's plan, asking the driver for each file it reads and for the parser's files; it makes no request | |
 | `worker/script.ts` | `serve` and all it uses, bundled and minified by `npm run worker` into one script kept as text; a test and `npm run check` fail while it is behind its sources | |
-| `driver/parser.ts` | Starts the worker from that script, or runs the script on the driver's thread where no worker starts; answers its asks for files; reports the download | |
+| `driver/parser.ts` | Starts the worker from that script, and a fresh one, once, when it breaks during an open; reads each file the worker asks for and answers its asks for the parser's files; reports the download | |
+| `driver/network.ts` | `fetchGithubOrJsdelivr`, the one function that makes a request: the GitHub API through the quota watcher, the files the worker reads, the parser's files. It refuses any URL outside `api.github.com`, `raw.githubusercontent.com` and `cdn.jsdelivr.net/npm/` | |
 | `driver/words.ts` | `inWords`: an error whose message the panel shows as it is; `explain` and `failureOf`: any failure in the reader's words | the runtime's `IN_WORDS` |
 | `driver/open.ts` | `loadReview`: the pull request and its files from GitHub, then the parser's review and plan; `reviewAt`, a pinned board's review; `pinBoard`, the one add call | |
 
@@ -214,20 +215,24 @@ runtime, 30 ms for TypeScript), parses and resolves.
 - **The parser worker.** The driver starts a dedicated worker from a
   `blob:` URL it makes of `WORKER_SCRIPT`: the driver's own worker is a
   `blob:` worker of origin `null` in an `allow-scripts` iframe, and its
-  nested worker, proved live on drawdy.io, runs WebAssembly and reads
-  raw.githubusercontent.com (no CSP on the bootstrap, so `worker-src`
-  falls to nothing). The marketplace bundles `src/index.ts` alone and
-  allows no import but `@drawdy/driver-protocol`, so the worker's code
-  comes as text (`worker/script.ts`), which keeps the parse and the
-  linker in the bundle once: the driver never imports them. The driver
-  sends the pull request and its file list (Bun's 44 MB of patches cross
-  in about 40 ms); the worker reads the files itself, asks the driver for
-  each parser file it needs, checked, and sends back the review the
-  driver keeps (`compact`: no diff of a file without a card, 3 MB for
-  Bun's, against 84 MB whole) with the board's plan, so the driver plans
-  nothing. Where a worker can't start, or breaks, the same script runs on
-  the driver's thread, its messages copied as a worker's are. A worker
-  idle for 30 s ends: Drawdy tells a driver nothing when it unloads.
+  nested worker, proved live on drawdy.io, runs WebAssembly (no CSP on
+  the bootstrap, so `worker-src` falls to nothing). The marketplace
+  bundles `src/index.ts` alone and allows no import but
+  `@drawdy/driver-protocol`, so the worker's code comes as text
+  (`worker/script.ts`), which keeps the parse and the linker in the
+  bundle once: the driver never imports them. The driver sends the pull
+  request and its file list (Bun's 44 MB of patches cross in about
+  40 ms); the worker asks the driver for each file it reads and each
+  parser file it needs, checked, and sends back the review the driver
+  keeps (`compact`: no diff of a file without a card, 3 MB for Bun's,
+  against 84 MB whole) with the board's plan, so the driver plans
+  nothing. The worker makes no request: the driver reads each file
+  through its one network function (`driver/network.ts`), the only line
+  Drawdy's static scan flags. Where no worker can start, the open fails
+  in words. A worker that breaks is ended and the open goes on in a
+  fresh one; if that one breaks too, the open fails in words, and the
+  next open starts another. A worker idle for 30 s ends: Drawdy tells a
+  driver nothing when it unloads.
 - The loaded languages live as long as the worker; the facts are dropped
   once the review is built.
 
@@ -2648,11 +2653,13 @@ the dev server on a local board. G: the score gate, outside the repository
     string from `hono.test.ts` into `fetch()`, which stays in the bottom
     row (P: the overview still calm, light and dark).
 28. (T, C, L) The parser worker (2.2.2). T, C: `worker/script.ts` is
-    current with its sources; the script run on the driver's thread builds
-    the same review and plan as the source; when the worker breaks, the
-    open goes on on the driver's thread with the same board; the review
-    the driver gets keeps no diff of a file without a card. C: the bundle
-    holds the parse and the linker only inside that script. L: on
+    current with its sources; the script run in a worker builds the same
+    review and plan as the source; when the worker breaks, the open goes
+    on in a fresh one with the same board, and fails in words when that
+    one breaks too or no worker can start; the worker makes no request;
+    the review the driver gets keeps no diff of a file without a card. C:
+    the bundle holds the parse and the linker only inside that script, and
+    Drawdy's static scan flags one line, the network function's. L: on
     drawdy.io the driver starts its worker, and the shared worker stays
     free while hono#5513 opens.
 29. (T, C) Rebuild (8.6) on hono: 2 GitHub requests and no download;

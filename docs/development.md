@@ -124,9 +124,12 @@ scripts and tests without a build step.
 1. `npm run check`, then push.
 2. `drawdy login`, `drawdy submit`; follow it with `drawdy submissions`.
 
-The marketplace scanner flags `fetch(`. PR Blackboard fetches only
-`api.github.com`, `raw.githubusercontent.com` and its pinned parser files
-from `cdn.jsdelivr.net`.
+Drawdy's static scan flags each bundle line that matches one of eight
+patterns, such as `fetch(`, `eval(` and `new Function(`. PR Blackboard's
+bundle has one: `fetchGithubOrJsdelivr` in `src/driver/network.ts`, which
+makes every request and refuses any URL outside `api.github.com`,
+`raw.githubusercontent.com` and `cdn.jsdelivr.net/npm/`. `npm run check`
+runs the same scan and fails on any other flag.
 
 ## The icon
 
