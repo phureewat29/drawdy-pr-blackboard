@@ -1340,7 +1340,7 @@ titles and descriptions alike, never inside code, and leaves any other
 `:name:` as written. Code fences use `language.ts` and `highlight.ts`; no other
 highlighter. The marketplace does not minify, so check.ts builds with
 `minify: false` and reports that size: about 236 KB with marked, limit
-1 MB.
+1.25 MB.
 
 5.5.3 **Untrusted input.** No raw HTML or script reaches a card:
 
@@ -2483,7 +2483,7 @@ the dev server on a local board. G: the score gate, outside the repository
    after it, re-measured as 3.1 says), nothing else, no `groupId`. One undo removes it. No
    camera call comes before the add; one overview flight follows it.
 2. (C) The 32-card synthetic board's add payload is under 512 KB. The
-   bundle, built unminified as the marketplace builds it, is under 1 MB
+   bundle, built unminified as the marketplace builds it, is under 1.25 MB
    (about 860 KB, 570 KB of it the minified parser worker's script), prints its
    size, and has no bare import but `@drawdy/driver-protocol`. The
    listing icon is a 512 px PNG and the button draws its 64 px copy.

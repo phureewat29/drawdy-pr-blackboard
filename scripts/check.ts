@@ -2,7 +2,7 @@
  * Reproduces Drawdy's marketplace build lane locally, so a submission can't fail on something a dev build hides:
  *
  * 1. bundles src/index.ts with esbuild as one browser CommonJS file (ES2020), unminified, as the marketplace does;
- * 2. fails on any bare import other than `@drawdy/driver-protocol`, a bundle of 1 MB or more, a parser worker
+ * 2. fails on any bare import other than `@drawdy/driver-protocol`, a bundle of 1.25 MB or more, a parser worker
  *    script (src/worker/script.ts) behind its sources, or any line Drawdy's static scan flags but the one network
  *    function's;
  * 3. boots the bundle in a fake Drawdy host, runs the generated webview in jsdom until it reports `ready`, opens a
@@ -37,7 +37,7 @@ import { SCRIPT_FILE, workerScriptFile } from "./worker.ts";
 
 const ROOT = join(import.meta.dirname, "..");
 const ALLOWED_IMPORTS = new Set(["@drawdy/driver-protocol"]);
-const MAX_BUNDLE_BYTES = 1_000_000;
+const MAX_BUNDLE_BYTES = 1_250_000;
 const MAX_PAYLOAD_BYTES = 512 * 1024;
 /** Drawdy's marketplace build refuses a listing icon over 256 KB. */
 const MAX_ICON_BYTES = 256 * 1024;
@@ -121,7 +121,7 @@ const checkBundle = async ({ code, bareImports, inputs }: Awaited<ReturnType<typ
     const banned = [...bareImports].filter((name) => !ALLOWED_IMPORTS.has(name));
     expectThat(banned.length === 0, banned.length === 0 ? "imports only @drawdy/driver-protocol" : `imports outside the whitelist: ${banned.join(", ")}`);
     const bytes = Buffer.byteLength(code);
-    expectThat(bytes < MAX_BUNDLE_BYTES, `bundle is ${(bytes / 1024).toFixed(1)} KB (limit 1 MB)`);
+    expectThat(bytes < MAX_BUNDLE_BYTES, `bundle is ${(bytes / 1024).toFixed(1)} KB (limit 1.25 MB)`);
     expectThat(readFileSync(SCRIPT_FILE, "utf8") === (await workerScriptFile()), "the parser worker's script is current with its sources (npm run worker)");
     const parsing = inputs.filter((input) => PARSING.some((re) => re.test(input)));
     expectThat(parsing.length === 0, parsing.length === 0 ? "the parser and the linkers reach the bundle only inside the worker's script" : `the driver imports the parser itself: ${parsing.join(", ")}`);

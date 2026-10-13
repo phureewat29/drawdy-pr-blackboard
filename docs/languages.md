@@ -162,7 +162,7 @@ pack costs about 1 KB; a units-only pack 3 to 6 KB, and `units-only.ts`
 68 KB with Vue and Svelte components; C#, 55 KB; C, with its build-file
 reader and libraries' macros, 97 KB; Kotlin, with its standard library's
 names, 88 KB; Java, with the JDK's types, 98 KB. A grammar's wasm file is
-downloaded apart, once. The bundle's check is 1 MB.
+downloaded apart, once. The bundle's check is 1.25 MB.
 
 ## Add a language
 

@@ -114,7 +114,7 @@ scripts and tests without a build step.
 
 - 32 cards per board; up to 40 code and 40 test files read per PR.
 - GitHub allows 60 API requests an hour without a token.
-- The bundle must stay under 1 MB (`npm run check`).
+- The bundle must stay under 1.25 MB (`npm run check`).
 - Kotlin, C, C++, Scala and Haskell get a parsed card per declaration;
   Ruby, Swift and others get cards from line patterns. None of them draws
   lines until its pack has a proven linker.
