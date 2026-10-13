@@ -2,8 +2,9 @@
  * Reproduces Drawdy's marketplace build lane locally, so a submission can't fail on something a dev build hides:
  *
  * 1. bundles src/index.ts with esbuild as one browser CommonJS file (ES2020), unminified, as the marketplace does;
- * 2. fails on any bare import other than `@drawdy/driver-protocol`, a bundle of 1 MB or more, or a parser worker
- *    script (src/worker/script.ts) behind its sources;
+ * 2. fails on any bare import other than `@drawdy/driver-protocol`, a bundle of 1 MB or more, a parser worker
+ *    script (src/worker/script.ts) behind its sources, or any line Drawdy's static scan flags but the one network
+ *    function's;
  * 3. boots the bundle in a fake Drawdy host, runs the generated webview in jsdom until it reports `ready`, opens a
  *    saved PR (honojs/hono#5513) from a fake GitHub and jsDelivr, and walks the board: the one add call, the
  *    strings, the steps, Description, the link names' colours, Read all, Home, a rebuild and Clear, pressed in the bundled
@@ -23,6 +24,7 @@ import { JSDOM } from "jsdom";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { reviewElements } from "../src/driver/elements.ts";
+import { fetchGithubOrJsdelivr } from "../src/driver/network.ts";
 import { groupBy } from "../src/lib/fp.ts";
 import { STRING_COLOURS, planBoard } from "../src/lib/layout.ts";
 import { LIMITS } from "../src/lib/model.ts";
@@ -45,6 +47,37 @@ const HONO = "https://github.com/honojs/hono/pull/5513";
  * linker, the linkers' list, and in each language's folder every file but its pack (`langs/<name>/index.ts`).
  */
 const PARSING = [/src\/vendor\/web-tree-sitter\.ts$/, /src\/lib\/(syntax|anyfacts|anylink|linking)\.ts$/, /src\/lib\/langs\/linkers\.ts$/, /src\/lib\/langs\/[^/]+\/(?!index\.ts$)/];
+
+/**
+ * The static scan Drawdy runs on a submitted bundle, copied from its marketplace build
+ * (drawdy/cron/src/extension-submission/extension-scan.ts): each rule flags a line its pattern matches, once.
+ */
+const SCAN_RULES: { rule: string; pattern: RegExp }[] = [
+    { rule: "eval", pattern: /\beval\s*\(/ },
+    { rule: "new-function", pattern: /\bnew\s+Function\s*\(/ },
+    { rule: "dynamic-import", pattern: /\bimport\s*\(/ },
+    { rule: "fetch", pattern: /\bfetch\s*\(/ },
+    { rule: "xhr", pattern: /\bXMLHttpRequest\b/ },
+    { rule: "websocket", pattern: /\bWebSocket\b/ },
+    { rule: "atob", pattern: /\batob\s*\(/ },
+    { rule: "import-scripts", pattern: /\bimportScripts\s*\(/ },
+];
+const MAX_FLAGS = 50;
+const MAX_EXCERPT_LENGTH = 160;
+
+type ScanFlag = { rule: string; line: number; excerpt: string };
+
+const scanBundle = (bundleText: string): ScanFlag[] => {
+    const flags: ScanFlag[] = [];
+    const lines = bundleText.split("\n");
+    for (let i = 0; i < lines.length; i++) {
+        for (const { rule, pattern } of SCAN_RULES) {
+            if (flags.length >= MAX_FLAGS) return flags;
+            if (pattern.test(lines[i])) flags.push({ rule, line: i + 1, excerpt: lines[i].trim().slice(0, MAX_EXCERPT_LENGTH) });
+        }
+    }
+    return flags;
+};
 
 const manifestText = readFileSync(join(ROOT, "manifest.json"), "utf8");
 const manifest = JSON.parse(manifestText) as { driverId: string; main: string; icon: string };
@@ -92,6 +125,12 @@ const checkBundle = async ({ code, bareImports, inputs }: Awaited<ReturnType<typ
     expectThat(readFileSync(SCRIPT_FILE, "utf8") === (await workerScriptFile()), "the parser worker's script is current with its sources (npm run worker)");
     const parsing = inputs.filter((input) => PARSING.some((re) => re.test(input)));
     expectThat(parsing.length === 0, parsing.length === 0 ? "the parser and the linkers reach the bundle only inside the worker's script" : `the driver imports the parser itself: ${parsing.join(", ")}`);
+    const flags = scanBundle(code);
+    const network = flags.length === 1 && flags[0].rule === "fetch" && flags[0].excerpt.startsWith(`var ${fetchGithubOrJsdelivr.name} = `);
+    expectThat(
+        network,
+        `Drawdy's static scan flags ${network ? "one line, the network function" : `${flags.length} lines, not the network function's alone`}:\n${flags.map((f) => `      ${f.rule} L${f.line}: ${f.excerpt}`).join("\n")}`
+    );
 };
 
 const built = await bundle();
