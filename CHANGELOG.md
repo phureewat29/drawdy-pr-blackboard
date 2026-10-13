@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.0
+
+- Lines for C and Kotlin, and for the code of Vue and Svelte components.
+- View full file opens a card's whole file beside it.
+
 ## 1.2.1
 
 - Every request goes through one function, to GitHub and jsDelivr only.
