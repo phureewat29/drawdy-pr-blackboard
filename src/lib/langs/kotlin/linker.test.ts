@@ -109,10 +109,10 @@ describe("Kotlin's units", () => {
         expect(names).not.toContain("toString");
     });
 
-    it("name a companion object with its own name when it has one, and read nothing a name could link", async () => {
+    it("name a companion object with its own name when it has one, and read the names it uses", async () => {
         const f = await index("A.kt", "class A {\n  companion object Factory {\n    fun make() = A()\n  }\n}\n");
         expect(units(f)).toEqual(["class A 1-5", "companion object Factory 2-4", "A.make() 3-3"]);
-        expect([f.sites, f.imports, f.scopes.length]).toEqual([[], [], 1]);
+        expect(f.sites.map((s) => `${s.name} ${s.ref} ${s.line}`)).toEqual(["A call 3"]);
     });
 
     it("say which top-level statements import", async () => {

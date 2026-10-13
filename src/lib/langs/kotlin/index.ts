@@ -1,6 +1,6 @@
 /**
- * Kotlin: a card per declaration from its parser (`linker.ts`), no lines
- * yet. A member's card is named for its type, `Request.newBuilder()`. Scripts
+ * Kotlin: a card per declaration from its parser and lines its own resolver
+ * proves (`linker.ts`). A member's card is named for its type, `Request.newBuilder()`. Scripts
  * (`.kts`, mostly Gradle's build files) keep the line patterns, so a Java
  * PR that touches one downloads no Kotlin parser. Tests are files named for
  * one, and those in a multiplatform test source set (`src/jvmTest/`).

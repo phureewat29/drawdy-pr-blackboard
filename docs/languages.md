@@ -18,7 +18,8 @@ knows no language. It reads them through two lists and one contract,
 | Elixir | `elixir/` | parsed | rule table, own resolver |
 | Clojure, ClojureScript | `clojure/` | parsed | rule table, own resolver |
 | C | `c/` | parsed | rule table, own resolver; headers are C++'s files |
-| Kotlin, C++, Scala, Haskell | `kotlin/`, `cpp/`, `scala/`, `haskell/` | parsed | none: units only |
+| Kotlin | `kotlin/` | parsed | rule table, own resolver |
+| C++, Scala, Haskell | `cpp/`, `scala/`, `haskell/` | parsed | none: units only |
 | Swift, Ruby | `swift/`, `ruby/` | line patterns | none |
 | CSS, HTML, JSON, YAML, TOML, Markdown, shell, SQL | `formats.ts` | whole files | none |
 
@@ -94,6 +95,21 @@ card. `UnitRule` may give a unit's `end`, where its node runs on over blank
 lines and comments (Scala's indented blocks), and its `doc`, where its doc
 comments aren't its siblings in the tree (Haskell's `-- |`).
 
+**Kotlin** (`kotlin/program.ts`) looks a name up as the compiler does:
+locals, the implicit receivers (a lambda's, an extension's, the class with
+its companions and supertypes), then explicit imports, the package, star
+imports and the default imports, and picks among overloads the one that
+surely applies. A source set is read from its path (`src/jvmTest/kotlin`,
+ktor's `jvm/test`): main code never sees a test, common code never a
+platform's. It draws no line where a smart cast may change a receiver (`is`,
+`as`, `===`, and a call not proven free of a contract: an operator's, an
+infix function's or a property accessor's too), a
+lambda passed to a function not read may take one, a receiver around may
+hold a member extension of the name, a supertype or an `expect` class's
+`actual` isn't read, two overloads may both apply, or a file of the package
+that tree-sitter misreads or can't parse, or a Java file, may declare the
+name; nor for operators, infix calls and callable references.
+
 **The two lists.** `langs/index.ts` lists every pack (`PACKS`);
 `langs/linkers.ts` lists every linker (`LINKERS`). A pack with no linker
 gets cards from its line patterns and draws no lines; so does a file the
@@ -144,8 +160,9 @@ pack costs about 1 KB; a units-only pack 3 to 6 KB, and `units-only.ts`
 3 KB; a pack with a rule table 15 to 40 KB (Go 15 KB, Rust 21 KB, Python
 22 KB, PHP 28 KB, Elixir 30 KB, Clojure 39 KB); JavaScript and TypeScript,
 68 KB with Vue and Svelte components; C#, 55 KB; C, with its build-file
-reader and libraries' macros, 97 KB; Java, with the JDK's types, 98 KB. A
-grammar's wasm file is downloaded apart, once. The bundle's check is 1 MB.
+reader and libraries' macros, 97 KB; Kotlin, with its standard library's
+names, 88 KB; Java, with the JDK's types, 98 KB. A grammar's wasm file is
+downloaded apart, once. The bundle's check is 1 MB.
 
 ## Add a language
 

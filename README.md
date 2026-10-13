@@ -67,8 +67,8 @@ order in their head. PR Blackboard draws it for you.
   asks first, your own notes stay, and undo brings the board back.
 
 Lines are drawn for **JavaScript, TypeScript, Python, Go, Rust, Java, C#,
-PHP, Elixir, Clojure and C**, and for the code of **Vue and Svelte**
-components. **Kotlin, C++, Scala and Haskell** are parsed too: a card for
+PHP, Elixir, Clojure, C and Kotlin**, and for the code of **Vue and
+Svelte** components. **C++, Scala and Haskell** are parsed too: a card for
 each changed function or class, no lines yet. PRs in other languages get a
 card for every change.
 

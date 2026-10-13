@@ -30,7 +30,7 @@ export type Hint =
 export type TypeName = { kind: "name"; node: number } | { kind: "qualified"; qualifier: number; name: string } | { kind: "self" };
 
 /** What a module lookup knows of the files: those parsed, their texts (`go.mod`, Python's `__init__.py` files), and whether a path exists, as far as the reads went (undefined: never asked); `paths`, every path read, parsed or not. */
-export type ModuleContext = { known: Iterable<string>; text: (path: string) => string | undefined; exists?: (path: string) => boolean | undefined; paths?: Iterable<string> };
+export type ModuleContext = { known: Iterable<string>; text: (path: string) => string | undefined; exists?: (path: string) => boolean | undefined; paths?: readonly string[] };
 
 /** A field a class-like unit declares, with a written type or a value; `onSelf` when a method sets it on `self`. */
 export type Field = { name: string; typeNode: number; init: number; onSelf: boolean };
@@ -113,7 +113,7 @@ export type Resolver = GenericResolver | OwnResolver;
 export const resolveAny = (files: readonly GFile[], langOf: (f: GFile) => Resolver, text: (path: string) => string | undefined, exists?: (path: string) => boolean | undefined, paths?: () => Iterable<string>): Ref[] => {
     const program = createProgram(files.filter((f) => "typing" in langOf(f)), (f) => langOf(f) as GenericResolver, text, exists);
     // A language that resolves its own files gets them all at once.
-    const ownProgram = memoize((r: OwnResolver) => r.program(files.filter((g) => langOf(g) === r), { known: files.map((g) => g.path), text, ...(exists ? { exists } : {}), ...(paths ? { paths: paths() } : {}) }));
+    const ownProgram = memoize((r: OwnResolver) => r.program(files.filter((g) => langOf(g) === r), { known: files.map((g) => g.path), text, ...(exists ? { exists } : {}), ...(paths ? { paths: [...paths()] } : {}) }));
     return files.flatMap((f) => {
         const lang = langOf(f);
         return "typing" in lang ? program.refsOf(f) : ownRefs(f, ownProgram(lang));

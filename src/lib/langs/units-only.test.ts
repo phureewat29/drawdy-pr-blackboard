@@ -24,18 +24,17 @@ const added = (files: Record<string, string>): PrFile[] =>
         return { path, status: "added", additions: lines.length, deletions: 0, patch: `@@ -0,0 +1,${lines.length} @@\n${lines.map((l) => `+${l}`).join("\n")}` };
     });
 
-/** In each language, `run` calls `helper` in its own file; Python's `app.py` calls a `helper` of its own and imports a name the Kotlin file defines. */
+/** In each language, `run` calls `helper` in its own file; Python's `app.py` calls a `helper` of its own and imports a name the other files define. */
 const FILES: Record<string, string> = {
     "app/app.py": "from util import helper\n\ndef run():\n    return helper()\n\ndef other():\n    return run()\n",
     "app/util.py": "def helper():\n    return 1\n",
-    "src/main/kotlin/Client.kt": "package app\n\nfun helper(): Int = 1\n\nfun run(): Int = helper()\n",
     "src/net.c": "static int helper(void)\n{\n    return 1;\n}\n\nint run(void)\n{\n    return helper();\n}\n",
     "src/wallet.cpp": "namespace wallet {\nint helper() { return 1; }\n\nint run() { return helper(); }\n}\n",
     "src/Main.scala": "object Main:\n  def helper(): Int = 1\n\n  def run(): Int = helper()\n",
     "src/Plan.hs": "module Plan where\n\nhelper :: Int\nhelper = 1\n\nrun :: Int\nrun = helper + 1\n",
 };
 
-const UNITS_ONLY = /\.(kt|cpp|scala|hs)$/;
+const UNITS_ONLY = /\.(cpp|scala|hs)$/;
 
 describe("A language read for its units alone", () => {
     it("resolves no name in its files, and no other language's name resolves into them", async () => {
@@ -55,8 +54,6 @@ describe("A language read for its units alone", () => {
         const { review } = await analyse(pr, added(FILES), read, testParse);
         const cards = review.pins.filter((p) => p.path && UNITS_ONLY.test(p.path)).map((p) => `${p.path} ${p.name}`);
         expect(cards).toEqual([
-            "src/main/kotlin/Client.kt helper()",
-            "src/main/kotlin/Client.kt run()",
             "src/wallet.cpp helper()",
             "src/wallet.cpp run()",
             "src/Main.scala object Main",
@@ -64,7 +61,6 @@ describe("A language read for its units alone", () => {
             "src/Main.scala Main.run()",
             "src/Plan.hs helper",
             "src/Plan.hs run",
-            "src/main/kotlin/Client.kt Client.kt, other lines",
             "src/wallet.cpp wallet.cpp, other lines",
             "src/Plan.hs Plan.hs, other lines",
         ]);
@@ -74,12 +70,12 @@ describe("A language read for its units alone", () => {
     });
 
     it("reads no test file of its own, which would link nothing, and names its cases from its diff", async () => {
-        const test = { "okhttp/src/jvmTest/kotlin/okhttp3/CallTest.kt": "class CallTest {\n  @Test\n  fun headersCanBeLarge() {\n  }\n}\n" };
+        const test = { "src/test/scala/CallSpec.scala": 'class CallSpec extends AnyFlatSpec:\n  "headersCanBeLarge" in {\n  }\n' };
         const asked: string[] = [];
         const read = async (path: string) => (asked.push(path), { ...FILES, ...test }[path] ?? null);
-        const { review } = await analyse(pr, added({ "src/main/kotlin/Client.kt": FILES["src/main/kotlin/Client.kt"], ...test }), read, testParse);
-        expect(asked).toEqual(["src/main/kotlin/Client.kt"]);
-        expect(review.pins.filter((p) => p.kind === "test").map((p) => p.name)).toEqual(["CallTest.kt"]);
+        const { review } = await analyse(pr, added({ "src/Main.scala": FILES["src/Main.scala"], ...test }), read, testParse);
+        expect(asked).toEqual(["src/Main.scala"]);
+        expect(review.pins.filter((p) => p.kind === "test").map((p) => p.name)).toEqual(["CallSpec.scala"]);
         expect(review.files.find((f) => f.role === "test")!.cases.map((c) => c.name)).toEqual(["headersCanBeLarge"]);
     });
 });
