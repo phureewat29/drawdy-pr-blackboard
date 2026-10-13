@@ -35,7 +35,7 @@ const FILES: Record<string, string> = {
     "src/Plan.hs": "module Plan where\n\nhelper :: Int\nhelper = 1\n\nrun :: Int\nrun = helper + 1\n",
 };
 
-const UNITS_ONLY = /\.(kt|c|cpp|scala|hs)$/;
+const UNITS_ONLY = /\.(kt|cpp|scala|hs)$/;
 
 describe("A language read for its units alone", () => {
     it("resolves no name in its files, and no other language's name resolves into them", async () => {
@@ -44,6 +44,8 @@ describe("A language read for its units alone", () => {
         const { refs, facts } = await readAndLink(pr, files, read, testParse);
         for (const path of Object.keys(FILES).filter((p) => UNITS_ONLY.test(p))) expect([path, facts.get(path)?.units.map((u) => u.name)]).toEqual([path, path.endsWith(".scala") ? ["Main", "helper", "run"] : ["helper", "run"]]);
         expect(refs.filter((r) => UNITS_ONLY.test(r.path) || r.units.some((u) => UNITS_ONLY.test(u.path)))).toEqual([]);
+        // C draws its lines now: `run` calls the `static` helper of its own file.
+        expect(refs.filter((r) => r.path === "src/net.c").map((r) => `${r.line} ${r.ref} ${r.units[0].name}`)).toEqual(["8 call helper"]);
         // Python's links stand as before.
         expect(refs.filter((r) => r.path === "app/app.py" && r.ref === "call").map((r) => `${r.line} ${r.units[0].path}:${r.units[0].name}`)).toEqual(["4 app/util.py:helper", "7 app/app.py:run"]);
     });
@@ -55,8 +57,6 @@ describe("A language read for its units alone", () => {
         expect(cards).toEqual([
             "src/main/kotlin/Client.kt helper()",
             "src/main/kotlin/Client.kt run()",
-            "src/net.c helper()",
-            "src/net.c run()",
             "src/wallet.cpp helper()",
             "src/wallet.cpp run()",
             "src/Main.scala object Main",

@@ -1,7 +1,9 @@
 /**
- * C: a card per declaration from its parser (`linker.ts`), no lines yet.
- * Headers are C++'s (`../cpp/`): that grammar reads C's as well, and C's
- * fails on most C++ headers. Objective-C (`.m`) reads by line patterns alone.
+ * C: a card per declaration from its parser, and a line from each call it
+ * can prove (`linker.ts`, `resolver.ts`). Headers are C++'s (`../cpp/`):
+ * that grammar reads C's as well, and C's fails on most C++ headers, so C's
+ * lines read headers through C++'s files. Objective-C (`.m`) reads by line
+ * patterns alone.
  */
 
 import { C_FAMILY, C_KEYWORDS } from "../c-family.ts";

@@ -55,5 +55,5 @@ export const parseFile = (syntax: Syntax, path: string, text: string): Facts | n
 export const linkAll = (pr: PrInfo, changed: ReadonlySet<string>, sources: Sources): Ref[] => {
     const parsed = [...sources.facts.values()];
     const own = [...sources.sessions].flatMap(([linker, session]) => session.link(parsed.filter((f) => linkerOf(f.path) === linker), pr, changed, sources.exists));
-    return [...own, ...resolveAny(parsed.filter(isGeneric), (f) => rulesOf(f.path)!.resolver, (path) => sources.texts.get(path), sources.exists)];
+    return [...own, ...resolveAny(parsed.filter(isGeneric), (f) => rulesOf(f.path)!.resolver, (path) => sources.texts.get(path), sources.exists, () => sources.texts.keys())];
 };

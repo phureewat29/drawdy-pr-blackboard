@@ -17,7 +17,8 @@ knows no language. It reads them through two lists and one contract,
 | PHP | `php/` | parsed | rule table, own resolver |
 | Elixir | `elixir/` | parsed | rule table, own resolver |
 | Clojure, ClojureScript | `clojure/` | parsed | rule table, own resolver |
-| Kotlin, C, C++, Scala, Haskell | `kotlin/`, `c/`, `cpp/`, `scala/`, `haskell/` | parsed | none: units only |
+| C | `c/` | parsed | rule table, own resolver; headers are C++'s files |
+| Kotlin, C++, Scala, Haskell | `kotlin/`, `cpp/`, `scala/`, `haskell/` | parsed | none: units only |
 | Swift, Ruby | `swift/`, `ruby/` | line patterns | none |
 | CSS, HTML, JSON, YAML, TOML, Markdown, shell, SQL | `formats.ts` | whole files | none |
 
@@ -103,6 +104,29 @@ but its `index.ts` reaches the driver. So `index.ts` imports no parser
 code, and everything else in the folder belongs to the parser worker.
 `langs/packs.test.ts` fails when a pack with a grammar has no linker.
 
+C and C++ share one resolver (`c/resolver.ts`): a header (`.h`) is read
+by C++'s grammar, which reads C headers better than C's does, so C's lines
+need C++'s files. C++'s own files draw no line: its calls turn on
+overloads, argument-dependent lookup and templates, and the subset a
+board can prove came to about 10 % of bitcoin's calls before its
+blockers.
+
+C's lines are as sure as the files a board reads: the build files above a
+changed file, what they include, and the folders their links lead to. Out
+of reach:
+
+- flags and source lists from the command line, the environment or
+  configure, and packages the build imports (`find_package`, pkg-config,
+  Meson's `dependency()`, FetchContent even from the repository's own
+  folders); a link variable no file read sets, named as a library list
+  (`${FOO_LIBRARIES}`), counts as a package's;
+- a variant only a build file nothing read names, a source list a
+  subfolder hands up with `PARENT_SCOPE`, a chosen source the build copies
+  into its build folder under the same name, or a variant no build file
+  names (`io_w32.c` beside `io.c`);
+- a macro an unlisted library's header makes of a name unlike the header's
+  (`<foo/bar.h>` making `baz_open` a macro).
+
 Packs share what is common through plain modules beside them:
 `c-family.ts` (the C family's keywords and line patterns) and
 `formats.ts` (the file kinds with no declarations). What applies to every
@@ -119,9 +143,9 @@ minified, in the worker's script. Measured in the bundle, a pattern-only
 pack costs about 1 KB; a units-only pack 3 to 6 KB, and `units-only.ts`
 3 KB; a pack with a rule table 15 to 40 KB (Go 15 KB, Rust 21 KB, Python
 22 KB, PHP 28 KB, Elixir 30 KB, Clojure 39 KB); JavaScript and TypeScript,
-68 KB with Vue and Svelte components; C#, 55 KB; Java, with the JDK's
-types, 98 KB. A grammar's wasm file is downloaded apart, once. The
-bundle's check is 1 MB.
+68 KB with Vue and Svelte components; C#, 55 KB; C, with its build-file
+reader and libraries' macros, 97 KB; Java, with the JDK's types, 98 KB. A
+grammar's wasm file is downloaded apart, once. The bundle's check is 1 MB.
 
 ## Add a language
 

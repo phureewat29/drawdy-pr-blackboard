@@ -84,14 +84,14 @@ describe("C's units", () => {
         ]);
     });
 
-    it("make no unit of a prototype, a function pointer's typedef, a struct inside a function, or a parameter that is a function, and read nothing a name could link", async () => {
+    it("make no unit of a prototype, a function pointer's typedef, a struct inside a function, or a parameter that is a function; its sites are the calls to a bare name", async () => {
         const f = await index("src/list.c", LIST);
         const names = f.units.map((u) => u.name);
         expect(names).not.toContain("prototype");
         expect(names).not.toContain("callback_t");
         expect(names).not.toContain("local");
         expect(names).not.toContain("fn");
-        expect([f.sites, f.imports, f.scopes.length]).toEqual([[], [], 1]);
+        expect([f.sites.map((s) => `${s.line} ${s.ref} ${s.name}`), f.imports, f.scopes.length]).toEqual([["44 call fn"], [], 1]);
     });
 
     it("leave out a definition the parser read with a macro call above it as its type, split from it by a blank line", async () => {
