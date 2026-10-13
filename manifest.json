@@ -1,7 +1,7 @@
 {
     "driverId": "a.pr-blackboard",
     "driverName": "PR Blackboard",
-    "driverVersion": "1.1.0",
+    "driverVersion": "1.2.0",
     "description": "Big PRs are hard to follow file by file. PR Blackboard lays a GitHub PR out as one Drawdy board.",
     "icon": ".github/assets/icon-256.png",
     "main": "main.js",

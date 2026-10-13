@@ -1,13 +1,15 @@
 # Changelog
 
-## Unreleased
+## 1.2.0
 
-- Lines for Clojure, ClojureScript and `.cljc`: `alias/f`, a namespace's
-  own vars and the vars its `ns` form refers. A `.cljc` line needs every
-  platform to agree. Nothing is drawn through a macro the files can't
-  read, a protocol's method or Java interop; from a `comment` form, which
-  never runs; or where a `require`, `load`, `alias` or `alter-meta!`
-  outside the `ns` form may change what a name means.
+- Lines for C#, PHP, Elixir and Clojure. Each was checked on whole real
+  repositories against the language's own tools (Roslyn, PHPStan and
+  clj-kondo; Elixir by hand) with no wrong line. A call that could go more
+  than one way gets no line.
+- Kotlin, C, C++, Scala and Haskell are parsed: a card for each changed
+  function or class, no lines yet.
+- The extension is smaller than 1.1.0, new languages included: the parser
+  now ships minified.
 
 ## 1.1.0
 
