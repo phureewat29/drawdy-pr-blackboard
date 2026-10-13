@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it, jest } from "@jest/globals";
-import { PALETTES, foldsOf, rowMiddle } from "../lib/card.ts";
+import { CARD, PALETTES, foldsOf, rowMiddle } from "../lib/card.ts";
 import { prKey } from "../lib/github.ts";
 import { planBoard, shiftPlan } from "../lib/layout.ts";
 import type { Review } from "../lib/model.ts";
@@ -8,6 +8,7 @@ import { fakeHost } from "../test/fake-host.ts";
 import { honoFixture, reviewOf } from "../test/fixture.ts";
 import { MARK, markOf, reviewElements } from "./elements.ts";
 import { indexOf } from "./board.ts";
+import type { ReadFile } from "./files.ts";
 import { createNavigator } from "./navigator.ts";
 import { CLOSE_BUTTON, DRAG_HANDLE, createPopover } from "./read-all.ts";
 
@@ -21,7 +22,7 @@ beforeAll(async () => {
  * index and review; without it the navigator starts from nothing, as after
  * a reload or on a teammate's screen.
  */
-const setup = (options: { panel?: boolean; extra?: Record<string, (req: any) => unknown>; load?: (key: string, at: string) => Promise<Review> } = {}) => {
+const setup = (options: { panel?: boolean; extra?: Record<string, (req: any) => unknown>; load?: (key: string, at: string) => Promise<Review>; read?: ReadFile } = {}) => {
     const review = hono;
     const plan = shiftPlan(planBoard(review), { x: 1000, y: 500 });
     const host = fakeHost(undefined, options.extra);
@@ -31,7 +32,10 @@ const setup = (options: { panel?: boolean; extra?: Record<string, (req: any) => 
     const marked = () => [...host.elements].map(([id, e]) => ({ id, mark: markOf(e.schema.meta)! })).filter((e) => e.mark);
     const popover = createPopover({ ddp: host.ddp });
     const loadReview = jest.fn(options.load ?? (async () => review));
-    const navigator = createNavigator({ ddp: host.ddp, popover, styling: () => host.styling, changed: () => undefined, loadReview, explain: (err) => `Explained: ${String(err)}` });
+    // The head files of the saved PR, as raw.githubusercontent.com sends them.
+    const raw = honoFixture().raw;
+    const readFile = jest.fn<ReadFile>(options.read ?? (async (_repo, _sha, path) => raw.get(path) ?? null));
+    const navigator = createNavigator({ ddp: host.ddp, popover, styling: () => host.styling, changed: () => undefined, loadReview, explain: (err) => `Explained: ${String(err)}`, readFile });
     const key = prKey(review.pr.ref);
     const index = () => indexOf(key, review.pr.headSha, marked());
     if (options.panel !== false) navigator.set(index(), review);
@@ -41,7 +45,7 @@ const setup = (options: { panel?: boolean; extra?: Record<string, (req: any) => 
     const nameNow = () => review.pins.find((p) => p.id === navigator.currentPin())?.name;
     const labelOf = (prefix: string) => [...host.elements].find(([, e]) => e.schema.meta?.[MARK]?.part === "label" && e.schema.meta[MARK].link.startsWith(prefix))![0];
     const shown = () => host.calls.filter((c) => c.type === "command:dom:upsert-floating-element" || c.type === "command:dom:update-floating-element").pop()?.req;
-    return { review, plan, host, navigator, popover, pinIds, linkIds, index, pinNamed, card, since, nameNow, labelOf, shown, loadReview };
+    return { review, plan, host, navigator, popover, pinIds, linkIds, index, pinNamed, card, since, nameNow, labelOf, shown, loadReview, readFile };
 };
 
 /** Read all's pane in a floating element's schema: inside the box that clips it to the usable view. */
@@ -328,6 +332,115 @@ describe("the board without the panel", () => {
         expect(since(before).filter((t) => t === "subscription:camera:moved-rapid")).toHaveLength(1);
         await navigator.closePopover();
         expect(since(before)).toContain("command:subscription:remove");
+    });
+});
+
+describe("View full file", () => {
+    /** Where a card's `View full file` row is, from its mark, as a click there arrives. */
+    const fullRow = (env: ReturnType<typeof setup>, name: string) => {
+        const id = env.pinIds.get(env.pinNamed(name))!;
+        const top = env.host.elements.get(id)!.schema.meta[MARK].full as number;
+        const r = env.card(name);
+        return { id, at: { x: r.x + 200, y: r.y + top + 10 } };
+    };
+    const pages = (host: ReturnType<typeof fakeHost>) => host.calls.filter((c) => c.type === "command:dom:upsert-floating-element").map((c) => pageOf(c.req));
+    const settle = (ms = 20) => new Promise((done) => setTimeout(done, ms));
+
+    it("opens the card's whole file beside it, from the row its mark holds, at the card's first line, clearing the selection", async () => {
+        const env = setup();
+        const { navigator, host, since, readFile, review, shown, card, popover, nameNow } = env;
+        const { id, at } = fullRow(env, "compose()");
+        expect(at.y - card("compose()").y).toBe(host.elements.get(id)!.schema.meta[MARK].height - CARD.padBottom - CARD.row + 10);
+        const before = host.calls.length;
+        await navigator.click([id], at);
+        expect(nameNow()).toBe("compose()");
+        expect(readFile).toHaveBeenCalledWith(review.pr.headRepo, review.pr.headSha, "src/compose.ts");
+        expect(since(before)).toContain("command:scene:clear-selection");
+        const page = pageOf(shown());
+        expect(page).toContain('<span class="dir">src/</span><span class="base">compose.ts</span>');
+        expect(page).toContain("<i>77</i>");
+        expect(page).toContain('<p class="own focus"><i>18</i>');
+        // Where Read all opens: 24 right of the card, level with it, 720 wide, the full 640 tall.
+        const r = card("compose()");
+        const pane = placed(shown());
+        expect([pane.x, pane.y, pane.width, pane.height]).toEqual([
+            expect.closeTo(host.camera.x + (r.x + r.width + VIEW.readAll.gap) * host.camera.zoom, 1),
+            expect.closeTo(host.camera.y + r.y * host.camera.zoom, 1),
+            VIEW.readAll.width,
+            VIEW.readAll.maxHeight,
+        ]);
+        // ✕ and the drag handle are Read all's own.
+        expect(paneOf(shown()).children[0].children.map((b: any) => b.domId)).toEqual([DRAG_HANDLE, CLOSE_BUTTON]);
+        await navigator.closePopover();
+        expect(popover.shown()).toBeNull();
+    });
+
+    it("takes turns with Read all in one pane, which stays where it is", async () => {
+        const env = setup();
+        const { navigator, popover, shown, card, plan, pinIds, pinNamed } = env;
+        const r = card("compose()");
+        const fold = plan.cards.get(pinNamed("compose()"))!.rows.findIndex((row) => row.kind === "fold");
+        await navigator.click([pinIds.get(pinNamed("compose()"))!], { x: r.x + 200, y: r.y + rowMiddle(fold) });
+        popover.drag({ type: "dragStart", domElementId: DRAG_HANDLE, position: { canvasSpace: { x: r.x + 900, y: r.y + 20 } } });
+        popover.drag({ type: "dragEnd", domElementId: DRAG_HANDLE, position: { canvasSpace: { x: r.x + 800, y: r.y + 120 } } });
+        await settle();
+        const dragged = placed(shown());
+        expect(pageOf(shown())).toContain('<span class="name">compose()</span>');
+        const { id, at } = fullRow(env, "compose()");
+        await navigator.click([id], at);
+        expect(pageOf(shown())).toContain('<span class="base">compose.ts</span>');
+        expect([placed(shown()).x, placed(shown()).y]).toEqual([dragged.x, dragged.y]);
+    });
+
+    it("reads the review first without the panel, then the file, saying so while each takes a while", async () => {
+        let review: (r: Review) => void = () => undefined;
+        let file: (text: string) => void = () => undefined;
+        const env = setup({ panel: false, load: () => new Promise<Review>((r) => (review = r)), read: () => new Promise<string>((r) => (file = r)) });
+        const { navigator, host, readFile, loadReview, shown } = env;
+        const { id, at } = fullRow(env, "compose()");
+        const clicking = navigator.click([id], at);
+        // Long enough for the camera to fly to where the pane reads, and the page to open.
+        await settle(900);
+        expect(loadReview).toHaveBeenCalledTimes(1);
+        expect(pages(host).pop()).toContain("Reading the PR…");
+        review(env.review);
+        await settle(400);
+        expect(readFile).toHaveBeenCalledTimes(1);
+        expect(pages(host).pop()).toContain('<p class="note">Reading the file…</p>');
+        file(honoFixture().raw.get("src/compose.ts")!);
+        await clicking;
+        expect(pageOf(shown())).toContain("<i>77</i>");
+    });
+
+    it("shows why when GitHub doesn't send the file, and asks again on the next click", async () => {
+        const env = setup({ read: async () => null });
+        const { navigator, readFile, shown } = env;
+        const { id, at } = fullRow(env, "toError()");
+        await navigator.click([id], at);
+        expect(pageOf(shown())).toContain("PR Blackboard couldn&#39;t read this file from GitHub. Try again in a moment.");
+        await navigator.click([id], at);
+        expect(readFile).toHaveBeenCalledTimes(2);
+    });
+
+    it("opens nothing when the reader closes the pane, clicks another card, asks for Read all or the overview while the file loads", async () => {
+        const moves: [string, (env: ReturnType<typeof setup>) => Promise<unknown>][] = [
+            ["Esc or ✕", (env) => env.navigator.closePopover()],
+            ["another card", (env) => env.navigator.click([env.pinIds.get(env.pinNamed("toError()"))!], { x: env.card("toError()").x + 20, y: env.card("toError()").y + 30 })],
+            ["Read all", (env) => env.navigator.readAll()],
+            ["the overview", (env) => env.navigator.overview()],
+        ];
+        for (const [move, act] of moves) {
+            let file: (text: string) => void = () => undefined;
+            const env = setup({ read: () => new Promise<string>((r) => (file = r)) });
+            const { id, at } = fullRow(env, "compose()");
+            const clicking = env.navigator.click([id], at);
+            await settle();
+            await act(env);
+            file(honoFixture().raw.get("src/compose.ts")!);
+            await clicking;
+            await settle();
+            expect([move, pages(env.host).some((page) => page.includes('<div class="lines"'))]).toEqual([move, false]);
+        }
     });
 });
 

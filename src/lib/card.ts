@@ -2,7 +2,8 @@
  * The cards pinned on the board, and Read all, the one popover. A card is a
  * fixed grid kept as data (`card/grid.ts`), its rows chosen by its kind
  * (`card/rows.ts`), and shown as an HTML page (`card/html.ts`,
- * `card/pr.ts`, `card/read-all.ts`).
+ * `card/pr.ts`); the popover shows a page of its own (`card/read-all.ts`,
+ * `card/full-file.ts`).
  */
 
 import { CARD, NAME, expandTabs, gutterOf, isDeclaration, opensReadAll, type CardModel, type Row } from "./card/grid.ts";
@@ -11,10 +12,11 @@ import { clamp } from "./fp.ts";
 import { typedMethods } from "./language.ts";
 import type { Pin } from "./model.ts";
 
-export { CARD, foldAt, foldsOf, nameRect, rowMiddle, type CardModel, type Fold, type Row } from "./card/grid.ts";
+export { CARD, foldAt, foldsOf, fullFileRow, nameRect, onRow, rowMiddle, type CardModel, type Fold, type Row } from "./card/grid.ts";
 export { PALETTES, cardHtml, chipOf, whereOf, type Theme } from "./card/html.ts";
 export { linkGroups, wordOf } from "./card/links.ts";
 export { prCard, prCardHtml, unpinnedText } from "./card/pr.ts";
+export { firstLineOf, fullFileMessage, fullFileOf } from "./card/full-file.ts";
 export { readAllMessage, readAllOf, type ReadAllPage } from "./card/read-all.ts";
 
 /** About how many characters wide a row runs. */
@@ -48,14 +50,29 @@ const withCutRow = (rows: Row[], room: number): Row[] => {
     return [...rows, { kind: "fold", count: cut.length, from: cut[0], to: cut[0], tail: true, more: false, cut: true }];
 };
 
+/** Whether rows show every line of a file `lines` long at the head commit: nothing folded, cut short or left out. */
+const showsWholeFile = (rows: readonly Row[], lines: number | undefined): boolean => {
+    if (lines === undefined || !rows.every((r) => r.kind === "line")) return false;
+    const shown = new Set(rows.flatMap((r) => (r.kind === "line" && r.line.n !== undefined ? [r.line.n] : [])));
+    return shown.size === lines && [...shown].every((n) => n >= 1 && n <= lines);
+};
+
+/** `View full file` under the rows, unless they show the whole file already, or the PR deletes it. */
+const withFullFileRow = (pin: Pin, rows: Row[], review: CardInput): Row[] => {
+    const file = review.files.find((f) => f.path === pin.path);
+    if (!pin.path || file?.status === "removed" || showsWholeFile(rows, file?.lines)) return rows;
+    return [...rows, { kind: "full" }];
+};
+
 /**
  * A card as data: its rows, size, and where its strings start. A card at
- * its widest cuts long lines with `…`, Read all opening at the first.
+ * its widest cuts long lines with `…`, Read all opening at the first. Its
+ * last row opens its whole file, unless it shows every line already.
  */
 export const pinCard = (pin: Pin, review: CardInput): CardModel => {
     const built = rowsOf(pin, review);
     const width = Math.round(clamp(Math.max(headerWidth(pin), ...built.map(rowWidth)), CARD.minWidth, CARD.maxWidth));
-    const rows = withCutRow(built, width - gutterOf(pin) - CARD.codePad);
+    const rows = withFullFileRow(pin, withCutRow(built, width - gutterOf(pin) - CARD.codePad), review);
     const anchors: Record<string, number> = {};
     for (const l of outgoing(review, pin.id)) {
         const i = rows.findIndex((r) => r.kind === "line" && r.line.t !== "del" && r.line.n === l.at);

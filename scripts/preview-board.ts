@@ -23,7 +23,7 @@ import type { DomElementSchema, DrawdyElementSchema, ModuleStyling } from "@draw
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { nameRect, prCard, readAllOf } from "../src/lib/card.ts";
+import { firstLineOf, fullFileOf, nameRect, prCard, readAllOf } from "../src/lib/card.ts";
 import { STRING_COLOURS, planBoard, stepsOf, union, type BoardPlan, type PlannedString, type Point, type Rect } from "../src/lib/layout.ts";
 import { crossingsAmong, stringCrossings, stringPath } from "../src/lib/layout/bends.ts";
 import { MARKDOWN_CSS, lexMarkdown, markdownHtml, segments } from "../src/lib/markdown.ts";
@@ -33,7 +33,7 @@ import { themeCss } from "../src/driver/channel.ts";
 import { reviewElements } from "../src/driver/elements.ts";
 import { popoverSchema } from "../src/driver/read-all.ts";
 import { currentCardOf } from "../src/driver/panel-view.ts";
-import { warningsOf } from "../src/driver/warnings.ts";
+import { SAID, warningsOf } from "../src/driver/warnings.ts";
 import { webviewHtml } from "../src/driver/webview-html.ts";
 import { projectColour } from "../src/shared/suggestions.ts";
 import type { PanelView } from "../src/shared/protocol.ts";
@@ -57,20 +57,21 @@ const HAND = `'Chalkboard SE', 'Bradley Hand', 'Comic Sans MS', cursive`;
 const attr = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-type Built = { review: Review; plan: BoardPlan; elements: DrawdyElementSchema[]; rects: Map<string, Rect> };
+/** `raw`: the PR's files at its head commit, which a card's `View full file` reads. */
+type Built = { review: Review; plan: BoardPlan; elements: DrawdyElementSchema[]; rects: Map<string, Rect>; raw: ReadonlyMap<string, string> };
 /** A board pinned in each theme: cards take the theme Drawdy shows when they are pinned. */
 type Boards = Record<Theme, Built>;
 
-const build = (review: Review, theme: Theme): Built => {
+const build = (review: Review, theme: Theme, raw: ReadonlyMap<string, string>): Built => {
     const plan = planBoard(review);
     let n = 0;
     const { elements } = reviewElements(review, plan, () => `el${n++}`, theme);
     const rects = new Map<string, Rect>();
     for (const e of elements) if ("x" in e && "width" in e && e.width !== undefined) rects.set(e.drawdyElementId, { x: e.x, y: e.y, width: e.width, height: e.height ?? 0 });
-    return { review, plan, elements, rects };
+    return { review, plan, elements, rects, raw };
 };
 
-const boardsOf = (review: Review): Boards => ({ light: build(review, "light"), dark: build(review, "dark") });
+const boardsOf = (review: Review, raw: ReadonlyMap<string, string> = new Map()): Boards => ({ light: build(review, "light", raw), dark: build(review, "dark", raw) });
 
 const anchorOf = (rects: Map<string, Rect>, b: { drawdyElementId: string; anchorX: number; anchorY: number }): Point => {
     const r = rects.get(b.drawdyElementId)!;
@@ -230,10 +231,21 @@ const schemaHtml = (node: any): string => {
  */
 const readAllPane = (built: Built, pin: string, theme: Theme, moved: Point = { x: 0, y: 0 }) => {
     const { review, plan } = built;
-    const page = readAllOf(review.pins.find((x) => x.id === pin)!, review, theme, null);
-    const at = readAllRect(plan.pins.get(pin)!, page.height(VIEW.readAll.width));
+    return paneAt(plan.pins.get(pin)!, { ...readAllOf(review.pins.find((x) => x.id === pin)!, review, theme, null), theme, pin }, moved);
+};
+
+/** A card's whole file in the same pane, as `View full file` opens it: the saved PR's file at the head commit, at the card's first line. */
+const fullFilePane = (built: Built, pin: string, theme: Theme) => {
+    const { review, plan, raw } = built;
+    const p = review.pins.find((x) => x.id === pin)!;
+    return paneAt(plan.pins.get(pin)!, { ...fullFileOf(p, review, raw.get(p.path!) ?? null, theme, SAID.chars, firstLineOf(plan.cards.get(pin)!)), theme, pin });
+};
+
+/** The pane beside a card, in canvas units, with its page. */
+const paneAt = (card: Rect, page: Parameters<typeof popoverSchema>[0], moved: Point = { x: 0, y: 0 }) => {
+    const at = readAllRect(card, page.height(VIEW.readAll.width));
     const rect = { ...at, x: at.x + moved.x, y: at.y + moved.y };
-    const [pane] = (popoverSchema({ ...page, theme, pin }, rect, { clip: rect, transform: "none" }) as { children: DomElementSchema[] }).children;
+    const [pane] = (popoverSchema(page, rect, { clip: rect, transform: "none" }) as { children: DomElementSchema[] }).children;
     return { rect, html: `<div style="position:absolute;left:${rect.x}px;top:${rect.y}px;font-family:system-ui">${schemaHtml(pane)}</div>` };
 };
 
@@ -277,7 +289,8 @@ const overview = (name: string, boards: Boards, theme: Theme) => {
     shoot(name, page(built, screen, camera, theme), screen, theme);
 };
 
-const closeUp = (name: string, boards: Boards, pin: string, screen: Screen, theme: Theme, readAll = false, view?: PanelView) => {
+/** A step's close-up, at the step camera; with `pane`, Read all or the card's whole file open beside the card. */
+const closeUp = (name: string, boards: Boards, pin: string, screen: Screen, theme: Theme, pane: "read-all" | "full-file" | null = null, view?: PanelView) => {
     const built = boards[theme];
     const rect = built.plan.pins.get(pin)!;
     const far = built.plan.strings.filter((s) => s.from.pin === pin || s.to.pin === pin).map((s) => (s.from.pin === pin ? s.to.pin : s.from.pin));
@@ -285,11 +298,11 @@ const closeUp = (name: string, boards: Boards, pin: string, screen: Screen, them
     const names = far.map((id) => nameRect(built.plan.pins.get(id)!, built.review.pins.find((p) => p.id === id)!.name));
     const camera = stepCamera(rect, screen, null, linked, names)!;
     const panel = panelFrame(view ?? readingView(built, pin), theme, { x: screen.width - VIEW.panel + 10, y: VIEW.toolbar + 10 });
-    if (!readAll) return shoot(name, page(built, screen, camera, theme, { overlay: panel, chrome: true }), screen, theme);
-    // Read all opens readable: the camera first comes to the card's right 240 and the pane when they aren't in view at 0.8 to 1.
-    const pane = readAllPane(built, pin, theme);
-    const shown = readAllCamera(rect, pane.rect, screen, camera.rect) ?? camera;
-    shoot(name, page(built, screen, shown, theme, { clipped: pane.html, overlay: panel, chrome: true }), screen, theme);
+    if (!pane) return shoot(name, page(built, screen, camera, theme, { overlay: panel, chrome: true }), screen, theme);
+    // The pane opens readable: the camera first comes to the card's right 240 and the pane when they aren't in view at 0.8 to 1.
+    const open = pane === "read-all" ? readAllPane(built, pin, theme) : fullFilePane(built, pin, theme);
+    const shown = readAllCamera(rect, open.rect, screen, camera.rect) ?? camera;
+    shoot(name, page(built, screen, shown, theme, { clipped: open.html, overlay: panel, chrome: true }), screen, theme);
 };
 
 /** Read all with the board zoomed to `zoom` round it, as a reader zooms out, or after a drag of its header by `moved`. */
@@ -375,7 +388,8 @@ const SMALL: Screen = { width: 1280, height: 800 };
 const LARGE: Screen = { width: 1920, height: 1080 };
 
 // honojs/hono#5513
-const hono = boardsOf(await reviewOf(honoFixture()));
+const honoSaved = honoFixture();
+const hono = boardsOf(await reviewOf(honoSaved), honoSaved.raw);
 report("hono#5513", hono.light);
 overview("hono-overview", hono, "light");
 overview("hono-overview-dark", hono, "dark");
@@ -387,9 +401,12 @@ closeUp("hono-1280-pr-dark", hono, "pr", SMALL, "dark");
 closeUp("hono-1920-dispatch", hono, "src/hono-base.ts:411", LARGE, "light");
 closeUp("hono-1280-dispatch", hono, "src/hono-base.ts:411", SMALL, "light");
 closeUp("hono-1920-toerror-dark", hono, "src/compose.ts:4", LARGE, "dark");
-closeUp("hono-1920-toerror-read-all-dark", hono, "src/compose.ts:4", LARGE, "dark", true);
-closeUp("hono-1920-compose-read-all", hono, "src/compose.ts:18", LARGE, "light", true);
-closeUp("hono-1280-compose-read-all", hono, "src/compose.ts:18", SMALL, "dark", true);
+closeUp("hono-1920-toerror-read-all-dark", hono, "src/compose.ts:4", LARGE, "dark", "read-all");
+closeUp("hono-1920-compose-read-all", hono, "src/compose.ts:18", LARGE, "light", "read-all");
+closeUp("hono-1280-compose-read-all", hono, "src/compose.ts:18", SMALL, "dark", "read-all");
+// View full file: the whole file at the head commit in the same pane, at the card's first line; hono.test.ts is 3,934 lines long.
+closeUp("hono-1920-compose-full-file", hono, "src/compose.ts:18", LARGE, "light", "full-file");
+closeUp("hono-1920-hono-test-full-file-dark", hono, "test:src/hono.test.ts", LARGE, "dark", "full-file");
 // Read all is on the board: zoomed out it shrinks with the cards, and a drag of its header moves it.
 readAllAt("hono-1600-compose-read-all-0.8-light", hono, "src/compose.ts:18", { width: 1600, height: 900 }, "light", 0.8);
 readAllAt("hono-1600-compose-read-all-0.4-dark", hono, "src/compose.ts:18", { width: 1600, height: 900 }, "dark", 0.4);
@@ -481,12 +498,18 @@ const saved: [string, Review][] = [];
 for (const path of SAVED) {
     const f = savedPr(path);
     const name = `${f.pr.ref.repo}#${f.pr.ref.number}`;
-    const boards = boardsOf(await reviewOf(f));
+    const boards = boardsOf(await reviewOf(f), f.raw);
     report(name, boards.light);
     overview(`saved-${f.pr.ref.repo}-${f.pr.ref.number}`, boards, "light");
+    overview(`saved-${f.pr.ref.repo}-${f.pr.ref.number}-dark`, boards, "dark");
     closeUp(`saved-${f.pr.ref.repo}-${f.pr.ref.number}-pr`, boards, "pr", LARGE, "dark");
     // The panel as the board lands, the description whole, in each theme.
     for (const theme of ["dark", "light"] as Theme[]) single(`saved-${f.pr.ref.repo}-${f.pr.ref.number}-panel-${theme}`, readingView(boards[theme], "pr"), theme);
+    // View full file on the change card in the longest file, as the step camera shows it.
+    const { review } = boards.light;
+    const linesOf = (pin: { path?: string }) => review.files.find((x) => x.path === pin.path)?.lines ?? 0;
+    const longest = review.pins.filter((p) => p.kind === "change" && f.raw.has(p.path!)).sort((a, b) => linesOf(b) - linesOf(a))[0];
+    if (longest) for (const theme of ["light", "dark"] as Theme[]) closeUp(`saved-${f.pr.ref.repo}-${f.pr.ref.number}-full-file-${theme}`, boards, longest.id, LARGE, theme, "full-file");
     saved.push([name, boards.light.review]);
 }
 

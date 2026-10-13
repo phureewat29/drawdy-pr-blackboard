@@ -78,9 +78,10 @@ does it on save). `npm run check` fails when the script is behind.
 ```
 src/
   index.ts        driver entry
-  driver/         runtime, opener, rebuilder, clearer, navigator, Read all,
-                  the panel's view and channel, parser download, camera,
-                  storage, loading steps and warnings
+  driver/         runtime, opener, rebuilder, clearer, navigator, Read all
+                  and the files View full file reads, the panel's view and
+                  channel, parser download, camera, storage, loading steps
+                  and warnings
   worker/         the parser worker and its generated script
   webview/        the panel
   shared/         driver ⇄ panel protocol, the examples, icons
@@ -95,7 +96,8 @@ src/
                   scala/ and haskell/ cards alone (units-only.ts)
   lib/model/      the review: changed lines, threads, cards, links, the card limit
   lib/layout/     the plan's stages: columns, routes, strings, labels, colours
-  lib/card/       a card's grid and rows, its HTML, the PR card, Read all
+  lib/card/       a card's grid and rows, its HTML, the PR card, Read all,
+                  a card's whole file
   lib/fixtures/   saved PRs for the tests
   vendor/         marked and web-tree-sitter
   test/           fakes and fixtures for the tests

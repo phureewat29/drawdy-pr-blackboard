@@ -50,7 +50,9 @@ export type Row =
     | { kind: "gap"; count: number }
     /** `depth`: how many of the shown groups above the case hold it. */
     | { kind: "case"; test: TestCase; depth: number }
-    | { kind: "info"; text: string; readAll?: boolean };
+    | { kind: "info"; text: string; readAll?: boolean }
+    /** `View full file`, a card's last row, unless the card shows every line of its file already. */
+    | { kind: "full" };
 
 export type CardModel = {
     pin: string;
@@ -80,8 +82,17 @@ export const foldsOf = (card: CardModel): Fold[] =>
         return r.kind === "info" && r.readAll ? [[y, 0]] : [];
     });
 
+/** Whether card-local `y` falls in the row whose top is `top`. */
+export const onRow = (top: number, y: number): boolean => y >= top && y < top + CARD.row;
+
 /** The fold row under card-local `y`, if any. */
-export const foldAt = (folds: readonly Fold[], y: number): Fold | null => folds.find(([top]) => y >= top && y < top + CARD.row) ?? null;
+export const foldAt = (folds: readonly Fold[], y: number): Fold | null => folds.find(([top]) => onRow(top, y)) ?? null;
+
+/** The card-local top of a card's `View full file` row; null when it has none. */
+export const fullFileRow = (card: CardModel): number | null => {
+    const i = card.rows.findIndex((r) => r.kind === "full");
+    return i < 0 ? null : CARD.header + i * CARD.row;
+};
 
 /** A card's name in its header: `pad` px in from either side, in 15 px monospace, about `char` px a character, cut at `share` of the card. */
 export const NAME = { pad: 14, share: 0.52, char: 9.2 } as const;

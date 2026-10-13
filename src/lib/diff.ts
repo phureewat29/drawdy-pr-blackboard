@@ -65,13 +65,19 @@ export const parsePatch = (patch: string): Hunk[] => {
     });
 };
 
-/**
- * The hunk of a file added whole, from its text: what its patch holds, for
- * when GitHub leaves the patch out. A last line break ends the last line.
- */
-export const addedHunks = (text: string): Hunk[] => {
+/** A file's lines from its text: a last line break ends the last line, so an empty text has none. */
+export const textLines = (text: string): string[] => {
     const lines = text.split("\n");
     if (lines[lines.length - 1] === "") lines.pop();
+    return lines;
+};
+
+/**
+ * The hunk of a file added whole, from its text: what its patch holds, for
+ * when GitHub leaves the patch out.
+ */
+export const addedHunks = (text: string): Hunk[] => {
+    const lines = textLines(text);
     if (lines.length === 0) return [];
     return [{ oldStart: 0, newStart: 1, newEnd: lines.length, oldEnd: -1, lines: lines.map((line, i) => ({ t: "add", n: i + 1, text: line, at: i + 1 })) }];
 };

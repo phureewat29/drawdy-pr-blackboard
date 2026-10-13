@@ -209,16 +209,16 @@ describe("planBoard on hono#5513", () => {
             "fetch()": [800, 0, 673],
             "#dispatch()": [1633, 0, 810],
             "#handleError()": [2603, 218, 726],
-            "compose()": [2603, 514, 726],
+            "compose()": [2603, 534, 726],
             "toError()": [3489, 356, 880],
-            "compose.test.ts": [2622, 974, 688],
-            "hono-base.ts imports": [3358, 974, 574],
-            "onError()": [800, 1298, 880],
-            "hono.test.ts": [1840, 1298, 863],
+            "compose.test.ts": [2622, 1014, 688],
+            "hono-base.ts imports": [3358, 1014, 574],
+            "onError()": [800, 1358, 880],
+            "hono.test.ts": [1840, 1358, 863],
         };
         for (const [name, want] of Object.entries(spec)) expect([name, rects[name]]).toEqual([name, rects[name].every((v, i) => Math.abs(v - want[i]) <= 8) ? rects[name] : want]);
         expect(at("The PR").height).toBe(779);
-        expect([plan.bounds.width, plan.bounds.height]).toEqual([4369, 1526]);
+        expect([plan.bounds.width, plan.bounds.height]).toEqual([4369, 1606]);
     });
 
     it("stands the PR card alone in the first column, the code 160 right of it, the unchanged caller at the band's top, stacks cards 48 apart and columns 160 apart", () => {

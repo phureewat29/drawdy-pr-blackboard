@@ -18,14 +18,16 @@ stress case excalidraw/excalidraw#12237
 3. The board reads left to right (callers first) and top to bottom (the
    change, the row under it, the rest).
 4. The board works on its own. With the panel closed, after a reload, or
-   on a teammate's screen, a reader can follow any string and open Read
-   all from a card's last row, which says `Read all` whenever the card
-   hides code. The panel adds what only it can do: open a pull
-   request, show its description, walk the code in order, list every link
-   of a card, drawn or not, each in its string's colour.
+   on a teammate's screen, a reader can follow any string, open Read all
+   from the row that says `Read all` whenever a card hides code, and open
+   the card's whole file from its last row, `View full file`. The panel
+   adds what only it can do: open a pull request, show its description,
+   walk the code in order, list every link of a card, drawn or not, each
+   in its string's colour.
 5. Read all, the one popover, shows a whole function or file right of its
-   card, on the board, and pans and zooms with it. Nothing opens on a plain
-   click. PR Blackboard explains; it never judges.
+   card, on the board, and pans and zooms with it; it also shows a card's
+   whole file at the head commit. Nothing opens on a plain click.
+   PR Blackboard explains; it never judges.
 
 ## 1. One meaning per mark
 
@@ -37,6 +39,8 @@ stress case excalidraw/excalidraw#12237
 | Green row, green `NEW` chip | Added lines; a function that is all new |
 | Red row | Deleted lines |
 | `→` in a card's gutter, and in Read all's | This line calls another card on the board |
+| A file icon and `View full file`, a card's last row | Opens the card's whole file at the head commit (5.1.2) |
+| A grey rail by the line numbers in the whole file | The card's own lines (7.1.7) |
 | Outline tag in monospace, `honojs/hono#5513` | A pull request: on the PR card, in the panel's header, on the example rows |
 
 Colour no longer says a string's kind; its label does. A string keeps its
@@ -880,22 +884,23 @@ y:0 ┌[honojs/hono#5513] ┐ ┌╌ fetch() UNCHANGED ╌┐ calls ┌ #dispatc
 Built rects (x, y, width; heights from 5.1 and 5.5), pinned in
 `layout.test.ts`: PR card (0, 0, 640; 779 tall, its whole description),
 `fetch()` (800, 0, 673), `#dispatch()` (1633, 0, 810), `#handleError()`
-(2603, 218, 726), `compose()` (2603, 514, 726: its column's width, 3.3.1),
+(2603, 218, 726), `compose()` (2603, 534, 726: its column's width, 3.3.1),
 `toError()` (3489, 356, 880). The PR card stands alone in the first
 column; the code starts 160 right of it, and its left edge is straight:
 `fetch()` and `onError()` both start at x 800, `fetch()` at the band's top,
 level with its entry, so its string runs level. The row under starts 72
-below the band's lowest card, `compose()`: y 974 for `compose.test.ts`
+below the band's lowest card, `compose()`: y 1014 for `compose.test.ts`
 (x 2622) and the imports card (x 3358). The bottom row starts 96 below
-that: y 1298 for `onError()` (x 800) and `hono.test.ts` (x 1840). The
-board is 4369 × 1526. Ten links, nine strings: four `calls`, one dashed
-`calls` from `fetch()`, three `tests` (the dashed one from `hono.test.ts`
-up to `fetch()`), one `imports`; the imports card's second link, up to
-`compose()`, finds no route clear of `compose.test.ts`, so the panel lists
-it. Eight strings carry their word: the dashed `tests` string climbs past
-the band's strings, where its word clears nowhere. Eight are violet;
-`compose()`'s string to `toError()` is orange, since it meets
-`#handleError()`'s at `toError()`'s header.
+that: y 1358 for `onError()` (x 800) and `hono.test.ts` (x 1840). The
+board is 4369 × 1606; it was 4369 × 1526 before each card but the PR
+card grew 20 for its `View full file` row (5.1.2). Ten links, nine
+strings: four `calls`, one dashed `calls` from `fetch()`, three `tests`
+(the dashed one from `hono.test.ts` up to `fetch()`), one `imports`; the
+imports card's second link, up to `compose()`, finds no route clear of
+`compose.test.ts`, so the panel lists it. Eight strings carry their word:
+the dashed `tests` string climbs past the band's strings, where its word
+clears nowhere. Eight are violet; `compose()`'s string to `toError()` is
+orange, since it meets `#handleError()`'s at `toError()`'s header.
 
 Before request 55 the PR card headed column 0 of the first band, folded
 to 675, with `fetch()` under it: the board was 3569 × 1535.
@@ -1189,10 +1194,10 @@ lines around it (deletions above additions), each row that calls another
 card (`→` in the gutter), and folds between (`⋯ 23 lines`). A fold hides
 2 lines or more: a single hidden line shows in its place, at the end too,
 since its fold row would take the same room. Changed words are marked.
-Past 24 rows plain context goes first and the last row reads `⋯ 18 more
+Past 24 rows plain context goes first and the last fold reads `⋯ 18 more
 lines · Read all`; rows that start a string stay. Every fold row opens
 Read all at its lines, so each underlines what to click: its line count
-(`⋯ 23 lines`), or `Read all` on the last row. A card shows only its own
+(`⋯ 23 lines`), or `Read all` on the last fold. A card shows only its own
 lines: those of a card nested in it, a Python class's method on the
 board, fold with the blank lines above them, since that card shows them
 (`class Flow:`, `VERSION = 1`, `⋯ 6 lines · Read all`). The `⋯` is set in 15 px
@@ -1202,14 +1207,24 @@ the card's left (52 on a test card, so the text sits under the case
 names), then what it hides, then `Read all` underlined.
 
 5.1.1 **Nothing hidden without a way to it.** A card at its widest (880)
-ends a long line in `…`. When it does and the card doesn't already end in
-`Read all`, a last row says so, `⋯ 1 line cut short · Read all`, opening
-Read all at that line: toError(), hono#5513's one new function, ends its
+ends a long line in `…`. When it does and no row says `Read all` yet, a
+row says so, `⋯ 1 line cut short · Read all`, opening Read all at that
+line: toError(), hono#5513's one new function, ends its
 changed line 5 at `{ cause: err …` and gets this row. A test card always
-ends in `Read all` (5.3), since it hides every test body. So a card hides
-code exactly when its last row says `Read all`, on the board with the
-panel closed too, and the panel offers `Read all` for exactly those cards
-(7.3.2). The PR card hides nothing: it shows its whole description (5.5).
+has `Read all` (5.3), since it hides every test body. So a card hides
+code exactly when a row says `Read all`, the last before `View full file`,
+on the board with the panel closed too, and the panel offers `Read all`
+for exactly those cards (7.3.2). The PR card hides nothing: it shows its
+whole description (5.5).
+
+5.1.2 **View full file.** Every code, test and file card ends in a row
+that opens its whole file at the head commit beside it (7.1.7): the fold
+row's shape, with a 12 px Lucide `file-code` where a fold has `⋯`, then
+`View full file` underlined, under the case names on a test card. It is
+left off a card that already shows every line of its file (nothing
+folded, cut short or left out, the file's length known because the read
+tier read it or the PR adds it whole), off a removed file's card, and off
+the PR card.
 
 5.2 **Header,** 56 high, the same on every card:
 
@@ -1416,7 +1431,8 @@ its sampled curve (3.4.4). These work with the panel open or closed:
 
 | Click on | What happens |
 |---|---|
-| A fold row (`⋯ 23 lines`, a last row saying `Read all`), found from the mark's `folds` | The card becomes current, Drawdy's selection clears, and Read all opens at that row's line (7.1) |
+| A fold row (`⋯ 23 lines`, a row saying `Read all`), found from the mark's `folds` | The card becomes current, Drawdy's selection clears, and Read all opens at that row's line (7.1) |
+| `View full file`, found from the mark's `full` | The card becomes current, Drawdy's selection clears, and the pane opens with the card's whole file (7.1.7) |
 | A string or its label | Follow it to its far end from the current card; when neither end is current, to the end it points at. The camera flies (6.4) |
 | Anywhere else on a card | It becomes current: the panel shows it when open. The board and the camera stay. Read all closes unless the card was already current |
 
@@ -1435,7 +1451,7 @@ always there.
 | Reader | What works on the board |
 |---|---|
 | Closed the panel this session | Everything in 6.2; the current card follows their clicks, and reopening the panel shows it |
-| Reloaded, never reopened the panel | Everything in 6.2. Fold rows work from the clicked card's mark; the first string or label click builds the index (6.1.2). Read all loads the stored review (no GitHub request) |
+| Reloaded, never reopened the panel | Everything in 6.2. Fold rows and `View full file` work from the clicked card's mark; the first string or label click builds the index (6.1.2). Read all loads the stored review (no GitHub request) |
 | A teammate with PR Blackboard installed | Everything in 6.2, with no GitHub request until Read all opens. Then it loads the review from GitHub the first time (2 requests); meanwhile the popover shows the header and `Reading the PR…`, and a failure shows there in the panel's words (`explain`). If the reader has clicked another card by then, that popover closes and nothing else opens |
 | A teammate without PR Blackboard | Static cards and native strings: readable, nothing clickable |
 
@@ -1494,12 +1510,13 @@ they clicked.
 ### 7.1 Read all, the one popover
 
 7.1.1 Read all is the one popover, a pane on the board right of its card
-(requests 51 and 52). It opens only from a fold row or the panel's `Read
-all`. Contents: the whole declaration for a change or context card; the
-file's diff for a test or file card. The PR card has none: it shows its
-whole description itself (5.5). Unified, wrapped, changed words marked,
-scrolled to the folded lines or the first change. Rows that call another
-card carry the `→`, as on the card.
+(requests 51 and 52). It opens only from a fold row, the panel's `Read
+all` or a card's `View full file` (7.1.7). Contents: the whole declaration
+for a change or context card; the file's diff for a test or file card.
+The PR card has none: it shows its whole description itself (5.5).
+Unified, wrapped, changed words marked, scrolled to the folded lines or
+the first change. Rows that call another card carry the `→`, as on the
+card.
 
 7.1.2 **On the board, beside its card:** a board object of a fixed size in
 canvas units (`readAllRect`): left edge 24 right of the card, top level
@@ -1587,6 +1604,37 @@ a card.
                           │     57  + →       const error = toError(err) │
                           └──────────────────────────────────────────────┘
 ```
+
+7.1.7 **The whole file.** `View full file` (5.1.2) opens the card's file
+at the head commit in the same pane, where Read all opens; a card's Read
+all and its whole file take turns in it without moving it.
+
+- **Header:** the path, its folders in `--ink3` and cut first, the file's
+  name bold; at the right `PR head 444dfb9 · 77 lines`; the drag handle
+  and `✕` as for Read all.
+- **Body:** every line with its number at head, highlighted as the cards
+  are and wrapped as in Read all. The PR's added lines are tinted, with
+  `+` and an edit's changed words marked as on the cards; deleted lines
+  are not in the file. The card's own lines (a declaration's, a file
+  card's ranges; none on a test card or a card about its whole file) get
+  a 3 px `--ink3` rail and darker numbers. The card's first line opens a
+  third of the way down, by Read all's script.
+- **Loading:** the review first when there is none (`Reading the PR…`),
+  then the file from raw.githubusercontent.com (`Github.raw`, no API
+  quota), saying `Reading the file…` after 150 ms. The session keeps the
+  last 24 files; a failed read is not kept, so the next click tries
+  again. A file that arrives after the reader closed the pane, moved on or
+  asked for another page opens nothing.
+- **When it can't show,** it says why: `PR Blackboard couldn't read this
+  file from GitHub. Try again in a moment.`; `This file isn't text, so
+  PR Blackboard can't show it.` (a NUL in its first 8,000 characters, as
+  git tests); `This file is 812,345 characters long, and PR Blackboard
+  shows files up to 400,000.` (the read tier's limit); `This file is
+  empty.`
+- **Long files:** lines are `<p>`s and colours short tags (`<k>` for
+  `<span class="k">`), so a 5,000-line file's page is 378 KB, built in
+  about 25 ms, and Chrome lays it out in about 130 ms. Every camera move
+  sends it again (7.1.2).
 
 ### 7.2 The panel (request 32)
 
@@ -2102,15 +2150,16 @@ part (`pr`, `pin`, `link`, `label`) and:
 
 | Part | Also holds |
 |---|---|
-| `pr`, `pin` | `pin`, `name`, `width`, `height`; a code card also `folds`, the PR card `theme` |
+| `pr`, `pin` | `pin`, `name`, `width`, `height`; a code card also `folds` and `full`, the PR card `theme` |
 | `link` | `link`, `kind`, `from`, `to` (pin ids), `colour` (its index in `STRING_COLOURS`, as pinned) |
 | `label` | `link`, `pin` |
 
 `folds` is `[y, line][]`: each fold row's card-local top (rows are 20
-high) and the line Read all scrolls to, 0 for the first change. The PR
-card has none: it folds nothing (5.5). A string's `colour` lets the panel
-name its link in that colour after a reload, or for a teammate, from the
-board alone (7.3.1). One strict reader (`markOf`) takes these
+high) and the line Read all scrolls to, 0 for the first change. `full`
+is the card-local top of the `View full file` row, on a card that has
+one (5.1.2). The PR card has neither: it folds nothing (5.5). A string's
+`colour` lets the panel name its link in that colour after a reload, or
+for a teammate, from the board alone (7.3.1). One strict reader (`markOf`) takes these
 marks; anything else is not PR Blackboard's. PR Blackboard hasn't shipped, so no
 earlier mark shape is read (request 32).
 
@@ -2118,9 +2167,9 @@ earlier mark shape is read (request 32).
 to its overview, silently: the camera shows it is there. A board at an older commit is another board: the new one goes in
 free space beside it.
 
-8.4 **Stored reviews.** One shape, `REVIEW_VERSION` 10 (Python's, Go's
-and Rust's links and card names, request 58); a stored copy of any other
-version is fetched again. Nothing is migrated.
+8.4 **Stored reviews.** One shape, `REVIEW_VERSION` 12 (each file's
+length at the head commit, which decides `View full file`, 5.1.2); a
+stored copy of any other version is fetched again. Nothing is migrated.
 
 8.5 **Edge cases.** No readable declarations: file cards joined by
 `imports` strings. Only docs or config: the PR card and one row of file
@@ -2199,8 +2248,10 @@ clipped to the usable view; `excalidraw-overview.png` and
 description in its own column, the board landing on the code
 (`tall-overview.png`, `tall-1600-landed.png`); `hono-dragged.png`
 (`compose()` dragged 200 right: its string ends move, its bends stay,
-3.3.4); and the panel's states: the start view with its 13 example rows,
-loading, reading at the PR card (its whole description), at `#dispatch()`
+3.3.4); the whole file open beside `compose()` and, 3,934 lines long,
+beside `hono.test.ts` (`hono-1920-compose-full-file.png`,
+`hono-1920-hono-test-full-file-dark.png`); and the panel's states: the
+start view with its 13 example rows, loading, reading at the PR card (its whole description), at `#dispatch()`
 (step 1) and at `compose()` (names in their strings' colours), a rebuild
 under way, asking with its cost and failed, Clear asking, excalidraw's long description
 and a card with three string colours, and a failure under the field;
@@ -2213,8 +2264,9 @@ link counts, the number of string crossings against straight lines
 between the same ends (3.4.1), the colours used, and how many crossing
 pairs share a colour (3.4.4). `npm run preview:board -- <dir>
 <saved.json> …` adds, for each pull request saved in the fixtures' shape,
-its overview and PR card: how the examples were checked without making
-them fixtures.
+its overview and the whole file of the change card in its longest file,
+light and dark, and its PR card: how the examples were checked without
+making them fixtures.
 
 9.2 The preview measures each description in Chrome at the PR card's
 width, whole, as the card shows it, and prints it beside the estimate
@@ -2750,3 +2802,25 @@ the dev server on a local board. G: the score gate, outside the repository
     dark, Clear takes hono's 10 cards off, a rectangle of the reader's
     stays, one ⌘Z brings the board back, a click on its PR card reads it
     again, and opening it again costs 1 GitHub request.
+36. (T, C, P, G) View full file (5.1.2, 7.1.7). T: every hono card but the
+    PR card ends in it, its top in the card's mark; a card that shows its
+    whole file has none (a file added whole, a read file shown line for
+    line, a class card with no nested card), nor a removed file's card; a
+    card about an unchanged file keeps it. The page: `src/compose.ts` under
+    `PR head 444dfb9 · 77 lines`, lines numbered 1 to 77, 4 to 6 and 56 to
+    59 tinted with `+`, `or` marked on 58 and 59, `compose()`'s 18 to 77 on
+    the rail, line 18 in focus, colours in short tags; a file not sent,
+    not text, over 400,000 characters or empty says so; a 5,000-line page
+    builds in under a second and stays under three times the file. The
+    click: found from the mark, Drawdy's selection cleared, the review read
+    first when there is none, `Reading the file…` while the file loads,
+    each file read once a session and a failed read tried again; nothing
+    opens after ✕, Esc, another card, Read all or the overview. C: the
+    marketplace bundle on hono, compose()'s row opens the pane 24 right of
+    it, 720 × 640, with its 77 lines, a second click costs no request, ✕
+    closes it, and after a reload it works from the mark with the stored
+    review. P: the boards with their rows, and the pane on `compose()`,
+    `hono.test.ts` and elysia's `composeHandler()`, light and dark. G: no
+    link, review or request changes; of the layout, only drawn strings
+    move with the taller cards (`strings`, and Bun's and typst's
+    `chainStrings`).

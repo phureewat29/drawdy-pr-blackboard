@@ -65,6 +65,7 @@ header { height: ${CARD.header}px; display: flex; align-items: center; gap: 10px
 .fold.cases { padding-left: 52px; }
 .ra { color: var(--ink2); text-decoration: underline; text-underline-offset: 2px; }
 .dots { font: 15px/1 ui-sans-serif, system-ui, sans-serif; }
+.full .icon { vertical-align: -2px; margin: 0 1.5px; }
 .info { color: var(--ink2); font-size: 12.5px; }
 .case { height: ${CARD.row}px; line-height: ${CARD.row}px; padding-right: 14px; display: grid; grid-template-columns: 44px 20px 1fr; white-space: nowrap; overflow: hidden; font-size: 12.5px; }
 .case > i { font-style: normal; text-align: right; padding-right: 8px; color: var(--ink3); font: 11.5px/${CARD.row}px ui-monospace, Menlo, monospace; }
@@ -81,6 +82,9 @@ body.context header { background: transparent; color: var(--ink2); }
 
 const DOTS = `<span class="dots">⋯</span>`;
 const READ_ALL = `<span class="ra">Read all</span>`;
+/** Lucide 1.53.0's `file-code` (lucide.dev, ISC licence), where a fold row has its `⋯`. */
+const FILE_ICON =
+    '<svg class="icon" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><path d="M10 12.5 8 15l2 2.5"/><path d="m14 12.5 2 2.5-2 2.5"/></svg>';
 
 /** Every fold row opens Read all, so each underlines what to click: its line count, or `Read all` on the last. */
 const foldText = (r: Extract<Row, { kind: "fold" }>) => {
@@ -89,8 +93,11 @@ const foldText = (r: Extract<Row, { kind: "fold" }>) => {
     return `${DOTS} <span class="ra">${plural(r.count, "line")}</span>`;
 };
 
-/** How rows look: `plain` on an unchanged caller's card, with no +/− gutter; `wrap` in Read all, which wraps long lines; `focus` on the line Read all opens at. */
-export type RowLook = { plain: boolean; wrap?: boolean; focus?: boolean };
+/**
+ * How rows look: `plain` on an unchanged caller's card, with no +/− gutter; `wrap` in Read all, which wraps long lines; `focus` on the
+ * line Read all opens at; `cases` on a card that lists test cases, whose last rows sit under their names.
+ */
+export type RowLook = { plain: boolean; wrap?: boolean; focus?: boolean; cases?: boolean };
 
 /** Read all wraps long lines; each wrapped part starts under its line's own indent, two columns in. */
 const hanging = (text: string) => {
@@ -125,12 +132,17 @@ const rowHtml = (row: Row, look: RowLook): string => {
             return caseHtml(row);
         case "line":
             return lineHtml(row, look);
+        case "full":
+            // It opens a pane as a fold row does, so it looks like one, its icon where a fold has `⋯`.
+            return `<div class="fold full${look.cases ? " cases" : ""}">${FILE_ICON} <span class="ra">View full file</span></div>`;
     }
 };
 
 /** A card's rows; `focusAt`: the head line Read all opens at. */
-export const rowsHtml = (rows: readonly Row[], look: RowLook, focusAt: number | null = null): string =>
-    `<div class="${look.plain ? "plain" : ""}">${rows.map((r) => rowHtml(r, { ...look, focus: r.kind === "line" && r.line.at === focusAt })).join("")}</div>`;
+export const rowsHtml = (rows: readonly Row[], look: RowLook, focusAt: number | null = null): string => {
+    const cases = rows.some((r) => r.kind === "case");
+    return `<div class="${look.plain ? "plain" : ""}">${rows.map((r) => rowHtml(r, { ...look, cases, focus: r.kind === "line" && r.line.at === focusAt })).join("")}</div>`;
+};
 
 export const page = (css: string, body: string, theme: Theme, { script = "", bodyClass = "" } = {}): string =>
     `<!doctype html><html><head><meta charset="utf-8"><style>${themeVars(theme)}${BASE_CSS}${css}</style></head><body${bodyClass ? ` class="${bodyClass}"` : ""}>${body}${script ? `<script>${script}</script>` : ""}</body></html>`;

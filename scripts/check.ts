@@ -7,8 +7,8 @@
  *    function's;
  * 3. boots the bundle in a fake Drawdy host, runs the generated webview in jsdom until it reports `ready`, opens a
  *    saved PR (honojs/hono#5513) from a fake GitHub and jsDelivr, and walks the board: the one add call, the
- *    strings, the steps, Description, the link names' colours, Read all, Home, a rebuild and Clear, pressed in the bundled
- *    panel itself, its confirm answered with ✓. The host's Worker runs the bundle's parser worker script on a
+ *    strings, the steps, Description, the link names' colours, Read all, a card's whole file, Home, a rebuild and
+ *    Clear, pressed in the bundled panel itself, its confirm answered with ✓. The host's Worker runs the bundle's parser worker script on a
  *    thread of its own, with no fetch (src/test/node-worker.ts). Then it boots the bundle
  *    again, as after a reload, and checks the board works with the panel never opened and nothing from jsDelivr;
  * 4. checks a 32-card board's add payload stays small;
@@ -422,6 +422,55 @@ const opensReadAll = async (size: { width: number; height: number }) => {
     await tell({ type: "close" }, 40);
 };
 
+/** The raw.githubusercontent.com requests for one of hono#5513's files so far. */
+const rawReads = (path: string) => net.requests.filter((url) => url.startsWith("https://raw.githubusercontent.com/") && url.endsWith(`/${path}`)).length;
+
+/** A click on compose()'s `View full file` row: the row its mark holds. */
+const clickWholeFile = async (ms: number) => {
+    const [id, compose] = cardOf("src/compose.ts:18");
+    const top = compose.schema.meta.prBlackboard.full as number;
+    await click([id], { x: compose.rect.x + 200, y: compose.rect.y + top + 10 }, ms);
+    return compose.rect;
+};
+
+/** The page in the last pane opened. */
+const lastPage = (from: number): string => callsOf("command:dom:upsert-floating-element", from).pop()?.req.schema.children[0].children[1].child.srcDoc ?? "";
+
+/** compose()'s `View full file` opens the pane beside it with src/compose.ts whole, read from raw.githubusercontent.com once a session. */
+const opensTheWholeFile = async () => {
+    const reads = rawReads("src/compose.ts");
+    const from = host.calls.length;
+    // The camera may fly first, to where the pane reads, as for Read all.
+    const card = await clickWholeFile(1200);
+    const open = callsOf("command:dom:upsert-floating-element", from).pop();
+    const page = lastPage(from);
+    const on = open ? paneOn(open.req) : null;
+    const { zoom } = host.camera;
+    const numbered = [...page.matchAll(/<p(?: class="[^"]*")?><i>(\d+)<\/i>/g)].map((m) => Number(m[1]));
+    expectThat(
+        page.includes('<span class="dir">src/</span><span class="base">compose.ts</span></span><span class="where">PR head 444dfb9 · 77 lines</span>') &&
+            numbered.length === 77 &&
+            numbered.every((n, i) => n === i + 1) &&
+            page.includes('<p class="own focus"><i>18</i>') &&
+            page.includes('<p class="add own"><i>58</i><b>+</b><code>            context.error = err<mark>or</mark></code>'),
+        `compose()'s View full file opens src/compose.ts whole at the head commit: ${numbered.length} lines numbered, the PR's added lines marked, compose()'s own lines on the rail, opening at its first`
+    );
+    expectThat(
+        !!on && Math.abs(on.x - (host.camera.x + (card.x + card.width + 24) * zoom)) < 1 && on.width === 720 && on.height === 640 && callsOf("command:scene:clear-selection", from).length === 1,
+        "it opens in the Read all pane, 24 right of the card, 720 wide and 640 tall, and clears Drawdy's selection as a fold row does"
+    );
+    const again = host.calls.length;
+    await clickWholeFile(300);
+    expectThat(
+        rawReads("src/compose.ts") - reads === 1 && lastPage(again).includes("<i>77</i>"),
+        `the file comes from raw.githubusercontent.com once a session: ${rawReads("src/compose.ts") - reads} request for two clicks`
+    );
+    const closing = host.calls.length;
+    await deliver({ type: "subscription:dom:element-clicked", subscriptionId: "check", body: { domElementId: "pr-blackboard:read-all:close", clientX: 0, clientY: 0 } });
+    await wait(40);
+    expectThat(callsOf("command:dom:remove-floating-element", closing).length === 1, "✕ closes it, as it closes Read all");
+};
+
 /** Home goes back to the start view and keeps the board; a click on one of its cards reads it again. */
 const goesHome = async () => {
     const cardCount = () => [...host.elements.values()].filter((e) => e.schema.type === "component").length;
@@ -508,6 +557,13 @@ const worksAfterAReload = async () => {
     const page = callsOf("command:dom:upsert-floating-element", folding).pop()?.req.schema.children[0].children[1].child.srcDoc ?? "";
     expectThat(page.includes(`class="r focus ctx" data-at="${fold[1]}"`) && callsOf("command:kv-storage:get", folding).length > 0, "a fold row opens Read all at its lines from the card's mark, loading the review only then");
     expectThat(callsOf("command:scene:clear-selection", folding).length === 1, "the fold-row click clears Drawdy's selection");
+    const api = net.requests.filter((url) => url.startsWith("https://api.github.com/")).length;
+    const whole = host.calls.length;
+    await clickWholeFile(1200);
+    expectThat(
+        lastPage(whole).includes('<span class="base">compose.ts</span>') && lastPage(whole).includes("<i>77</i>") && net.requests.filter((url) => url.startsWith("https://api.github.com/")).length === api,
+        "View full file works from the card's mark too, with the stored review: no GitHub API request"
+    );
     expectThat(jsdelivr(beforeReload) === 0, `after the reload nothing comes from jsDelivr (${jsdelivr(beforeReload)} requests)`);
 };
 
@@ -542,6 +598,7 @@ try {
         { width: 1920, height: 1080 },
     ])
         await opensReadAll(size);
+    await opensTheWholeFile();
     await goesHome();
     await rebuilds();
     await clears();

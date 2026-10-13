@@ -2,13 +2,14 @@
  * Moving around a review on the board: the current card, the steps in board order, following links and Read all.
  * Nothing on the board changes when the reader moves; the camera and the panel show where they are.
  *
- * The board works on its own: each card's mark holds its name, size and fold rows, and each string's its kind,
- * both cards and colour, so fold rows and strings need no review and no GitHub request. The review (the panel's,
- * or loaded when Read all first opens) adds the steps, every link drawn or not, and Read all's pages.
+ * The board works on its own: each card's mark holds its name, size and the rows that open a pane, and each
+ * string's its kind, both cards and colour, so those rows and strings need no review and no GitHub request. The
+ * review (the panel's, or loaded when Read all first opens) adds the steps, every link drawn or not, and the pane's
+ * pages: Read all's, and a card's whole file, read from GitHub when first asked for.
  */
 
 import type { ModuleStyling } from "@drawdy/driver-protocol";
-import { foldAt, nameRect, readAllMessage, readAllOf, type Theme } from "../lib/card.ts";
+import { firstLineOf, foldAt, fullFileMessage, fullFileOf, nameRect, onRow, pinCard, readAllMessage, readAllOf, type Theme } from "../lib/card.ts";
 import { distanceToPath } from "../lib/curve.ts";
 import { isDefined } from "../lib/fp.ts";
 import { prKey } from "../lib/github.ts";
@@ -18,7 +19,9 @@ import { overviewBounds, overviewCamera, stepCamera } from "../lib/view.ts";
 import { indexOf, readBoard, readClicked, rectsOf, type BoardRef, type Clicked, type Index } from "./board.ts";
 import { fly, screenOf, viewportOf } from "./camera.ts";
 import type { Ddp } from "./ddp.ts";
+import type { ReadFile } from "./files.ts";
 import type { Popover, PopoverContent } from "./read-all.ts";
+import { SAID } from "./warnings.ts";
 
 export type Navigator = {
     /** The board being read, once anything on it is current or loaded. */
@@ -74,6 +77,8 @@ export type NavigatorDeps = {
     loadReview: (key: string, sha: string) => Promise<Review>;
     /** A failure, in the panel's words. */
     explain: (err: unknown) => string;
+    /** A file at a commit, for the pane's whole file: kept for the session once read. */
+    readFile: ReadFile;
 };
 
 export const createNavigator = (deps: NavigatorDeps): Navigator => {
@@ -82,6 +87,8 @@ export const createNavigator = (deps: NavigatorDeps): Navigator => {
     let index: Index | null = null;
     let review: Review | null = null;
     let current: string | null = null;
+    /** Counts what the reader asks of the pane: a page, or putting it away. A whole file that arrives after either opens nothing. */
+    let asked = 0;
 
     const pinOf = (id: string): Pin | undefined => review?.pins.find((p) => p.id === id);
     /** The cards' theme; Drawdy's own when the PR card that records it is gone. */
@@ -176,63 +183,102 @@ export const createNavigator = (deps: NavigatorDeps): Navigator => {
     };
 
     /**
-     * Loads the review for Read all on `pin`, saying `Reading the PR…` when it takes a while, and why when it fails.
-     * True when the page can open: the reader is still on `pin`.
+     * Runs `work` for a page beside the card `pin`, showing `waiting` there when it takes a while. The loading page
+     * goes when the reader has moved to another card meanwhile.
      */
-    const loadForReadAll = async (wanted: BoardRef, pin: string, at: Rect, message: (text: string) => PopoverContent): Promise<boolean> => {
-        const waiting = message("Reading the PR…");
+    const whileLoading = async <T>(pin: string, at: Rect, waiting: PopoverContent, work: () => Promise<T>): Promise<T> => {
         let shown: Promise<void> | null = null;
         const late = setTimeout(() => {
             shown = popover.open(at, waiting);
         }, LOADING_AFTER_MS);
-        // The loading page goes when the reader has moved to another card meanwhile.
-        const settle = async () => {
+        try {
+            return await work();
+        } finally {
             clearTimeout(late);
             await shown;
             if (current !== pin && popover.shown() === waiting) await popover.close();
-        };
+        }
+    };
+
+    /**
+     * Loads the review for Read all on `pin`, saying `Reading the PR…` when it takes a while, and why when it fails.
+     * True when the page can open: the reader is still on `pin`.
+     */
+    const loadForReadAll = async (wanted: BoardRef, pin: string, at: Rect, message: (text: string) => PopoverContent): Promise<boolean> => {
         try {
-            const loaded = await deps.loadReview(wanted.key, wanted.sha);
-            if (board === wanted) attach(loaded);
+            await whileLoading(pin, at, message("Reading the PR…"), async () => {
+                const loaded = await deps.loadReview(wanted.key, wanted.sha);
+                if (board === wanted) attach(loaded);
+            });
         } catch (err) {
-            await settle();
             if (current === pin) await popover.open(at, message(deps.explain(err)));
             return false;
         }
-        await settle();
         return current === pin;
+    };
+
+    /** Where a card's pane opens, and what it says while the review loads, or why that failed. */
+    const paneFor = async (pin: string, rect?: Rect | null) => {
+        const idx = await ensureIndex();
+        const at = rect ?? (await liveCard(pin));
+        const name = idx?.pins.get(pin)?.name ?? pinOf(pin)?.name ?? "";
+        return { at, message: (text: string): PopoverContent => ({ ...readAllMessage(name, text, theme()), theme: theme(), pin }) };
     };
 
     /** Read all for a card, at head line `line` or the first change, beside the card's rect. */
     const openReadAll = async (pin: string, line: number | null, rect?: Rect | null) => {
         if (pin === "pr") return;
-        const idx = await ensureIndex();
-        const at = rect ?? (await liveCard(pin));
+        asked++;
+        const { at, message } = await paneFor(pin, rect);
         if (!at || !board) return;
-        const name = idx?.pins.get(pin)?.name ?? pinOf(pin)?.name ?? "";
-        const message = (text: string): PopoverContent => ({ ...readAllMessage(name, text, theme()), theme: theme(), pin });
         if (!review && !(await loadForReadAll(board, pin, at, message))) return;
         const p = pinOf(pin);
         if (!p || !review) return;
         await popover.open(at, { ...readAllOf(p, review, theme(), line), theme: theme(), pin });
     };
 
+    /**
+     * A card's whole file at the PR's head commit, beside the card's rect, opened at the card's first line. The file
+     * is read from GitHub the first time, saying `Reading the file…` when that takes a while; it opens only if the
+     * reader is still on the card and has asked the pane for nothing else since.
+     */
+    const openFullFile = async (pin: string, rect?: Rect | null) => {
+        if (pin === "pr") return;
+        const mine = ++asked;
+        const { at, message } = await paneFor(pin, rect);
+        if (!at || !board) return;
+        if (!review && !(await loadForReadAll(board, pin, at, message))) return;
+        const p = pinOf(pin);
+        if (!p?.path || !review) return;
+        const { headRepo, headSha } = review.pr;
+        const path = p.path;
+        const reading: PopoverContent = { ...fullFileMessage(path, headSha, "Reading the file…", theme()), theme: theme(), pin };
+        const text = await whileLoading(pin, at, reading, () => deps.readFile(headRepo, headSha, path));
+        if (current !== pin || asked !== mine || !review) return;
+        await popover.open(at, { ...fullFileOf(p, review, text, theme(), SAID.chars, firstLineOf(pinCard(p, review))), theme: theme(), pin });
+    };
+
     /** How far down a clicked card a point is, in the card's own units: a resized card scales, it does not reflow. */
     const localY = (c: Clicked, y: number): number => (y - c.rect.y) * ((c.mark.height ?? c.rect.height) / (c.rect.height || 1));
 
-    /** A click on a card makes it current, and on a fold row opens Read all there; Read all on another card closes. */
+    /**
+     * A click on a card makes it current; on a fold row it opens Read all there, and on `View full file` the card's
+     * whole file. The pane on another card closes.
+     */
     const clickCard = async (card: Clicked, at: Point) => {
-        const { pr, sha, folds } = card.mark;
+        const { pr, sha, folds, full } = card.mark;
         const pin = card.mark.pin!;
         await switchTo(pr, sha);
         if (pin !== current) await popover.close();
         current = pin;
         changed();
-        const fold = foldAt(folds ?? [], localY(card, at.y));
-        if (!fold) return;
-        // A fold row reads like a link: the card it selected goes, and so does its toolbar over the board.
+        const y = localY(card, at.y);
+        const fold = foldAt(folds ?? [], y);
+        const whole = full !== undefined && onRow(full, y);
+        if (!fold && !whole) return;
+        // These rows read like links: the card the click selected goes, and so does its toolbar over the board.
         await deselect();
-        await openReadAll(pin, fold[1] || null, card.rect);
+        await (fold ? openReadAll(pin, fold[1] || null, card.rect) : openFullFile(pin, card.rect));
     };
 
     /** A click lands in a string's box; it counts only near the curve itself. */
@@ -269,6 +315,7 @@ export const createNavigator = (deps: NavigatorDeps): Navigator => {
     const overview = async () => {
         const idx = await ensureIndex();
         if (!idx) return;
+        asked++;
         await popover.close();
         await deselect();
         const [rects, screen] = await Promise.all([rectsOf(ddp, [...idx.pins.values()].map((p) => p.id)), screenOf(ddp)]);
@@ -342,6 +389,9 @@ export const createNavigator = (deps: NavigatorDeps): Navigator => {
             if (current) await openReadAll(current, line);
         },
         click,
-        closePopover: () => popover.close(),
+        closePopover: () => {
+            asked++;
+            return popover.close();
+        },
     };
 };

@@ -289,6 +289,34 @@ describe("the runtime and GitHub", () => {
         expect(host.calls.slice(before).map((c) => c.type)).toContain("command:camera:fly-to-rect");
     });
 
+    it("opens a card's whole file from its View full file row, read from raw.githubusercontent.com once a session", async () => {
+        const asked: string[] = [];
+        globalThis.fetch = (async (url: string) => {
+            asked.push(url);
+            return fakeGithub(url);
+        }) as typeof fetch;
+        const { host, click, openHono } = await boot();
+        await openHono();
+        const compose = cardsOf(host).get("src/compose.ts:18")!;
+        const at = { x: compose.rect.x + 200, y: compose.rect.y + (compose.mark.full as number) + 10 };
+        const reads = () => asked.filter((url) => url.startsWith("https://raw.githubusercontent.com/honojs/hono/") && url.endsWith("/src/compose.ts")).length;
+        const read = reads();
+        const from = host.calls.length;
+        await click([compose.id], at);
+        await until(() => host.calls.slice(from).some((c) => c.type === "command:dom:upsert-floating-element"));
+        const page = host.calls.filter((c) => c.type === "command:dom:upsert-floating-element").pop()!.req.schema.children[0].children[1].child.srcDoc as string;
+        expect(page).toContain('<span class="base">compose.ts</span>');
+        expect(page).toContain('<div class="lines"');
+        expect(page).toContain("<i>77</i>");
+        expect(reads() - read).toBe(1);
+        // Opened again in the same session, it costs no request, and no request ever goes to the API for it.
+        const api = asked.filter((url) => url.startsWith("https://api.github.com/")).length;
+        await click([compose.id], at);
+        await wait(50);
+        expect([reads() - read, asked.filter((url) => url.startsWith("https://api.github.com/")).length]).toEqual([1, api]);
+        globalThis.fetch = fakeGithub as typeof fetch;
+    });
+
     it("picks up the board with the card last clicked current when the panel opens", async () => {
         const first = await boot();
         await first.openHono();

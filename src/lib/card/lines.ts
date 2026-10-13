@@ -67,7 +67,7 @@ const changeRuns = (lines: readonly DiffLine[]): { dels: number[]; adds: number[
 };
 
 /** Each edited line's changed stretch, `[from, to)`, by line. */
-const changedStretches = (lines: readonly DiffLine[]): Map<DiffLine, [number, number]> => {
+export const changedStretches = (lines: readonly DiffLine[]): Map<DiffLine, [number, number]> => {
     const marks = new Map<DiffLine, [number, number]>();
     for (const run of changeRuns(lines)) {
         const pairs = pairLines(
@@ -84,7 +84,7 @@ const changedStretches = (lines: readonly DiffLine[]): Map<DiffLine, [number, nu
 };
 
 /** A line's HTML with the changed stretch wrapped in `<mark>`. */
-const highlightMarked = (text: string, lang: ReviewFile["lang"], state: HighlightState, [from, to]: [number, number]) =>
+export const highlightMarked = (text: string, lang: ReviewFile["lang"], state: HighlightState, [from, to]: [number, number]) =>
     from === to
         ? highlightLine(text, lang, state)
         : highlightLine(text.slice(0, from), lang, state) + `<mark>${highlightLine(text.slice(from, to), lang, state)}</mark>` + highlightLine(text.slice(to), lang, state);

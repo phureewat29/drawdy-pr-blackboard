@@ -49,6 +49,8 @@ order in their head. PR Blackboard draws it for you.
 - **Change cards**: each changed function with its changes, and every call
   to another card marked `→`. **Read all** opens the full code right on the
   board; drag it anywhere, and it pans and zooms with the board.
+- **View full file**, at the foot of a card, opens the whole file beside it
+  as it stands at the PR's latest commit, with the PR's changes marked.
 - **Lines**: **calls**, **uses**, **tests** and **imports**. Lines that cross
   or run close get different colours, so you can follow one across the
   board. PR Blackboard draws a line only when it can tell exactly where a
@@ -85,7 +87,8 @@ card for every change.
 
 - Works with public PRs on GitHub. No account or sign-in.
 - GitHub allows 60 requests an hour without signing in. Opening a PR uses
-  2, and a very big one more: Bun's 2,188-file rewrite takes 23.
+  2, and a very big one more: Bun's 2,188-file rewrite takes 23. A file
+  opened with View full file costs none of them.
 - The first PR in a language downloads that language's parser, once: 81 KB
   for the engine, then 17 KB (Clojure) to 392 KB (Scala). It stays on your
   device after that.

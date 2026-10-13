@@ -165,15 +165,21 @@ describe("the camera on a bottom-row step that can't frame its partner whole", (
             // hono.test.ts and onError()'s name span about 1890 canvas units: 1510 px at 0.8, more than either screen has.
             ["hono.test.ts", "onError()", false],
             ["onError()", "hono.test.ts", screen.width === 1920],
-            ["hono-base.ts imports", "toError()", true],
+            // From toError()'s name down to the imports card's foot is 906 units: 725 px at 0.8, more than the 688 that 1280 × 800 has.
+            ["hono-base.ts imports", "toError()", screen.width === 1920],
         ];
         for (const [card, partner, fits] of cases) {
             const id = idOf(card);
             const camera = stepCamera(at(card), screen, null, linkedTo(id), names(id))!;
             const name = nameRect(at(partner), partner);
             const box = onScreen(camera, at(card));
-            // A name that can't fit pulls the card's far edge to the margin, so as much of the partner as possible shows.
-            const pulled = at(partner).x < at(card).x ? Math.abs(box.right - (view.x + view.width - VIEW.margin)) < 0.5 : Math.abs(box.left - (view.x + VIEW.margin)) < 0.5;
+            // A name that can't fit pulls the card's far edge to the margin, so as much of the partner as possible shows: up for a name above it.
+            const above = name.y + name.height <= at(card).y;
+            const pulled = above
+                ? Math.abs(box.bottom - (view.y + view.height - VIEW.margin)) < 0.5
+                : at(partner).x < at(card).x
+                  ? Math.abs(box.right - (view.x + view.width - VIEW.margin)) < 0.5
+                  : Math.abs(box.left - (view.x + VIEW.margin)) < 0.5;
             expect([card, camera.zoom >= VIEW.minZoom, shownWhole(screen, camera, at(card)), fits ? shownWhole(screen, camera, name) : pulled]).toEqual([card, true, true, true]);
         }
     });
@@ -246,7 +252,7 @@ describe("the overview", () => {
 
     it.each(SCREENS)("shows the whole board, centred in the usable view ($width × $height)", (screen) => {
         const bounds = overviewBounds(codeOf(plan), prOf(plan))!;
-        expect(bounds).toEqual({ x: 0, y: 0, width: 4369, height: 1526 });
+        expect(bounds).toEqual({ x: 0, y: 0, width: 4369, height: 1606 });
         const camera = overviewCamera(bounds, screen);
         const view = usable(screen);
         const box = onScreen(camera, bounds);

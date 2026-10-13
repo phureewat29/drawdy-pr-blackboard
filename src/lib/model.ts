@@ -42,6 +42,8 @@ export type ReviewFile = {
     hunks: Hunk[];
     /** False when GitHub left the diff out. */
     hasPatch: boolean;
+    /** How many lines the file has at the head commit, when PR Blackboard knows: it read the file, or the PR adds it whole. */
+    lines?: number;
     symbols: ChangedSymbol[];
     loose: LooseChange[];
     cases: TestCase[];

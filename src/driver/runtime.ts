@@ -13,6 +13,7 @@ import { createChannel } from "./channel.ts";
 import { createClearer } from "./clearer.ts";
 import { createDdp } from "./ddp.ts";
 import { markOf } from "./elements.ts";
+import { createFileReader } from "./files.ts";
 import { createNavigator } from "./navigator.ts";
 import { fetchGithubOrJsdelivr } from "./network.ts";
 import { reviewAt } from "./open.ts";
@@ -54,7 +55,15 @@ export const createRuntime = (args: Parameters<DriverModule["activate"]>[0]): Ru
     const pinning = { ddp, generateId: args.generateId, theme: () => styling.theme };
     const channel = createChannel({ ddp, styling: () => styling });
     const popover = createPopover({ ddp });
-    const guide = createNavigator({ ddp, popover, styling: () => styling, changed: () => panel.push(), loadReview: (key, sha) => reviewAt(loaders, key, sha, quiet), explain });
+    const guide = createNavigator({
+        ddp,
+        popover,
+        styling: () => styling,
+        changed: () => panel.push(),
+        loadReview: (key, sha) => reviewAt(loaders, key, sha, quiet),
+        explain,
+        readFile: createFileReader(loaders.github),
+    });
     const panel = createPanelFeed({ channel, guide, quota: net.quota });
     const opener = createOpener({ ddp, channel, guide, panel, loaders, pinning });
     const sweeper = createSweeper(ddp);

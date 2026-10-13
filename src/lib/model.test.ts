@@ -77,6 +77,16 @@ describe("buildReview on hono#5513", () => {
         ]);
     });
 
+    it("knows how many lines each file it read has at the head commit, for the cards that show a whole file", () => {
+        expect(review.files.map((f) => [f.path, f.lines])).toEqual([
+            ["src/compose.test.ts", 817],
+            ["src/compose.ts", 77],
+            ["src/hono-base.ts", 550],
+            ["src/hono.test.ts", 3934],
+        ]);
+        expect(honoFixture().raw.get("src/compose.ts")!.split("\n")).toHaveLength(78);
+    });
+
     it("links a test only to what it imports and uses, never by its file's name, and a link into the unchanged caller places nothing", () => {
         // hono.test.ts is hono-base.ts's test file, but it never reaches the private #dispatch().
         const tests = review.links.filter((l) => l.from === "test:src/hono.test.ts").map((l) => nameOf(l.to));
@@ -239,7 +249,7 @@ describe("a file added whole without its patch", () => {
         const text = "pub struct Request {\n    id: u32,\n}\n\nimpl Request {\n    pub fn new(id: u32) -> Self {\n        Self::check(id);\n        Self { id }\n    }\n\n    fn check(id: u32) {}\n}\n";
         const files: PrFile[] = [{ path: "src/request.rs", status: "added", additions: 12, deletions: 0 }];
         const review = await reviewOf({ pr: { ...pr, changedFiles: 1 }, files, raw: new Map([["src/request.rs", text]]) });
-        expect(review.files[0]).toMatchObject({ hasPatch: true });
+        expect(review.files[0]).toMatchObject({ hasPatch: true, lines: 12 });
         expect(review.files[0].hunks.flatMap((h) => h.lines).every((l) => l.t === "add")).toBe(true);
         expect(review.pins.filter((p) => p.kind === "change").map((p) => `${p.name} ${p.status}`)).toEqual(expect.arrayContaining(["Request::new() new", "Request::check() new"]));
         const name = (id: string) => review.pins.find((p) => p.id === id)!.name;

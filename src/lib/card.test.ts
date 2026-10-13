@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "@jest/globals";
 import { excalidrawFixture, honoFixture, reviewOf } from "../test/fixture.ts";
 import { twoThreads } from "../test/synthetic.ts";
-import { CARD, cardHtml, foldAt, foldsOf, linkGroups, pinCard, prCard, prCardHtml, readAllOf, unpinnedText, type CardModel, type Row } from "./card.ts";
+import { CARD, cardHtml, foldAt, foldsOf, fullFileRow, linkGroups, pinCard, prCard, prCardHtml, readAllOf, unpinnedText, type CardModel, type Row } from "./card.ts";
 import { headerName } from "./card/grid.ts";
 import { changedSpan } from "./card/lines.ts";
 import { declarationRows } from "./card/rows.ts";
@@ -24,7 +24,7 @@ describe("change cards", () => {
 
     it("keep the first line, the changes with two lines around, and every call row, folding the rest", () => {
         expect(dispatch.rows.map(text)).toEqual([
-            "  411", "⋯4", "  416", "⋯25", " →442", "⋯6", "  449", "  450", "− 450", "+→451", "  452", "  453", "  454", " →455", "⋯12", " →468", "⋯3 Read all",
+            "  411", "⋯4", "  416", "⋯25", " →442", "⋯6", "  449", "  450", "− 450", "+→451", "  452", "  453", "  454", " →455", "⋯12", " →468", "⋯3 Read all", "full",
         ]);
         expect(dispatch.rows.length).toBeLessThanOrEqual(CARD.maxRows);
     });
@@ -118,10 +118,10 @@ describe("a class card", () => {
         });
         const named = (name: string) => flow.pins.find((p) => p.name === name)!;
         expect(flow.pins.map((p) => p.name)).toEqual(expect.arrayContaining(["class Flow", "Flow.first()", "Flow.second()"]));
-        expect(pinCard(named("class Flow"), flow).rows.map(text)).toEqual(["+ 1", "+ 2", "⋯6 Read all"]);
-        expect(pinCard(named("Flow.first()"), flow).rows.map(text)).toEqual(["+ 4", "+→5"]);
-        // Without the nested cards on the board, the class shows all its lines.
-        expect(pinCard(named("class Flow"), { ...flow, pins: [named("class Flow")] }).rows).toHaveLength(8);
+        expect(pinCard(named("class Flow"), flow).rows.map(text)).toEqual(["+ 1", "+ 2", "⋯6 Read all", "full"]);
+        expect(pinCard(named("Flow.first()"), flow).rows.map(text)).toEqual(["+ 4", "+→5", "full"]);
+        // Without the nested cards on the board, the class shows all its lines: the whole file, so no View full file.
+        expect(pinCard(named("class Flow"), { ...flow, pins: [named("class Flow")] }).rows.map(text)).toEqual(["+ 1", "+ 2", "+ 3", "+ 4", "+ 5", "+ 6", "+ 7", "+ 8"]);
     });
 });
 
@@ -208,29 +208,75 @@ describe("other cards", () => {
     });
 
     it("end in Read all whenever they hide code: a test card's bodies, or the end of a line cut at the card's edge", () => {
-        const last = (name: string) => card(name).rows[card(name).rows.length - 1];
+        // The last row before View full file.
+        const last = (name: string) => card(name).rows.filter((r) => r.kind !== "full").pop()!;
         expect(last("compose.test.ts")).toEqual({ kind: "info", text: "Test code · Read all", readAll: true });
-        // Every row that opens Read all has the fold row's shape: ⋯, then what it hides, then Read all underlined.
-        for (const name of ["compose.test.ts", "toError()", "compose()"]) expect(cardHtml(card(name), pin(name), "light")).toMatch(/<div class="fold( cases)?"><span class="dots">⋯<\/span> [^<]+ · <span class="ra">Read all<\/span><\/div><\/div>/);
+        // Every row that opens Read all has the fold row's shape: ⋯, then what it hides, then Read all underlined; View full file follows.
+        for (const name of ["compose.test.ts", "toError()", "compose()"])
+            expect(cardHtml(card(name), pin(name), "light")).toMatch(/<div class="fold( cases)?"><span class="dots">⋯<\/span> [^<]+ · <span class="ra">Read all<\/span><\/div><div class="fold full( cases)?">/);
         expect(last("hono.test.ts")).toMatchObject({ kind: "info", readAll: true });
         // toError()'s one changed line runs past an 880-wide card; Read all opens at it.
         const toError = card("toError()");
         expect(toError.width).toBe(CARD.maxWidth);
         expect(last("toError()")).toMatchObject({ kind: "fold", tail: true, cut: true, count: 1, from: 5 });
-        expect(foldsOf(toError)).toEqual([[CARD.header + (toError.rows.length - 1) * CARD.row, 5]]);
+        // Its last row but one, over View full file.
+        expect(foldsOf(toError)).toEqual([[CARD.header + (toError.rows.length - 2) * CARD.row, 5]]);
         expect(cardHtml(toError, pin("toError()"), "light")).toContain('1 line cut short · <span class="ra">Read all</span>');
         // A card that fits its lines adds no such row.
         expect(card("#handleError()").rows.some((r) => r.kind === "fold" && r.cut)).toBe(false);
     });
 
     it("show a file's excerpt with no row repeating the line numbers", () => {
-        expect(card("hono-base.ts imports").rows.every((r) => r.kind === "line")).toBe(true);
+        expect(card("hono-base.ts imports").rows.map((r) => r.kind)).toEqual([...Array(card("hono-base.ts imports").rows.length - 1).fill("line"), "full"]);
     });
 
     it("escape code", () => {
         const html = cardHtml(card("compose()"), pin("compose()"), "light");
         expect(html).toContain("compose = &lt;E");
         expect(html).not.toContain("compose = <E");
+    });
+});
+
+describe("View full file", () => {
+    it("ends every code, test and file card: a fold row's shape, a file where ⋯ stands, its top kept for the card's mark", () => {
+        for (const p of review.pins.filter((x) => x.kind !== "pr")) {
+            const c = pinCard(p, review);
+            expect([p.name, c.rows[c.rows.length - 1]]).toEqual([p.name, { kind: "full" }]);
+            expect(fullFileRow(c)).toBe(CARD.header + (c.rows.length - 1) * CARD.row);
+        }
+        const html = cardHtml(card("compose()"), pin("compose()"), "light");
+        expect(html).toMatch(/<div class="fold full"><svg class="icon" [^>]+>(<path [^>]+\/>){4}<\/svg> <span class="ra">View full file<\/span><\/div><\/div><\/body>/);
+        // Under the case names on a test card, as its Read all row is.
+        expect(cardHtml(card("compose.test.ts"), pin("compose.test.ts"), "light")).toContain('<div class="fold full cases">');
+    });
+
+    it("is left off a card that shows every line of its file at the head commit, and off a file the PR deletes", async () => {
+        const { pr } = honoFixture();
+        const files = [
+            // Added whole: the patch holds every line, so the card shows the whole file.
+            { path: "config.json", status: "added" as const, additions: 3, deletions: 0, patch: '@@ -0,0 +1,3 @@\n+{\n+  "a": 1\n+}' },
+            // Read, three lines long: its one hunk shows all three.
+            { path: "src/side.ts", status: "modified" as const, additions: 1, deletions: 1, patch: "@@ -1,3 +1,3 @@\n setup()\n-run(1)\n+run(2)\n stop()" },
+            // Never read: the diff shows lines 1 to 3, but nothing says the file ends there.
+            { path: "small.yml", status: "modified" as const, additions: 1, deletions: 1, patch: "@@ -1,3 +1,3 @@\n a: 1\n-b: 2\n+b: 3\n c: 4" },
+            { path: "old.md", status: "removed" as const, additions: 0, deletions: 2, patch: "@@ -1,2 +0,0 @@\n-# Old\n-gone" },
+        ];
+        const r = await reviewOf({ pr: { ...pr, changedFiles: files.length }, files, raw: new Map([["src/side.ts", "setup()\nrun(2)\nstop()\n"]]) });
+        expect(r.files.map((f) => [f.path, f.lines])).toEqual([["config.json", 3], ["src/side.ts", 3], ["small.yml", undefined], ["old.md", undefined]]);
+        const kinds = (path: string) => pinCard(r.pins.find((p) => p.path === path)!, r).rows.map((row) => row.kind);
+        expect(kinds("config.json")).toEqual(["line", "line", "line"]);
+        expect(kinds("src/side.ts")).toEqual(["line", "line", "line", "line"]);
+        expect(kinds("small.yml")).toEqual(["line", "line", "line", "line", "full"]);
+        expect(kinds("old.md")).toEqual(["line", "line"]);
+        // Had the file a fourth line, the same card would leave it out, and offer the whole file.
+        const longer = { ...r, files: r.files.map((f) => (f.path === "src/side.ts" ? { ...f, lines: 4 } : f)) };
+        expect(pinCard(longer.pins.find((p) => p.path === "src/side.ts")!, longer).rows.map((row) => row.kind)).toEqual(["line", "line", "line", "line", "full"]);
+    });
+
+    it("stays on a card about an unchanged file, whose length the review doesn't hold", () => {
+        const fetch = pin("fetch()");
+        const elsewhere = { ...review, files: review.files.filter((f) => f.path !== fetch.path) };
+        expect(pinCard(fetch, elsewhere).rows.map((r) => r.kind).pop()).toBe("full");
     });
 });
 

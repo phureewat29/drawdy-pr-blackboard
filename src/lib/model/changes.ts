@@ -5,7 +5,7 @@
  * cases.
  */
 
-import { addedHunks, addedLines, allLines, parsePatch, type DiffLine, type Hunk } from "../diff.ts";
+import { addedHunks, addedLines, allLines, parsePatch, textLines, type DiffLine, type Hunk } from "../diff.ts";
 import { partition } from "../fp.ts";
 import type { PrFile } from "../github.ts";
 import type { Facts, Unit } from "../langs/pack.ts";
@@ -61,10 +61,13 @@ export const reviewFiles = (prFiles: readonly PrFile[], analysed: Analysed, head
     const files = prFiles.map((f): ReviewFile => {
         const role = roleOf(f.path);
         const lang = languageOf(f.path);
+        const text = f.status === "removed" ? undefined : analysed.texts.get(f.path);
         // A file added whole is all new: when GitHub leaves its patch out, its text read gives it.
-        const whole = f.patch === undefined && f.status === "added" ? analysed.texts.get(f.path) : undefined;
+        const whole = f.patch === undefined && f.status === "added" ? text : undefined;
         const hunks = f.patch ? parsePatch(f.patch) : whole !== undefined ? addedHunks(whole) : [];
         const found = changesOf(f, role, lang, hunks);
+        // A file added whole has every line in its one hunk.
+        const lines = text !== undefined ? textLines(text).length : f.status === "added" && hunks.length > 0 ? hunks[hunks.length - 1].newEnd : undefined;
         return {
             path: f.path,
             ...(f.previousPath ? { previousPath: f.previousPath } : {}),
@@ -75,6 +78,7 @@ export const reviewFiles = (prFiles: readonly PrFile[], analysed: Analysed, head
             deletions: f.deletions,
             hunks,
             hasPatch: f.patch !== undefined || whole !== undefined,
+            ...(lines !== undefined ? { lines } : {}),
             symbols: found.symbols,
             // A loose run inside the lines a change card shows is already on that card.
             loose: found.loose.filter((r) => !found.symbols.some((s) => pinFrom(s) <= r.from && r.to <= s.end)),

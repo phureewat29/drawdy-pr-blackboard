@@ -4,7 +4,7 @@
  */
 
 import type { DomElementSchema, DrawdyElementSchema } from "@drawdy/driver-protocol";
-import { cardHtml, foldsOf, prCardHtml, type Theme } from "../lib/card.ts";
+import { cardHtml, foldsOf, fullFileRow, prCardHtml, type CardModel, type Theme } from "../lib/card.ts";
 import * as g from "../lib/guard.ts";
 import { prKey } from "../lib/github.ts";
 import { STRING_COLOURS, type BoardPlan, type PlannedString, type Rect } from "../lib/layout.ts";
@@ -30,6 +30,8 @@ const boardMark = g.object({
     height: g.optional(g.number),
     /** On a code card: its fold rows, `[top, line]`, so a click on one opens Read all without the review. */
     folds: g.optional(g.arrayOf(fold)),
+    /** On a code card: the top of its `View full file` row, when it has one. */
+    full: g.optional(g.number),
     /** On the PR card: the theme the cards were pinned in, so Read all matches them. */
     theme: g.optional(g.oneOf(["light", "dark"])),
     /** The link a string or label stands for, by link id; on a string, its kind and both cards. */
@@ -53,6 +55,12 @@ const markFor = (review: Pick<Review, "pr">, part: BoardMark["part"], extra: Par
     part,
     ...extra,
 });
+
+/** What a code card's mark holds for its clicks: its fold rows, and its `View full file` row when it has one. */
+const clickRows = (card: CardModel): Partial<BoardMark> => {
+    const full = fullFileRow(card);
+    return { folds: foldsOf(card), ...(full !== null ? { full } : {}) };
+};
 
 /** A component holding a page of HTML, framed like a card; a dashed frame is drawn by the page itself. */
 const componentSchema = (html: string, width: number, height: number, framed: boolean): DomElementSchema => ({
@@ -80,9 +88,9 @@ const point = (p: { x: number; y: number }): [number, number] => [Math.round(p.x
 
 /**
  * The board's elements in `theme`, the one Drawdy shows the reader who pins it. Nothing is grouped, so a click
- * selects one card. Each card's mark holds what a click needs (name, size, fold rows), and each string's its kind,
- * both cards and colour, so the board works without the review. Strings are curves through their bend points; a
- * drag moves only their ends.
+ * selects one card. Each card's mark holds what a click needs (name, size, the rows that open a pane), and each
+ * string's its kind, both cards and colour, so the board works without the review. Strings are curves through their
+ * bend points; a drag moves only their ends.
  */
 export const reviewElements = (review: Review, plan: BoardPlan, newId: () => string, theme: Theme): ReviewElements => {
     const pinIds = new Map([...plan.pins.keys()].map((id) => [id, newId()]));
@@ -103,7 +111,7 @@ export const reviewElements = (review: Review, plan: BoardPlan, newId: () => str
                     name: pin.name,
                     width: rect.width,
                     height: rect.height,
-                    ...(pr ? { theme } : { folds: foldsOf(plan.cards.get(id)!) }),
+                    ...(pr ? { theme } : clickRows(plan.cards.get(id)!)),
                 }),
             },
         };
