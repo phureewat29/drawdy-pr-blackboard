@@ -101,14 +101,17 @@ its companions and supertypes), then explicit imports, the package, star
 imports and the default imports, and picks among overloads the one that
 surely applies. A source set is read from its path (`src/jvmTest/kotlin`,
 ktor's `jvm/test`): main code never sees a test, common code never a
-platform's. It draws no line where a smart cast may change a receiver (`is`,
-`as`, `===`, and a call not proven free of a contract: an operator's, an
-infix function's or a property accessor's too), a
-lambda passed to a function not read may take one, a receiver around may
-hold a member extension of the name, a supertype or an `expect` class's
-`actual` isn't read, two overloads may both apply, or a file of the package
-that tree-sitter misreads or can't parse, or a Java file, may declare the
-name; nor for operators, infix calls and callable references.
+platform's. It draws no line where a smart cast may change a receiver
+(`is`, `as`, `===`, and a call not proven free of a contract: an
+operator's, an infix function's or a property accessor's too), a lambda
+passed to a function not read may take one, a receiver around may hold a
+member extension of the name, a supertype or an `expect` class's `actual`
+isn't read, two overloads may both apply, or a file of the package that
+tree-sitter misreads or can't parse, or a Java file, may declare the name;
+nor for operators, infix calls and callable references. Out of its reach:
+a file the board didn't read in a package it did read, where an overload,
+an extension or a contract may hide, and library contracts it doesn't
+know: kotlin.test's `assertIs` is the only one it takes to imply a type.
 
 **The two lists.** `langs/index.ts` lists every pack (`PACKS`);
 `langs/linkers.ts` lists every linker (`LINKERS`). A pack with no linker

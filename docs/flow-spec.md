@@ -94,19 +94,20 @@ pinned`, leaving out a zero part and using `1 function`, `1 file`.
 ### 2.2 Link finding
 
 A string must be a fact. PR Blackboard parses every file it reads in
-TypeScript and JavaScript (`.ts .tsx .mts .cts .js .jsx .mjs .cjs`),
-Python (`.py`), Go (`.go`), Rust (`.rs`), Java (`.java`), C# (`.cs`), PHP
-(`.php`), Elixir (`.ex .exs`) and Clojure (`.clj .cljs .cljc`) with
-tree-sitter, and follows each name to the declaration it means: through
-scopes, imports, and members whose receiver it can name. Only a reference
-that resolves makes a link. TypeScript and JavaScript have a linker of
-their own (`langs/javascript/`); the other eight share one generic file
-index, a rule table per language over the grammar's own `tags.scm` or a
-query of the pack's own, and Python, Go and Rust its resolver (2.2.10,
+TypeScript and JavaScript (`.ts .tsx .mts .cts .js .jsx .mjs .cjs`, and
+the code of Vue and Svelte components, `.vue .svelte`), Python (`.py`), Go
+(`.go`), Rust (`.rs`), Java (`.java`), C# (`.cs`), PHP (`.php`), Elixir
+(`.ex .exs`), Clojure (`.clj .cljs .cljc`), C (`.c`) and Kotlin (`.kt`)
+with tree-sitter, and follows each name to the declaration it means:
+through scopes, imports, and members whose receiver it can name. Only a
+reference that resolves makes a link. TypeScript and JavaScript have a
+linker of their own (`langs/javascript/`); the other ten share one generic
+file index, a rule table per language over the grammar's own `tags.scm` or
+a query of the pack's own, and Python, Go and Rust its resolver (2.2.10,
 request 58); Java resolves by the JLS's own rules (2.2.10, request 66), and
-C#, PHP, Elixir and Clojure each by a resolver of their own
-(`docs/languages.md`). Kotlin, C, C++, Scala and Haskell are parsed for
-their cards alone (`units-only.ts`); other languages keep their cards from
+C#, PHP, Elixir, Clojure, C and Kotlin each by a resolver of their own
+(`docs/languages.md`). C++, Scala and Haskell are parsed for their cards
+alone (`units-only.ts`); other languages keep their cards from
 line patterns. Neither draws a string (2.2.7). Nothing anywhere links code
 by its name alone.
 
@@ -1339,8 +1340,8 @@ turns a short fixed table of common names (`:tada:` is 🎉) into emoji in
 titles and descriptions alike, never inside code, and leaves any other
 `:name:` as written. Code fences use `language.ts` and `highlight.ts`; no other
 highlighter. The marketplace does not minify, so check.ts builds with
-`minify: false` and reports that size: about 236 KB with marked, limit
-1.25 MB.
+`minify: false` and reports that size: about 1,050 KB with marked and the
+parser worker's script, limit 1.25 MB.
 
 5.5.3 **Untrusted input.** No raw HTML or script reaches a card:
 
@@ -2484,7 +2485,7 @@ the dev server on a local board. G: the score gate, outside the repository
    camera call comes before the add; one overview flight follows it.
 2. (C) The 32-card synthetic board's add payload is under 512 KB. The
    bundle, built unminified as the marketplace builds it, is under 1.25 MB
-   (about 860 KB, 570 KB of it the minified parser worker's script), prints its
+   (about 1,050 KB, 750 KB of it the minified parser worker's script), prints its
    size, and has no bare import but `@drawdy/driver-protocol`. The
    listing icon is a 512 px PNG and the button draws its 64 px copy.
 3. (T, C) Every arrow: both bindings, no `elbowRouting`, no `roughness`;
