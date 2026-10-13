@@ -5,8 +5,9 @@
  * Copyright (c) 2018 Max Brunsfeld (MIT License)
  * https://github.com/tree-sitter/tree-sitter
  *
- * Patched so the marketplace's CommonJS build of the extension takes it, and
- * to keep that build small:
+ * Patched so the marketplace's CommonJS build of the extension takes it, so
+ * it requests and evaluates nothing (Drawdy's static scan flags both), and to
+ * keep that build small:
  * 1. Language.load's Node branch, which reads a path with
  *    import("fs/promises"), is removed; PR Blackboard always passes bytes.
  * 2. The Module's createRequire(import.meta.url) under ENVIRONMENT_IS_NODE
@@ -16,6 +17,14 @@
  * 4. import.meta.url reads undefined, and the source map comment is gone.
  * 5. The comments esbuild keeps in a bundle, doc comments in class bodies and
  *    the like, are removed: they made 24 KB of the parser worker's script.
+ * 6. Language.load's URL branch (fetch, compileStreaming) is removed: it
+ *    takes bytes alone, and throws on anything else.
+ * 7. The Module's web loaders (readAsync, readBinary: XMLHttpRequest and
+ *    fetch) and its streaming instantiation are removed, with the
+ *    environment checks only they read: the runtime starts from wasmBinary,
+ *    and a library a side module needs can't load.
+ * 8. A side module's EM_ASM and EM_JS code throws instead of reaching eval:
+ *    no pinned grammar has any.
  * Nothing else is changed.
  */
 var __defProp = Object.defineProperty;
@@ -1059,27 +1068,10 @@ var Language = class _Language {
     return null;
   }
   static async load(input) {
-    let binary2;
-    if (input instanceof Uint8Array) {
-      binary2 = input;
-    } else {
-      const response = await fetch(input);
-      if (!response.ok) {
-        const body2 = await response.text();
-        throw new Error(`Language.load failed with status ${response.status}.
-
-${body2}`);
-      }
-      const retryResp = response.clone();
-      try {
-        binary2 = await WebAssembly.compileStreaming(response);
-      } catch (reason) {
-        console.error("wasm streaming compile failed:", reason);
-        console.error("falling back to ArrayBuffer instantiation");
-        binary2 = new Uint8Array(await retryResp.arrayBuffer());
-      }
+    if (!(input instanceof Uint8Array)) {
+      throw new Error("Language.load takes a grammar's bytes");
     }
-    const mod = await C.loadWebAssemblyModule(binary2, { loadAsync: true });
+    const mod = await C.loadWebAssemblyModule(input, { loadAsync: true });
     return _Language.loadFromWasmExports(mod, { sync: false });
   }
   static loadFromWasmExports(mod, { sync }) {
@@ -1103,9 +1095,6 @@ ${JSON.stringify(symbolNames, null, 2)}`);
 async function Module2(moduleArg = {}) {
   var moduleRtn;
   var Module = moduleArg;
-  var ENVIRONMENT_IS_WEB = typeof window == "object";
-  var ENVIRONMENT_IS_WORKER = typeof WorkerGlobalScope != "undefined";
-  var ENVIRONMENT_IS_NODE = typeof process == "object" && process.versions?.node && process.type != "renderer";
   Module.currentQueryProgressCallback = null;
   Module.currentProgressCallback = null;
   Module.currentLogCallback = null;
@@ -1115,7 +1104,6 @@ async function Module2(moduleArg = {}) {
   var quit_ = /* @__PURE__ */ __name((status, toThrow) => {
     throw toThrow;
   }, "quit_");
-  var _scriptName = undefined;
   var scriptDirectory = "";
   function locateFile(path) {
     if (Module["locateFile"]) {
@@ -1124,59 +1112,12 @@ async function Module2(moduleArg = {}) {
     return scriptDirectory + path;
   }
   __name(locateFile, "locateFile");
-  var readAsync, readBinary;
-  if (ENVIRONMENT_IS_WEB || ENVIRONMENT_IS_WORKER) {
-    try {
-      scriptDirectory = new URL(".", _scriptName).href;
-    } catch {
-    }
-    {
-      if (ENVIRONMENT_IS_WORKER) {
-        readBinary = /* @__PURE__ */ __name((url) => {
-          var xhr = new XMLHttpRequest();
-          xhr.open("GET", url, false);
-          xhr.responseType = "arraybuffer";
-          xhr.send(null);
-          return new Uint8Array(
-            xhr.response
-          );
-        }, "readBinary");
-      }
-      readAsync = /* @__PURE__ */ __name(async (url) => {
-        if (isFileURI(url)) {
-          return new Promise((resolve, reject) => {
-            var xhr = new XMLHttpRequest();
-            xhr.open("GET", url, true);
-            xhr.responseType = "arraybuffer";
-            xhr.onload = () => {
-              if (xhr.status == 200 || xhr.status == 0 && xhr.response) {
-                resolve(xhr.response);
-                return;
-              }
-              reject(xhr.status);
-            };
-            xhr.onerror = reject;
-            xhr.send(null);
-          });
-        }
-        var response = await fetch(url, {
-          credentials: "same-origin"
-        });
-        if (response.ok) {
-          return response.arrayBuffer();
-        }
-        throw new Error(response.status + " : " + response.url);
-      }, "readAsync");
-    }
-  } else {
-  }
   var out = console.log.bind(console);
   var err = console.error.bind(console);
   var dynamicLibraries = [];
   var wasmBinary;
   var ABORT = false;
   var EXITSTATUS;
-  var isFileURI = /* @__PURE__ */ __name((filename) => filename.startsWith("file://"), "isFileURI");
   var readyPromiseResolve, readyPromiseReject;
   var wasmMemory;
   var HEAP8, HEAPU8, HEAP16, HEAPU16, HEAP32, HEAPU32, HEAPF32, HEAPF64;
@@ -1266,26 +1207,12 @@ async function Module2(moduleArg = {}) {
     if (file == wasmBinaryFile && wasmBinary) {
       return new Uint8Array(wasmBinary);
     }
-    if (readBinary) {
-      return readBinary(file);
-    }
-    throw "both async and sync fetching of the wasm failed";
+    throw "web-tree-sitter.wasm loads from wasmBinary alone";
   }
   __name(getBinarySync, "getBinarySync");
-  async function getWasmBinary(binaryFile) {
-    if (!wasmBinary) {
-      try {
-        var response = await readAsync(binaryFile);
-        return new Uint8Array(response);
-      } catch {
-      }
-    }
-    return getBinarySync(binaryFile);
-  }
-  __name(getWasmBinary, "getWasmBinary");
   async function instantiateArrayBuffer(binaryFile, imports) {
     try {
-      var binary2 = await getWasmBinary(binaryFile);
+      var binary2 = getBinarySync(binaryFile);
       var instance2 = await WebAssembly.instantiate(binary2, imports);
       return instance2;
     } catch (reason) {
@@ -1294,22 +1221,6 @@ async function Module2(moduleArg = {}) {
     }
   }
   __name(instantiateArrayBuffer, "instantiateArrayBuffer");
-  async function instantiateAsync(binary2, binaryFile, imports) {
-    if (!binary2 && !isFileURI(binaryFile) && !ENVIRONMENT_IS_NODE) {
-      try {
-        var response = fetch(binaryFile, {
-          credentials: "same-origin"
-        });
-        var instantiationResult = await WebAssembly.instantiateStreaming(response, imports);
-        return instantiationResult;
-      } catch (reason) {
-        err(`wasm streaming compile failed: ${reason}`);
-        err("falling back to ArrayBuffer instantiation");
-      }
-    }
-    return instantiateArrayBuffer(binaryFile, imports);
-  }
-  __name(instantiateAsync, "instantiateAsync");
   function getWasmImports() {
     return {
       "env": wasmImports,
@@ -1348,7 +1259,7 @@ async function Module2(moduleArg = {}) {
       });
     }
     wasmBinaryFile ??= findWasmBinary();
-    var result = await instantiateAsync(wasmBinary, wasmBinaryFile, info2);
+    var result = await instantiateArrayBuffer(wasmBinaryFile, info2);
     var exports = receiveInstantiationResult(result);
     return exports;
   }
@@ -1864,18 +1775,7 @@ async function Module2(moduleArg = {}) {
           reportUndefinedSymbols();
         }
         function addEmAsm(addr, body) {
-          var args = [];
-          var arity = 0;
-          for (; arity < 16; arity++) {
-            if (body.indexOf("$" + arity) != -1) {
-              args.push("$" + arity);
-            } else {
-              break;
-            }
-          }
-          args = args.join(",");
-          var func = `(${args}) => { ${body} };`;
-          ASM_CONSTS[start] = eval(func);
+          throw new Error("A grammar with EM_ASM code isn't supported");
         }
         __name(addEmAsm, "addEmAsm");
         if ("__start_em_asm" in moduleExports) {
@@ -1888,17 +1788,7 @@ async function Module2(moduleArg = {}) {
           }
         }
         function addEmJs(name, cSig, body) {
-          var jsArgs = [];
-          cSig = cSig.slice(1, -1);
-          if (cSig != "void") {
-            cSig = cSig.split(",");
-            for (var i in cSig) {
-              var jsArg = cSig[i].split(" ").pop();
-              jsArgs.push(jsArg.replace("*", ""));
-            }
-          }
-          var func = `(${jsArgs}) => ${body};`;
-          moduleExports[name] = eval(func);
+          throw new Error(`A grammar with EM_JS code (${name}) isn't supported`);
         }
         __name(addEmJs, "addEmJs");
         for (var name in moduleExports) {
@@ -1975,10 +1865,6 @@ async function Module2(moduleArg = {}) {
       }
     }
   }, "mergeLibSymbols");
-  var asyncLoad = /* @__PURE__ */ __name(async (url) => {
-    var arrayBuffer = await readAsync(url);
-    return new Uint8Array(arrayBuffer);
-  }, "asyncLoad");
   function loadDynamicLibrary(libName2, flags2 = {
     global: true,
     nodelete: true
@@ -2015,13 +1901,7 @@ async function Module2(moduleArg = {}) {
         }
       }
       var libFile = locateFile(libName2);
-      if (flags2.loadAsync) {
-        return asyncLoad(libFile);
-      }
-      if (!readBinary) {
-        throw new Error(`${libFile}: file not found, and synchronous loading of external files is not available`);
-      }
-      return readBinary(libFile);
+      throw new Error(`${libFile}: file not found, and loading external files is not available`);
     }
     __name(loadLibData, "loadLibData");
     function getExports() {

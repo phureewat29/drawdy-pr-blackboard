@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it } from "@jest/globals";
 import { testSyntax } from "../test/parser.ts";
+import { PACKS } from "./langs/index.ts";
 import { grammarOf } from "./language.ts";
 import type { Flat, Syntax } from "./syntax.ts";
 
@@ -25,6 +26,32 @@ describe("the parser", () => {
         expect(syntax.parse("a.tsx", "export const A = () => <div>{1}</div>\n")!.errors).toBe(0);
         expect(syntax.parse("a.js", "module.exports = { a() {} }\n")!.errors).toBe(0);
         expect(["a.py", "a.go", "a.rs", "A.java"].map((p, i) => syntax.parse(p, ["def a(): pass\n", "package a\nfunc A() {}\n", "fn a() {}\n", "class A { void a() {} }\n"][i])!.errors)).toEqual([0, 0, 0, 0]);
+    });
+
+    it("loads every pinned grammar from its bytes and parses a declaration in each without an error", () => {
+        const samples: Record<string, [path: string, text: string]> = {
+            typescript: ["a.ts", "export const a: number = 1\n"],
+            tsx: ["a.tsx", "export const A = () => <div>{1}</div>\n"],
+            javascript: ["a.js", "function a() {}\n"],
+            python: ["a.py", "def a(): pass\n"],
+            go: ["a.go", "package a\nfunc A() {}\n"],
+            rust: ["a.rs", "fn a() {}\n"],
+            java: ["A.java", "class A { void a() {} }\n"],
+            clojure: ["a.clj", "(defn a [] 1)\n"],
+            elixir: ["a.ex", "defmodule A do\n  def a, do: 1\nend\n"],
+            kotlin: ["a.kt", "fun a() = 1\n"],
+            php: ["a.php", "<?php\nfunction a() { return 1; }\n"],
+            c_sharp: ["A.cs", "class A { void B() {} }\n"],
+            c: ["a.c", "int a(void) { return 1; }\n"],
+            cpp: ["a.cpp", "int a() { return 1; }\n"],
+            scala: ["a.scala", "object A { def a = 1 }\n"],
+            haskell: ["a.hs", "a :: Int\na = 1\n"],
+        };
+        const pinned = PACKS.flatMap((p) => p.grammars ?? []).map((g) => g.name);
+        expect(Object.keys(samples).sort()).toEqual([...pinned].sort());
+        for (const [grammar, [path, text]] of Object.entries(samples)) {
+            expect([grammar, grammarOf(path), syntax.parse(path, text)?.errors]).toEqual([grammar, grammar, 0]);
+        }
     });
 
     it("carries what a grammar's own tags.scm defines, and none of what it references", () => {
