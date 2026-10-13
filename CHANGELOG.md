@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.1
+
+- Every request now goes through one function, which reaches only GitHub
+  and jsDelivr. Drawdy's marketplace scan flags that line alone.
+- The parser no longer runs code from strings, and if its worker stops, a
+  fresh one takes over.
+
 ## 1.2.0
 
 - Lines for C#, PHP, Elixir and Clojure. Each was checked on whole real
