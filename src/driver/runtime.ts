@@ -14,6 +14,7 @@ import { createClearer } from "./clearer.ts";
 import { createDdp } from "./ddp.ts";
 import { markOf } from "./elements.ts";
 import { createNavigator } from "./navigator.ts";
+import { fetchGithubOrJsdelivr } from "./network.ts";
 import { reviewAt } from "./open.ts";
 import { createOpener } from "./opener.ts";
 import { createPanelFeed } from "./panel-feed.ts";
@@ -48,8 +49,8 @@ const attempt = (label: string, step: () => Promise<unknown>): Promise<boolean> 
 export const createRuntime = (args: Parameters<DriverModule["activate"]>[0]): Runtime => {
     const ddp = createDdp(args.issueCommand, args.manifest.driverId);
     let styling = args.styling;
-    const net = watchQuota((url, init) => fetch(url, init));
-    const loaders = { github: createGithub(net.fetch), store: createStore(ddp), parser: createParser({ ddp, fetch: (url, init) => fetch(url, init) }) };
+    const net = watchQuota(fetchGithubOrJsdelivr);
+    const loaders = { github: createGithub(net.fetch), store: createStore(ddp), parser: createParser({ ddp, fetch: fetchGithubOrJsdelivr }) };
     const pinning = { ddp, generateId: args.generateId, theme: () => styling.theme };
     const channel = createChannel({ ddp, styling: () => styling });
     const popover = createPopover({ ddp });
