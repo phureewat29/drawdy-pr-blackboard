@@ -2,41 +2,20 @@
 
 ## 1.2.1
 
-- Every request now goes through one function, which reaches only GitHub
-  and jsDelivr. Drawdy's marketplace scan flags that line alone.
-- The parser no longer runs code from strings, and if its worker stops, a
-  fresh one takes over.
+- Every request goes through one function, to GitHub and jsDelivr only.
 
 ## 1.2.0
 
-- Lines for C#, PHP, Elixir and Clojure. Each was checked on whole real
-  repositories against the language's own tools (Roslyn, PHPStan and
-  clj-kondo; Elixir by hand) with no wrong line. A call that could go more
-  than one way gets no line.
-- Kotlin, C, C++, Scala and Haskell are parsed: a card for each changed
-  function or class, no lines yet.
-- The extension is smaller than 1.1.0, new languages included: the parser
-  now ships minified.
+- Lines for C#, PHP, Elixir and Clojure.
+- Cards for Kotlin, C, C++, Scala and Haskell.
 
 ## 1.1.0
 
-- Clear takes the PR's cards and lines off the board. It asks first: the
-  green check goes ahead, the red cross dismisses. Your own notes stay, and
-  undo brings the board back.
-- Rebuild asks the same way on a large PR, which uses more of GitHub's
-  hourly requests.
+- Clear takes a PR's cards and lines off the board.
 
 ## 1.0.0
 
-First release.
-
-- Pin any public GitHub PR to your Drawdy board: each changed function
-  becomes a card, joined to the code it calls, its callers and its tests by
-  labelled lines.
-- Step through the code card by card from the panel, click a name to jump
-  along its line, or press Overview to see the whole board.
-- Lines are drawn for TypeScript, JavaScript, Python, Go, Rust and Java, and
-  only where the parser can prove the link.
-- 14 example PRs to try, from Hono, Vite, Node.js, Svelte, Bun, Prometheus,
-  CPython and more.
-- Read only: no account, no sign-in.
+- First release: any public GitHub PR as one board, a card for each changed
+  function, labelled lines from each call to the code it reaches, and a step
+  through the change card by card.
+- Lines for TypeScript, JavaScript, Python, Go, Rust and Java.
