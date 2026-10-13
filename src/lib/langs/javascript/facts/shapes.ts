@@ -80,7 +80,7 @@ export const shapesOf = (t: Flat, units: readonly Unit[]): ShapeFacts => {
         } else if (mt === "public_field_definition" || mt === "field_definition") {
             const nm = fieldName(t, m);
             const v = child(t, m, "value");
-            shape.members.push({ name: propName(t, nm), static: isStatic, kind: "field", unit: memberUnit(m, unwrap(t, v)), value: v, typeNode: annotatedType(t, m) });
+            shape.members.push({ name: propName(t, nm), static: isStatic, kind: "field", unit: memberUnit(m, unwrap(t, v)), value: v, typeNode: annotatedType(t, m), decl: m });
         }
     };
     /** A constructor's `private x: T` and `readonly x: T` parameters: members of the instance. */

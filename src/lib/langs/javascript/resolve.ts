@@ -6,26 +6,37 @@
  * A file names another file's declaration only through an import. A member
  * (`x.y`) resolves when the receiver is known: `this`, `super`, a class or
  * namespace, a module, an object literal, or a local built with `new C()` or
- * typed `C`. Anything else resolves to nothing, and makes no link.
+ * typed `C`. Anything else resolves to nothing, and makes no link. A site
+ * that may name either of two declarations (`(flag ? a : b).run()`) names
+ * neither: a line needs exactly one.
  */
 
-import { child } from "../../syntax.ts";
+import { child, hasToken, type Flat } from "../../syntax.ts";
 import type { Ref, Unit } from "../pack.ts";
 import { scopeAt, type Binding, type ExportEntry, type FileFacts, type Site } from "./facts.ts";
 import { requireSpec } from "./facts/modules.ts";
 import { propName, unwrap } from "./facts/nodes.ts";
 import { lookup, NS, TYPE, VALUE } from "./facts/scopes.ts";
-import { createEvaluator, importOf, positional, type Evaluator } from "./resolve/evaluator.ts";
+import { createEvaluator, importOf, positional, type Access, type Evaluator } from "./resolve/evaluator.ts";
 import type { PathMapping } from "./resolve/paths.ts";
 import { namespace, unknown, type Val } from "./resolve/values.ts";
 
 export { builtinRule } from "./resolve/builtins.ts";
+
+/** Svelte's runes, which read like stores: `$state(0)`, `$effect.pre(...)`. */
+const RUNES = new Set(["$state", "$derived", "$props", "$bindable", "$effect", "$inspect", "$host"]);
+/** Vue's compiler macros: the compiler takes their calls, whatever a name they share is bound to. */
+const MACROS = new Set(["defineProps", "defineEmits", "defineExpose", "defineOptions", "defineSlots", "defineModel", "withDefaults"]);
 
 export type LinkerConfig = {
     /** tsconfig `paths` that apply to a file, targets already joined to `baseUrl` and made repo-relative. */
     paths: (from: string) => readonly PathMapping[];
     /** The file a bare import stands for in this repository (`builtinRule`), or null. */
     builtin: (spec: string) => string | null;
+    /** The first of an import's candidates the read tier found, null when none was there; undefined when it didn't follow the import. */
+    answered?: (from: string, spec: string) => string | null | undefined;
+    /** Whether a path is there, as far as the reads went: undefined when never asked. Without it, every file read stands for the repository. */
+    exists?: (path: string) => boolean | undefined;
 };
 
 /**
@@ -47,13 +58,37 @@ export const resolveAll = (files: readonly FileFacts[], changed: ReadonlySet<str
     return refs;
 };
 
+/** Declarations a site names when it is known to name exactly one; none when it may name either of two. */
+const one = (units: Unit[]): Unit[] => (units.length > 1 ? [] : units);
+
+/** Whether a member expression is assigned through a destructuring pattern (`[a.x] = v`, `({ k: a.x = 1 } = v)`) or a `for` head (`for (a.x of v)`). */
+const patternTarget = (t: Flat, e: number): boolean => {
+    let c = e;
+    for (let p = t.parent[c]; p >= 0; c = p, p = t.parent[p]) {
+        const type = t.type[p];
+        if (type === "array_pattern" || type === "object_pattern" || type === "rest_pattern" || (type === "pair_pattern" && t.field[c] === "value") || (type === "assignment_pattern" && t.field[c] === "left")) continue;
+        return (type === "assignment_expression" && t.field[c] === "left" && c !== e) || (type === "for_in_statement" && t.field[c] === "left");
+    }
+    return false;
+};
+
+/** How a member site uses the member: `x.a = v` and destructuring into it write it; `x.a += v` and `x.a++` read and write it; `delete x.a` neither. */
+const accessOf = (t: Flat, s: Site): Access => {
+    let e = t.parent[s.node];
+    while (t.type[t.parent[e]] === "parenthesized_expression" || t.type[t.parent[e]] === "non_null_expression") e = t.parent[e];
+    const p = t.parent[e];
+    if (t.type[p] === "update_expression" || (t.type[p] === "augmented_assignment_expression" && child(t, p, "left") === e)) return "update";
+    if (t.type[p] === "unary_expression" && hasToken(t, p, "delete")) return "delete";
+    return s.ref === "write" || patternTarget(t, e) ? "write" : "read";
+};
+
 /** The declarations one site names; none when it names a local, a key, a global, a package or a member of anything unknown. */
 const siteResolver = ({ byPath, resolveModule, importVal, moduleVal, exportVal, bindingVal, evalExpr, receiverVal, memberOf }: Evaluator) => {
     const resolveSite = (f: FileFacts, s: Site): Unit[] => {
-        if (s.importEntry) return s.importEntry.imported === "*" ? [] : importVal(f, s.importEntry).units;
-        if (s.keyPath) return requiredUnits(f, s.node, s.keyPath);
-        if (s.exportEntry) return exportedUnits(f, s.exportEntry);
-        return s.form === "bare" ? bareUnits(f, s) : memberUnits(f, s);
+        if (s.importEntry) return s.importEntry.imported === "*" ? [] : one(importVal(f, s.importEntry).units);
+        if (s.keyPath) return one(requiredUnits(f, s.node, s.keyPath));
+        if (s.exportEntry) return one(exportedUnits(f, s.exportEntry));
+        return s.form === "bare" ? bareUnits(f, s) : one(memberUnits(f, s));
     };
 
     /** A key `const { a: { b } } = require('m')` takes: m's member along the key path. */
@@ -83,22 +118,43 @@ const siteResolver = ({ byPath, resolveModule, importVal, moduleVal, exportVal, 
     };
 
     const bareUnits = (f: FileFacts, s: Site): Unit[] => {
+        // A component's compiler macros and runes draw nothing.
+        if (f.component && (f.component.framework === "vue" ? MACROS : RUNES).has(s.name)) return [];
         const b = lookup(s.scope, s.name, f.flat.type[s.node] === "type_identifier" ? TYPE : VALUE | NS);
-        if (!b) return [];
+        return b ? bindingUnits(f, b) : storeUnits(f, s);
+    };
+    const bindingUnits = (f: FileFacts, b: Binding): Unit[] => {
         if (b.kind === "import") {
             // A namespace import or whole-module require names no declaration itself.
             const entry = importOf(f, b);
-            return entry && (entry.imported === "*" || entry.imported === "=") ? [] : bindingVal(f, b).units;
+            return entry && (entry.imported === "*" || entry.imported === "=") ? [] : one(bindingVal(f, b).units);
         }
-        // `const X = require('m')` (or a member of it) is an alias, as TypeScript reads JavaScript: X also names what it holds.
-        return b.unit ? [b.unit, ...requireAlias(f, b)] : [];
+        // `const X = require('m')` (or a member of it) is an alias, as TypeScript reads JavaScript: X names what it holds, when that is
+        // one declaration read; the declaration itself when it holds nothing read; nothing when it may hold either of two.
+        if (!b.unit) return [];
+        const held = requireAlias(f, b);
+        return held.length === 0 ? [b.unit] : one(held);
+    };
+    /**
+     * In a Svelte component's instance script, `$name` reads the store
+     * `name` its top level declares or imports, as Svelte subscribes to it;
+     * not where a nearer `name` hides it, not in its module script, and
+     * never a rune (`$state`).
+     */
+    const storeUnits = (f: FileFacts, s: Site): Unit[] => {
+        const c = f.component;
+        if (c?.framework !== "svelte" || !c.inner || f.flat.type[s.node] !== "identifier" || !/^\$[A-Za-z_]/.test(s.name)) return [];
+        if (!c.blocks.some((b) => b.inner && b.start <= s.start && s.start < b.end)) return [];
+        const name = s.name.slice(1);
+        const store = lookup(c.inner, name, VALUE);
+        return store && store === lookup(s.scope, name, VALUE) ? bindingUnits(f, store) : [];
     };
 
     const memberUnits = (f: FileFacts, s: Site): Unit[] => {
         const t = f.flat;
         // `A.B` in a type is a namespace's member.
         const receiver = t.type[t.parent[s.node]] === "nested_type_identifier" ? evalExpr(f, s.receiver) : receiverVal(f, s.receiver);
-        const hit = memberOf(receiver, s.name, s.ref === "write");
+        const hit = memberOf(receiver, s.name, accessOf(t, s));
         return hit.found === "yes" ? hit.units : [];
     };
 

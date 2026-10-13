@@ -11,7 +11,7 @@
 import type { PrFile, PrInfo } from "../lib/github.ts";
 import { grammarOf } from "../lib/language.ts";
 import type { BoardPlan } from "../lib/layout.ts";
-import { linkerOfGrammar, parseFile } from "../lib/linking.ts";
+import { linkerOfGrammar, parseFile, readingOf } from "../lib/linking.ts";
 import { analyse, compact, type Review } from "../lib/model.ts";
 import { changedSources, READ, type Parse, type Read } from "../lib/sources.ts";
 import { createSyntax, type Syntax } from "../lib/syntax.ts";
@@ -116,7 +116,7 @@ export const serve = (scope: WorkerScope, start: (runtime: Uint8Array) => Promis
     };
 
     const parse: Parse = async (path, text) => {
-        const grammar = grammarOf(path);
+        const grammar = readingOf(path, text)?.grammar;
         if (!grammar) return null;
         const s = await load(grammar);
         try {

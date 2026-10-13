@@ -19,6 +19,12 @@ export type Val = {
     protoOnly?: boolean;
     /** An object from outside the read files (a built-in or a package): none of its members is a declaration here. */
     external?: string;
+    /** A value of a union type, one of these: a member names what every one of them agrees on (`memberOf`). */
+    union?: Val[];
+    /** `Object.assign(target, …sources)`'s arguments: a member is the last one's that has it (`memberOf`). */
+    assigned?: Val[];
+    /** Why a value of several branches may hold any member: one branch is unknown or a package's (`flag ? a : pkg`), so no member is proven (`memberOf`). */
+    uncertain?: string;
 };
 
 /** Known, and naming nothing. */
@@ -30,8 +36,9 @@ export const shaped = (shape: Shape, side: Side, file: FileFacts): Val => ({ uni
 
 export const hasSides = (s: Shape): boolean => s.kind === "class" || s.kind === "function";
 
-/** What one of several values may be: as known as the known ones, unknown while any is. */
-export const merge = (...vs: Val[]): Val => {
+/** What a value of several types at once has (`A & B`): the known ones' members, unknown while any is; a union type's among them, a union of all. */
+export const intersect = (...vs: Val[]): Val => {
+    if (vs.some((v) => v.union || v.assigned)) return { units: [...new Set(vs.flatMap((v) => v.units))], shapes: [], union: vs.flatMap((v) => v.union ?? [v]) };
     const known = vs.filter((v) => !v.unknown);
     if (known.length === 0) return vs[0] ?? unknown("nothing");
     const module = known.find((v) => v.module)?.module;
@@ -44,12 +51,26 @@ export const merge = (...vs: Val[]): Val => {
     };
 };
 
+/** What one of several values may be (`a ?? b`, `c ? a : b`): their members, none proven while a branch is unknown or a package's. */
+export const merge = (...vs: Val[]): Val => {
+    if (vs.length === 1) return vs[0];
+    const v = intersect(...vs);
+    const why = vs.find((x) => x.unknown)?.unknown ?? vs.find((x) => x.external)?.external ?? vs.find((x) => x.uncertain)?.uncertain;
+    return why && !v.union ? { ...v, uncertain: why } : v;
+};
+
 /** A value seen from one side of each class or constructor function it holds: `new C()` and `C.prototype` see the instance. */
-export const asSide = (v: Val, side: Side): Val => ({
-    units: [],
-    shapes: v.shapes.map((s) => ({ ...s, side: hasSides(s.shape) ? side : s.side })),
-    ...(v.unknown ? { unknown: v.unknown } : {}),
-});
+export const asSide = (v: Val, side: Side): Val =>
+    v.assigned
+        ? asSide(v.assigned[0], side)
+        : {
+              units: [],
+              shapes: v.shapes.map((s) => ({ ...s, side: hasSides(s.shape) ? side : s.side })),
+              ...(v.union ? { union: v.union.map((u) => asSide(u, side)) } : {}),
+              ...(v.unknown ? { unknown: v.unknown } : {}),
+              ...(v.external ? { external: v.external } : {}),
+              ...(v.uncertain ? { uncertain: v.uncertain } : {}),
+          };
 
 /**
  * A value per file and node, computed once. A node met again while its value

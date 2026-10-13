@@ -45,8 +45,13 @@ export type GrammarUse = { units?: string; prepare?: (grammar: string, text: str
 export type Syntax = {
     /** Loads a grammar from its wasm bytes, for its linker's `use`; a second load of one is a no-op. */
     add: (grammar: string, bytes: Uint8Array, use?: GrammarUse) => Promise<void>;
-    /** The file's tree, or null when its grammar isn't loaded or the file can't be read (`readable`). */
-    parse: (path: string, text: string) => Flat | null;
+    /**
+     * The file's tree, or null when its grammar isn't loaded or the file
+     * can't be read (`readable`). `as`: the grammar to parse it with and the
+     * text to parse in its place, the same length, where its extension
+     * doesn't settle them (a Vue component's script blocks).
+     */
+    parse: (path: string, text: string, as?: { grammar: string; text: string }) => Flat | null;
 };
 
 /** A fact read once per parsed tree. */
@@ -104,13 +109,14 @@ export const createSyntax = async (runtimeBytes: Uint8Array): Promise<Syntax> =>
             uses.set(grammar, use);
             if (use.units) queries.set(grammar, definitions(lang, use.units));
         },
-        parse: (path, text) => {
-            const g = grammarOf(path);
+        parse: (path, text, as) => {
+            const g = as ? as.grammar : grammarOf(path);
             const lang = g ? languages.get(g) : undefined;
             if (!g || !lang) return null;
             parser.setLanguage(lang);
             const prepare = uses.get(g)?.prepare;
-            const tree = parser.parse(prepare ? prepare(g, text) : text, null, undefined);
+            const source = as ? as.text : text;
+            const tree = parser.parse(prepare ? prepare(g, source) : source, null, undefined);
             if (!tree) return null;
             try {
                 const query = queries.get(g);

@@ -26,7 +26,8 @@ const declaredNames = (t: Flat, p: number): number[] => {
         .flatMap((c) => declaredNames(t, t.type[c] === "pair_pattern" ? child(t, c, "value") : c));
 };
 
-export const modulesOf = (t: Flat): Modules => {
+/** `exportsFrom`, for a component: the top-level statements whose exports count (its outer block's); its code is never CommonJS. */
+export const modulesOf = (t: Flat, exportsFrom?: (statement: number) => boolean): Modules => {
     const imports: ImportEntry[] = [];
     const exports: ExportEntry[] = [];
     const specifiers: Modules["specifiers"] = [];
@@ -120,8 +121,8 @@ export const modulesOf = (t: Flat): Modules => {
 
     for (const s of namedChildren(t, 0)) {
         if (t.type[s] === "import_statement") importStatement(s);
-        else if (t.type[s] === "export_statement") exportStatement(s);
-        else if (t.type[s] === "expression_statement") commonJsExport(s);
+        else if (t.type[s] === "export_statement" && (!exportsFrom || exportsFrom(s))) exportStatement(s);
+        else if (t.type[s] === "expression_statement" && !exportsFrom) commonJsExport(s);
     }
     // require() and import() anywhere.
     for (let n = 0; n < t.count; n++) {

@@ -2,7 +2,8 @@
  * TypeScript and JavaScript: two packs, for their own extensions, grammars
  * and keywords, which share their line patterns and one linker (`linker.ts`),
  * since a TypeScript file imports JavaScript ones and the other way round.
- * `.vue` and `.svelte` files read as JavaScript by line patterns alone.
+ * `.vue` and `.svelte` files are components: the linker reads their script
+ * blocks (`components.ts`), and line patterns those whose blocks it can't.
  */
 
 import { C_LIKE } from "../c-family.ts";

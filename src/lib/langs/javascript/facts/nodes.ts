@@ -17,6 +17,29 @@ export const unwrap = (t: Flat, n: number): number => {
 
 export const isFn = (t: Flat, n: number): boolean => n >= 0 && FUNCTIONS.has(t.type[n]);
 
+/** The type `x as T` or `<T>x` asserts; -1 for `as const`, which keeps x's own. */
+export const assertedType = (t: Flat, n: number): number => {
+    if (t.type[n] === "type_assertion") {
+        const args = namedChildren(t, n).find((c) => t.type[c] === "type_arguments");
+        return args === undefined ? -1 : (namedChildren(t, args)[0] ?? -1);
+    }
+    const [, type] = namedChildren(t, n);
+    return type === undefined || textOf(t, type) === "const" ? -1 : type;
+};
+
+/** The expression an object literal is the value of through parentheses, `satisfies` and `!`: the type assertion or the call that holds it, if one does. */
+export const holderOf = (t: Flat, obj: number): number => {
+    let e = obj;
+    for (let p = t.parent[e]; p >= 0; e = p, p = t.parent[p]) {
+        const type = t.type[p];
+        if (type === "parenthesized_expression" || type === "satisfies_expression" || type === "non_null_expression") continue;
+        if (type === "as_expression" || type === "type_assertion") return p;
+        if (type === "arguments") return t.parent[p];
+        break;
+    }
+    return e;
+};
+
 /** The object literal a module-level initializer builds, directly or as a call's argument (`ObjectFreeze({...})`). */
 export const objectOf = (t: Flat, e: number): number => {
     e = unwrap(t, e);

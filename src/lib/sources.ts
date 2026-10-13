@@ -17,7 +17,7 @@ import { groupBy, limiter, mapValues, sortBy, sumBy } from "./fp.ts";
 import type { PrFile } from "./github.ts";
 import { LINKERS } from "./langs/linkers.ts";
 import type { Facts, OwnLinker, OwnSession } from "./langs/pack.ts";
-import { grammarOf, languageOf, roleOf } from "./language.ts";
+import { languageOf, roleOf } from "./language.ts";
 import { linkerOf, rulesOf } from "./linking.ts";
 
 /** A file's text at the head commit, or null when there is none. */
@@ -71,12 +71,13 @@ export const pickFiles = (files: readonly PrFile[], max: number): PrFile[] => {
 /**
  * The changed files read whole: code, and tests the parser reads, which can
  * reach the code they test. Code no parser reads is read for its diff, so one
- * without a patch is left out, unless added whole.
+ * without a patch is left out, unless added whole. A file a linker reads,
+ * through its grammar or its blocks (a Vue component), is one the parser reads.
  */
 export const changedSources = (files: readonly PrFile[]): PrFile[] => {
     const live = files.filter((f) => f.status !== "removed");
-    const code = live.filter((f) => roleOf(f.path) === "code" && languageOf(f.path) !== "text" && (grammarOf(f.path) !== null || f.patch !== undefined || f.status === "added"));
-    const tests = live.filter((f) => roleOf(f.path) === "test" && grammarOf(f.path) !== null && !linkerOf(f.path)?.local);
+    const code = live.filter((f) => roleOf(f.path) === "code" && languageOf(f.path) !== "text" && (linkerOf(f.path) !== undefined || f.patch !== undefined || f.status === "added"));
+    const tests = live.filter((f) => roleOf(f.path) === "test" && linkerOf(f.path) !== undefined && !linkerOf(f.path)?.local);
     return [...pickFiles(code, READ.code), ...pickFiles(tests, READ.tests)];
 };
 
@@ -127,7 +128,7 @@ export const readSources = async (files: readonly PrFile[], read: Read, parse: P
 
     // The changed files, in order, each own linker starting what it reads beside its own (the nearest tsconfig above each); then what it reads next (the typings the configs name).
     const changed = changedSources(files);
-    const parsedChanged = changed.filter((f) => grammarOf(f.path) !== null);
+    const parsedChanged = changed.filter((f) => linkerOf(f.path) !== undefined);
     for (const [l, session] of sessions) session.start?.(parsedChanged.filter((f) => linkerOf(f.path) === l).map((f) => f.path));
     const changedTexts = changed.map((f) => once(f.path));
     for (const [i, f] of changed.entries()) {
@@ -183,14 +184,12 @@ export const readSources = async (files: readonly PrFile[], read: Read, parse: P
     };
     await Promise.all(parsedChanged.map((f) => markers(f.path)));
 
-    // Read before any import: a candidate already here wins without a request.
+    // Read before any import: a candidate already here answers without a request.
     const known = new Set(texts.keys());
     for (const session of sessions.values()) await session.settle?.();
-    /** Each import tries its candidates in order, a 404 a miss, until one answers. */
+    /** Each import tries its candidates in order, a 404 a miss, until one answers: one already read counts only once those before it are missing. */
     const firstAnswer = async (candidates: readonly string[]): Promise<string | null> => {
-        const already = candidates.find((c) => known.has(c));
-        if (already) return already;
-        for (const c of candidates) if ((await once(c)) !== null) return c;
+        for (const c of candidates) if (known.has(c) || (await once(c)) !== null) return c;
         return null;
     };
     // What a rule table's module lookup sees: every path known to exist, and the texts read.

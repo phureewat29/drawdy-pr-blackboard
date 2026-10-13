@@ -5,6 +5,8 @@ export type PathMapping = { pattern: string; targets: string[] };
 
 const CODE_EXT = [".ts", ".tsx", ".d.ts", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"];
 const JS_EXT = /\.(js|jsx|mjs|cjs)$/;
+/** Components are imported by their whole name: `./Button.vue`. */
+const COMPONENT_EXT = /\.(vue|svelte)$/;
 
 export const dirOf = (path: string) => path.split("/").slice(0, -1).join("/");
 
@@ -17,10 +19,10 @@ export const joinPath = (dir: string, rel: string): string => {
     return parts.join("/");
 };
 
-/** The files a module path may be: itself, a `.js` written for its `.ts`, with an extension added, or a folder's index. */
+/** The files a module path may be: itself (a Vue or Svelte component's too), a `.js` written for its `.ts`, with an extension added, or a folder's index. */
 const expand = (base: string): string[] => {
     const out: string[] = [];
-    if (CODE_EXT.some((e) => base.endsWith(e))) out.push(base);
+    if (CODE_EXT.some((e) => base.endsWith(e)) || COMPONENT_EXT.test(base)) out.push(base);
     if (JS_EXT.test(base)) {
         const stem = base.replace(JS_EXT, "");
         out.push(`${stem}.ts`, `${stem}.tsx`, `${stem}.mts`, `${stem}.cts`, `${stem}.d.ts`);
@@ -28,6 +30,14 @@ const expand = (base: string): string[] => {
     for (const e of CODE_EXT) out.push(`${base}${e}`);
     for (const e of CODE_EXT) out.push(`${base}/index${e}`);
     return [...new Set(out)];
+};
+
+/** The JavaScript a declaration file stands for, in the order asked for: `x.d.ts` for `x.js`, `x.mjs`, `x.cjs` or `x.jsx`; none for any other file. */
+export const implementations = (path: string): string[] => {
+    const m = /\.d\.([mc]?)ts$/.exec(path);
+    if (!m) return [];
+    const stem = path.slice(0, m.index);
+    return m[1] === "m" ? [`${stem}.mjs`] : m[1] === "c" ? [`${stem}.cjs`] : [`${stem}.js`, `${stem}.mjs`, `${stem}.cjs`, `${stem}.jsx`];
 };
 
 /** What a bare specifier's `*` matches in a pattern, or null when the pattern doesn't match it. */

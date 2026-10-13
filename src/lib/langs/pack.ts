@@ -155,6 +155,9 @@ export type Ref = { path: string; start: number; line: number; ref: RefKind; uni
 /** What the core reads of a parsed file, whichever linker read it; `labels`, the card name of each unit that has its own, by unit id. */
 export type Facts = { path: string; flat: Flat; units: Unit[]; labels?: ReadonlyMap<string, string> };
 
+/** The grammar a file is parsed with, and the text the parser reads in its place, of the same length. */
+export type Reading = { grammar: string; text: string };
+
 /** How the parser worker reads a language's files into units and references. */
 export type Linker = RulesLinker | OwnLinker;
 
@@ -163,6 +166,14 @@ type LinkerBase = {
     packs: readonly LanguagePack[];
     /** The text the parser reads in place of a file's, the same length, for a gap in a grammar: TypeScript's call signatures. */
     prepare?: (grammar: string, text: string) => string;
+    /**
+     * Files of its packs, by extension, whose code sits in blocks of another
+     * format: Vue's and Svelte's `<script>`. `read` gives the grammar that
+     * parses one and the text it parses, the file's own length with
+     * everything outside its blocks blank; null when its blocks can't be read
+     * cleanly, so the file gets line-pattern cards.
+     */
+    blocks?: { extensions: readonly string[]; read: (path: string, text: string) => Reading | null };
     /** Whether a node at a file's top level imports: a file card whose changed lines all sit in such nodes says `imports`. */
     isImport?: (t: Flat, node: number) => boolean;
     /** Names resolve only inside their own file (Rust, whose crate `mod` tree isn't read): a test file of its own links nothing, so isn't read. */
@@ -198,8 +209,8 @@ export type RulesLinker = LinkerBase & {
 /** A language with a linker of its own (JavaScript and TypeScript): it indexes, follows and links its files itself. Its hooks take the facts its `index` made. */
 export type OwnLinker = LinkerBase & {
     kind: "own";
-    /** A parsed file's facts. */
-    index(path: string, t: Flat): Facts;
+    /** A parsed file's facts; null when its tree can't be trusted after all (a component whose statements cross its blocks). */
+    index(path: string, t: Flat): Facts | null;
     /** One PR's reading and linking, started before anything is read; `read` reads a path at the head commit once. */
     session(read: (path: string) => Promise<string | null>): OwnSession;
 };
@@ -212,8 +223,8 @@ export type OwnSession = {
     more?(): Promise<readonly string[]>;
     /** Once the files beside the changed ones are read, before any import is followed. */
     settle?(): Promise<void>;
-    /** The files a changed file imports, one answer per import: `first` gives the first of some candidates already read, else the first that exists. */
+    /** The files a changed file imports, one answer per import: `first` gives the first of some candidates that exists, asking for them in order. */
     imports(f: Facts, first: (candidates: readonly string[]) => Promise<string | null>): Promise<string | null>[];
-    /** Every reference in its files that names a unit, files in reading order. */
-    link(files: readonly Facts[], pr: PrInfo, changed: ReadonlySet<string>): Ref[];
+    /** Every reference in its files that names a unit, files in reading order; `exists`, whether a path is there as far as the reads went (undefined when never asked). */
+    link(files: readonly Facts[], pr: PrInfo, changed: ReadonlySet<string>, exists?: (path: string) => boolean | undefined): Ref[];
 };

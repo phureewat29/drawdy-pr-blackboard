@@ -6,8 +6,9 @@
  * literals (shapes).
  */
 
-import type { Flat, Syntax } from "../../syntax.ts";
+import { child, lineOf, textOf, type Flat, type Syntax } from "../../syntax.ts";
 import type { RefKind, Unit } from "../pack.ts";
+import { componentOf, componentReading, type Block, type Component } from "./components.ts";
 import { modulesOf } from "./facts/modules.ts";
 import { scopesOf } from "./facts/scopes.ts";
 import { shapesOf } from "./facts/shapes.ts";
@@ -78,7 +79,9 @@ export type ExportEntry =
     | { kind: "expr"; name: string; value: number }
     | { kind: "reexport"; name: string; spec: string; imported: string; nameNode: number }
     | { kind: "star"; spec: string }
-    | { kind: "namespace"; name: string; spec: string };
+    | { kind: "namespace"; name: string; spec: string }
+    /** A component's default export: the component itself. */
+    | { kind: "unit"; name: string; unit: Unit };
 
 export type Member = {
     name: string;
@@ -91,6 +94,8 @@ export type Member = {
     typeNode: number;
     /** A `this.x = v` that runs only on some paths (under an if, a ternary, `&&`, a loop, a catch). */
     conditional?: boolean;
+    /** A class field's own node, for its JSDoc type when it has no value. */
+    decl?: number;
 };
 
 export type Shape = {
@@ -106,6 +111,8 @@ export type Shape = {
 export type FileFacts = {
     path: string;
     flat: Flat;
+    /** JavaScript, whose JSDoc types TypeScript reads as declared ones (`facts/jsdoc.ts`). */
+    docTypes: boolean;
     units: Unit[];
     module: Scope;
     /** Every scope, by id. */
@@ -125,31 +132,90 @@ export type FileFacts = {
     protoAliases: Map<string, string>;
     /** Module-level `X.prototype.y = v`, `P.y = v` and `X.y = v` assignments, by X's name; `*` takes an object's members. */
     assignments: { owner: string; proto: boolean; name: string; value: number; unit?: Unit }[];
+    /** A Vue or Svelte component's blocks, its inner block's scope, and its own unit, the file whole. */
+    component?: { framework: Component["framework"]; blocks: Block[]; inner: Scope | null; unit: Unit };
 };
 
 /** The scope a node sits in. */
 export const scopeAt = (f: FileFacts, n: number): Scope => f.scopes[f.scopeIds[n]];
 
-/** A parsed file's facts. */
-export const factsOf = (path: string, t: Flat): FileFacts => {
-    const units = unitsOf(path, t);
-    const scopes = scopesOf(t, units);
-    const modules = modulesOf(t);
+/**
+ * Whether a component's tree can be trusted: no syntax error in its blocks (TypeScript in a block without
+ * `lang`, which a preprocessor may take, reads as JavaScript with errors that misplace names), and each
+ * top-level statement inside one block (its own `;` after it, `blocksText`, included).
+ */
+const trusted = (t: Flat, c: Component): boolean => {
+    if (t.errors > 0) return false;
+    for (let n = t.first[0]; n >= 0; n = t.next[n]) {
+        if (!c.blocks.some((b, i) => b.start <= t.start[n] && t.end[n] <= b.end + (i < c.blocks.length - 1 ? 1 : 0))) return false;
+    }
+    return true;
+};
+
+/** A component's own unit, its file whole, named as its file is: what its default export is, and where its template's changes go. */
+const componentUnit = (path: string, t: Flat, units: readonly Unit[]): Unit => {
+    const name = path.split("/").pop() ?? path;
+    const id = units.some((u) => u.id === `${path}:1`) ? `${path}:1:${name}` : `${path}:1`;
+    const end = t.text.length;
+    return { id, path, name, qname: name, kind: "value", start: 0, end, startLine: 1, endLine: lineOf(t, Math.max(0, end - 1)), nameLine: 1, docLine: 1, nameStart: 0, node: 0, valueNode: -1 };
+};
+
+/** A parsed file's facts; null for a component whose tree can't be trusted, or whose blocks both declare a name. */
+export const factsOf = (path: string, t: Flat): FileFacts | null => {
+    const c = componentOf(path, t.text);
+    if (c === null || (c && !trusted(t, c))) return null;
+    const units = unitsOf(path, t, !!c);
+    if (!c) {
+        const scopes = scopesOf(t, units);
+        const modules = modulesOf(t);
+        return {
+            path,
+            flat: t,
+            docTypes: /\.[mc]?jsx?$/i.test(path),
+            units,
+            module: scopes.module,
+            scopes: scopes.all,
+            scopeIds: scopes.scopeIds,
+            sites: sitesOf(t, scopes, modules),
+            ...modules,
+            ...shapesOf(t, units),
+        };
+    }
+    const blockOf = (n: number) => c.blocks.find((b) => b.start <= t.start[n] && t.start[n] <= b.end);
+    // Svelte 4's `type T = $$Generic<…>` declares a type parameter of the component, not a type: no card stands for it.
+    if (c.framework === "svelte") units.splice(0, units.length, ...units.filter((u) => !(u.kind === "type" && t.type[u.node] === "type_alias_declaration" && /^\$\$Generic\b/.test(textOf(t, child(t, u.node, "value"))))));
+    // The outer block's `export default {…}` is the component's own options: no card of its own, its methods the component's.
+    const options = units.find((u) => !u.parent && u.name === "default" && t.type[u.node] === "export_statement" && blockOf(u.node)?.inner === false);
+    if (options) units.splice(units.indexOf(options), 1);
+    const unit = componentUnit(path, t, units);
+    for (const u of units) if (options && u.parent === options.id) u.parent = unit.id;
+    units.push(unit);
+    const scopes = scopesOf(t, units, { inner: (n) => !!blockOf(n)?.inner, generics: c.generics });
+    if (scopes.clash) return null;
+    const modules = modulesOf(t, (n) => blockOf(n)?.inner === false);
+    // A component's default export is the component; the code in its blocks is never CommonJS.
+    modules.exports = [...modules.exports.filter((e) => e.kind === "star" || e.name !== "default"), { kind: "unit", name: "default", unit }];
     return {
         path,
         flat: t,
+        docTypes: c.grammar === "javascript",
         units,
         module: scopes.module,
         scopes: scopes.all,
         scopeIds: scopes.scopeIds,
         sites: sitesOf(t, scopes, modules),
         ...modules,
+        // Module-level assignments are matched by name, which two blocks may each bind.
         ...shapesOf(t, units),
+        protoAliases: new Map(),
+        assignments: [],
+        component: { framework: c.framework, blocks: c.blocks, inner: scopes.inner, unit },
     };
 };
 
-/** A file's facts, or null when the parser doesn't read it: no grammar for it, `@flow`, or too many errors. */
+/** A file's facts, or null when the parser doesn't read it: no grammar for it, `@flow`, too many errors, or a component's blocks unread. */
 export const parseFacts = (syntax: Syntax, path: string, text: string): FileFacts | null => {
-    const t = syntax.parse(path, text);
+    const reading = componentReading(path, text);
+    const t = reading === null ? null : syntax.parse(path, text, reading);
     return t ? factsOf(path, t) : null;
 };

@@ -8,6 +8,7 @@ knows no language. It reads them through two lists and one contract,
 | Language | Pack | Cards | Lines |
 |---|---|---|---|
 | TypeScript, JavaScript | `javascript/` | parsed | own linker |
+| Vue, Svelte components | `javascript/` | script blocks parsed | own linker |
 | Python | `python/` | parsed | rule table |
 | Go | `go/` | parsed | rule table |
 | Rust | `rust/` | parsed | rule table |
@@ -53,8 +54,34 @@ the files into units and references. It comes in two kinds.
   each import, then the link step.
 
 Both kinds may give `prepare` (a text repair for a grammar's gap),
-`isImport` (which top-level statements import) and `local` (names never
-leave their file).
+`isImport` (which top-level statements import), `local` (names never
+leave their file) and `blocks`: files of another format whose code sits in
+blocks, read by the linker's grammars. For each such file, by extension,
+`blocks.read` gives the grammar its blocks are written in and the text to
+parse: the file's own length, everything outside the blocks blank, so
+cards and lines keep the file's own lines. A file whose blocks it can't
+read cleanly gets line-pattern cards. An own linker's `index` may still
+refuse a tree it can't trust.
+
+**Vue and Svelte components** (`javascript/components.ts`). A `.vue` file's
+top-level `<script>` and `<script setup>`, and a `.svelte` file's instance
+and module scripts, are found the way Vue's and Svelte's own parsers find
+them, and parsed with the TypeScript, TSX or JavaScript grammar their tag
+names; a syntax error in them leaves the file to line-pattern cards. The
+component is a card of its own, its file whole: what its default
+export names, and where changes outside its functions go, its template's
+among them. `<script setup>` and the instance script see the other block's
+names and every import; the other block sees neither their declarations
+nor a name both declare (the file then gets line-pattern cards). Templates
+and markup draw nothing. Nor do Vue's compiler macros (`defineProps`,
+`withDefaults` and the rest), Svelte's runes, or `this` in a Vue
+component's options. Svelte's `$store` reads the store its instance script
+names at the top level, unless a nearer name hides it. An import of
+`X.vue` or `X.svelte` names the component for its default export, and its
+outer block's exports by name. Lines go to the code that runs: a
+declaration file beside the code it describes (`x.d.ts` beside `x.js`,
+`X.vue.d.ts` beside a component, an ambient `declare module` that tsconfig
+`paths` also maps) never takes a line from it.
 
 A language whose calls can't be proven yet gets a linker of units alone,
 `unitsOnly` (`units-only.ts`): a rule table with units and nothing else,
@@ -92,8 +119,9 @@ minified, in the worker's script. Measured in the bundle, a pattern-only
 pack costs about 1 KB; a units-only pack 3 to 6 KB, and `units-only.ts`
 3 KB; a pack with a rule table 15 to 40 KB (Go 15 KB, Rust 21 KB, Python
 22 KB, PHP 28 KB, Elixir 30 KB, Clojure 39 KB); JavaScript and TypeScript,
-48 KB; C#, 55 KB; Java, with the JDK's types, 98 KB. A grammar's wasm file
-is downloaded apart, once. The bundle's check is 1 MB.
+68 KB with Vue and Svelte components; C#, 55 KB; Java, with the JDK's
+types, 98 KB. A grammar's wasm file is downloaded apart, once. The
+bundle's check is 1 MB.
 
 ## Add a language
 

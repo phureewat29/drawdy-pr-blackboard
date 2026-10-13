@@ -15,7 +15,8 @@ const METHODS = new Set(["method_definition", "method_signature", "abstract_meth
 /** What an `export` statement holds besides the expression of `export = x`. */
 const NOT_EXPORTED = new Set(["export_clause", "namespace_export", "string", "decorator"]);
 
-export const unitsOf = (path: string, t: Flat): Unit[] => {
+/** `component`: a Vue or Svelte component's code, where a variable a call builds (`withDefaults(defineProps(), {...})`) is no object literal's, whatever object the call is given. */
+export const unitsOf = (path: string, t: Flat, component = false): Unit[] => {
     const units: Unit[] = [];
     const qualified = (name: string, parent?: Unit) => (parent ? `${parent.qname}.${name}` : name);
     /** A keyword token of a node, or the node itself when it has none. */
@@ -92,7 +93,7 @@ export const unitsOf = (path: string, t: Flat): Unit[] => {
         if (t.type[e] === "identifier") return;
         const u = addUnit(s, s, nameNode, "default", "default", isFn(t, e) ? "function" : "value", parent, e);
         const obj = objectOf(t, value);
-        if (obj >= 0) objectMembers(obj, u);
+        if (obj >= 0) objectMembers(obj, u, component);
     };
     /** Each declared variable: a class, a function, or a value with an object literal's methods. A statement declaring one variable is its unit whole. */
     const variables = (decl: number, outer: number, parent?: Unit) => {
@@ -108,7 +109,7 @@ export const unitsOf = (path: string, t: Flat): Unit[] => {
             if (t.type[init] === "class") classMembers(init, addUnit(d, node, nm, name, qname, "class", parent, init));
             else if (isFn(t, init)) addUnit(d, node, nm, name, qname, "function", parent, init);
             else {
-                const obj = objectOf(t, value);
+                const obj = component && t.type[init] !== "object" ? -1 : objectOf(t, value);
                 const u = addUnit(d, node, nm, name, qname, "value", parent, obj);
                 if (obj >= 0) objectMembers(obj, u);
             }
@@ -142,12 +143,18 @@ export const unitsOf = (path: string, t: Flat): Unit[] => {
             if (isFn(t, value)) method(m, memberStart(m), fieldName(t, m), parent, value);
         }
     };
-    const objectMembers = (obj: number, parent: Unit) => {
+    /** `options`: a component's own, whose groups of functions (`methods: {…}`, `computed: {…}`) are units too, each holding its functions. */
+    const objectMembers = (obj: number, parent: Unit, options = false) => {
         for (const p of namedChildren(t, obj)) {
             if (t.type[p] === "method_definition") method(p, p, child(t, p, "name"), parent, p);
             if (t.type[p] !== "pair") continue;
             const value = unwrap(t, child(t, p, "value"));
             if (isFn(t, value)) method(p, p, child(t, p, "key"), parent, value);
+            else if (options && t.type[value] === "object") {
+                const key = child(t, p, "key");
+                const name = propName(t, key);
+                objectMembers(value, addUnit(p, p, key, name, `${parent.qname}.${name}`, "value", parent, value));
+            }
         }
     };
     const method = (node: number, outer: number, nameNode: number, parent: Unit, value: number) => {

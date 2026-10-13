@@ -19,7 +19,19 @@ export type Scopes = {
     /** Per node, the id of the scope it sits in. */
     scopeIds: Int32Array;
     bindingOfName: Map<number, Binding>;
+    /** A component's inner block's scope (`Layout`), below the module's. */
+    inner: Scope | null;
+    /** Some name is declared at the top level of both a component's blocks. */
+    clash: boolean;
 };
+
+/**
+ * A component's top level (`components.ts`): which top-level statements sit
+ * in its inner block, Vue's `<script setup>` or Svelte's instance script,
+ * whose names the module's other code doesn't see; imports stay the
+ * module's. `generics`: the type parameters its tag declares.
+ */
+export type Layout = { inner: (statement: number) => boolean; generics: readonly string[] };
 
 /** Looks a name up from a scope outwards, for a meaning (value, type or namespace). */
 export const lookup = (scope: Scope | null, name: string, meaning: number): Binding | null => {
@@ -67,7 +79,7 @@ const patternNames = (t: Flat, p: number, path: string[] = []): { node: number; 
     }
 };
 
-export const scopesOf = (t: Flat, units: readonly Unit[]): Scopes => {
+export const scopesOf = (t: Flat, units: readonly Unit[], layout?: Layout): Scopes => {
     const all: Scope[] = [];
     const bindingOfName = new Map<number, Binding>();
     const open = (kind: ScopeKind, parent: Scope | null): Scope => {
@@ -76,6 +88,11 @@ export const scopesOf = (t: Flat, units: readonly Unit[]): Scopes => {
         return s;
     };
     const module = open("module", null);
+    /** Each conditional type's scope, where an `infer` anywhere in its `extends` clause declares its name. */
+    const conditionals = new Map<number, Scope>();
+    // A component's inner block runs in a function of its own: its `var`s stay there.
+    const inner = layout && t.first[0] >= 0 && namedChildren(t, 0).some(layout.inner) ? open("function", module) : null;
+    for (const name of inner ? layout!.generics : []) inner!.bindings.set(name, [{ name, meaning: TYPE, kind: "typeparam", node: -1, init: -1, typeNode: -1, decl: -1 }]);
     // A module-level name stands for the unit whose range holds it.
     const topUnits = groupBy(
         units.filter((u) => !u.parent),
@@ -85,7 +102,7 @@ export const scopesOf = (t: Flat, units: readonly Unit[]): Scopes => {
     const declare = (scope: Scope, nameNode: number, kind: BindingKind, meaning: number, extra: Partial<Binding> = {}) => {
         const name = textOf(t, nameNode);
         const b: Binding = { name, meaning, kind, node: nameNode, init: -1, typeNode: -1, decl: -1, ...extra };
-        if (scope === module && kind !== "import") {
+        if ((scope === module || scope === inner) && kind !== "import") {
             const unit = (topUnits[name] ?? []).find((u) => t.start[nameNode] >= u.start && t.start[nameNode] < u.end);
             if (unit) b.unit = unit;
         }
@@ -184,7 +201,48 @@ export const scopesOf = (t: Flat, units: readonly Unit[]): Scopes => {
                 return signature(open("function", outer), n);
             case "method_signature":
             case "abstract_method_signature":
+            // A function type's or a call signature's parameters are names, not references: `(settings?: X) => void`.
+            case "function_type":
+            case "constructor_type":
+            case "call_signature":
+            case "construct_signature":
                 return signature(open("type", outer), n);
+            case "index_signature": {
+                const inner = open("type", outer);
+                const nm = child(t, n, "name");
+                if (nm >= 0) declare(inner, nm, "param", VALUE);
+                return inner;
+            }
+            // `[K in keyof T]`, in its index signature's scope.
+            case "mapped_type_clause": {
+                const nm = child(t, n, "name");
+                if (nm >= 0) declare(outer, nm, "typeparam", TYPE);
+                return outer;
+            }
+            // `infer U`, in its conditional type's scope, from within a function type or a tuple too.
+            case "infer_type": {
+                const nm = childOfType(t, n, "type_identifier");
+                let c = t.parent[n];
+                while (c >= 0 && t.type[c] !== "conditional_type") c = t.parent[c];
+                if (nm >= 0) declare(conditionals.get(c) ?? outer, nm, "typeparam", TYPE);
+                return outer;
+            }
+            case "conditional_type": {
+                const s = open("type", outer);
+                conditionals.set(n, s);
+                return s;
+            }
+            // A labelled tuple's labels are names too: `[clear: () => void]`.
+            case "tuple_type": {
+                const inner = open("type", outer);
+                for (const m of namedChildren(t, n)) {
+                    if (t.type[m] !== "required_parameter" && t.type[m] !== "optional_parameter") continue;
+                    const nm = child(t, m, "name");
+                    const id = t.type[nm] === "rest_pattern" ? (namedChildren(t, nm)[0] ?? -1) : nm;
+                    if (id >= 0 && t.type[id] === "identifier") declare(inner, id, "param", VALUE);
+                }
+                return inner;
+            }
             case "class_declaration":
             case "abstract_class_declaration":
                 declareName(outer, n, "class", VALUE | TYPE);
@@ -247,11 +305,29 @@ export const scopesOf = (t: Flat, units: readonly Unit[]): Scopes => {
     const stack = [0];
     while (stack.length > 0) {
         const n = stack.pop()!;
-        const inner = enter(n, all[scopeIds[n]]);
+        const within = enter(n, all[scopeIds[n]]);
         for (let c = t.first[n]; c >= 0; c = t.next[c]) {
-            scopeIds[c] = inner.id;
+            scopeIds[c] = n === 0 && inner && layout!.inner(c) ? inner.id : within.id;
             stack.push(c);
         }
     }
-    return { module, all, scopeIds, bindingOfName };
+    return { module, all, scopeIds, bindingOfName, inner, clash: !!inner && clashes(t, [module, inner], layout!) };
+};
+
+/** Whether a name is declared or imported at the top level of both a component's blocks. */
+const clashes = (t: Flat, scopes: readonly Scope[], layout: Layout): boolean => {
+    const sides = new Map<string, boolean>();
+    for (const s of scopes) {
+        for (const [name, list] of s.bindings) {
+            for (const b of list) {
+                if (b.node < 0) continue;
+                let top = b.node;
+                while (t.parent[top] > 0) top = t.parent[top];
+                const side = layout.inner(top);
+                if (sides.has(name) && sides.get(name) !== side) return true;
+                sides.set(name, side);
+            }
+        }
+    }
+    return false;
 };
