@@ -55,11 +55,11 @@ export type PanelView = {
     tag: { label: string; colour: string | null } | null;
     /** The PR being read: its title split on backticks, and its lines added and deleted as GitHub counts them. */
     pr: { title: Segment[]; state: PrState; additions: number; deletions: number } | null;
-    /** How many steps the board has: its code cards, not the PR card or unchanged context. */
+    /** How many steps the board has: the overview, the description, then its code cards; never unchanged context. */
     total: number;
     /** How many cards the board being read has on the canvas, the PR card and context included: what Clear removes. */
     cards: number;
-    /** The current card's step, or -1: none yet, the PR card, or an unchanged card, which are not steps. */
+    /** The reader's step: 0 the overview, 1 the description, then the code; -1 for none yet or an unchanged card. */
     current: number;
     hasPrevious: boolean;
     hasNext: boolean;

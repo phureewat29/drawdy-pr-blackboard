@@ -341,11 +341,12 @@ export const createPanel = ({ post, document: doc }: PanelDeps): Panel => {
         if (refocus) byId(asked).focus();
     };
 
-    /** Where the reader is: Description is marked while the PR card is current; the position counts code steps only, `–` elsewhere. */
+    /** Where the reader is: Overview is marked at step 1 and Description at step 2; the position is `–` at an unchanged card. */
     const renderPlace = (v: PanelView) => {
-        const described = byId("description");
-        if (v.card !== null && "about" in v.card) described.setAttribute("aria-current", "true");
-        else described.removeAttribute("aria-current");
+        for (const [id, step] of [["overview", 0], ["description", 1]] as const) {
+            if (v.current === step) byId(id).setAttribute("aria-current", "true");
+            else byId(id).removeAttribute("aria-current");
+        }
         byId("position").textContent = `${v.current >= 0 ? v.current + 1 : "–"} / ${v.total}`;
         byId<HTMLButtonElement>("previous").disabled = !v.hasPrevious;
         byId<HTMLButtonElement>("next").disabled = !v.hasNext;

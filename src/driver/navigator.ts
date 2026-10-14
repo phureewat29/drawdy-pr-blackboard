@@ -1,6 +1,7 @@
 /**
- * Moving around a review on the board: the current card, the steps in board order, following links and Read all.
- * Nothing on the board changes when the reader moves; the camera and the panel show where they are.
+ * Moving around a review on the board: the current card, the steps (the overview, the description, then the code in
+ * board order), following links and Read all. Nothing on the board changes when the reader moves; the camera and the
+ * panel show where they are.
  *
  * The board works on its own: each card's mark holds its name, size and the rows that open a pane, and each
  * string's its kind, both cards and colour, so those rows and strings need no review and no GitHub request. The
@@ -39,8 +40,10 @@ export type Navigator = {
     colourOf: (link: string) => number | null;
     /** How many of the board's cards are on the canvas, by their marks; by the review until the marks are read. */
     cards: () => number;
-    /** The current card's step, or -1: none yet, no review, the PR card or a context card, which are not steps. */
+    /** The reader's step: 0 the overview, 1 the description, then the code; -1 for none yet, no review or a context card. */
     current: () => number;
+    /** How many steps the review has: the overview, the description and the code. */
+    total: () => number;
     currentPin: () => string | null;
     /** Whether Previous and Next have a step to go to, skipping context and deleted cards. */
     hasPrevious: () => boolean;
@@ -49,11 +52,10 @@ export type Navigator = {
     focus: (pin: string, fly?: boolean) => Promise<void>;
     next: () => Promise<void>;
     previous: () => Promise<void>;
+    /** Step 1, and a new board's landing: the PR card current, and one flight to the whole board. */
     overview: () => Promise<void>;
-    /** The PR card current, and the camera on it. */
+    /** Step 2: the PR card current, and the camera on it. */
     description: () => Promise<void>;
-    /** A new board's landing: the PR card current, then one flight to the overview. */
-    land: () => Promise<void>;
     /** Follows a link from the current card to its far card. */
     follow: (link: string) => Promise<void>;
     /** Opens Read all for the current card, at head line `line` or at the first change. */
@@ -67,6 +69,10 @@ export type Navigator = {
 const STRING_REACH = 10;
 /** Read all says `Reading the PR…` only when the review takes longer than this to load. */
 const LOADING_AFTER_MS = 150;
+/** The overview's place among the steps, before the PR card's: a step with no card of its own. */
+const OVERVIEW = "";
+/** The steps before the code: the overview and the description. */
+const LEAD = 2;
 
 export type NavigatorDeps = {
     ddp: Ddp;
@@ -87,6 +93,8 @@ export const createNavigator = (deps: NavigatorDeps): Navigator => {
     let index: Index | null = null;
     let review: Review | null = null;
     let current: string | null = null;
+    /** Whether the reader is at the overview, the first step. */
+    let overviewing = false;
     /** Counts what the reader asks of the pane: a page, or putting it away. A whole file that arrives after either opens nothing. */
     let asked = 0;
 
@@ -100,6 +108,7 @@ export const createNavigator = (deps: NavigatorDeps): Navigator => {
         board = { key, sha };
         index = null;
         current = null;
+        overviewing = false;
         if (review && !(review.pr.headSha === sha && prKey(review.pr.ref) === key)) review = null;
         await popover.close();
     };
@@ -140,18 +149,22 @@ export const createNavigator = (deps: NavigatorDeps): Navigator => {
     const focus = async (pin: string, flies = false) => {
         if (!index?.pins.has(pin) && !pinOf(pin)) return;
         current = pin;
+        overviewing = false;
         changed();
         if (flies) await camera(pin);
     };
 
-    /** The next card in board order that is a step and still on the board: from the PR card, the first. */
+    /**
+     * The next step in board order, `OVERVIEW` or a card still on the board: the overview, the PR card, then the code.
+     * From nowhere, the overview.
+     */
     const stepAfter = (delta: 1 | -1): string | null => {
         if (!review || !index) return null;
-        const order = review.order;
+        const order = [OVERVIEW, "pr", ...review.order.filter((id) => id !== "pr")];
         const steps = new Set(stepsOf(review));
-        const isStep = (id: string) => steps.has(id) && index!.pins.has(id);
-        const at = current ? order.indexOf(current) : -1;
-        if (at < 0) return delta === 1 ? (order.find(isStep) ?? null) : null;
+        const isStep = (id: string) => id === OVERVIEW || ((id === "pr" || steps.has(id)) && index!.pins.has(id));
+        const at = overviewing ? 0 : current ? order.indexOf(current) : -1;
+        if (at < 0) return delta === 1 ? OVERVIEW : null;
         for (let i = at + delta; i >= 0 && i < order.length; i += delta) if (isStep(order[i])) return order[i];
         return null;
     };
@@ -170,8 +183,9 @@ export const createNavigator = (deps: NavigatorDeps): Navigator => {
     };
 
     const step = async (delta: 1 | -1) => {
-        const pin = stepAfter(delta);
-        if (pin) await moveTo(pin);
+        const to = stepAfter(delta);
+        if (to === OVERVIEW) await overview();
+        else if (to) await moveTo(to);
     };
 
     const follow = async (linkId: string, from: string | null = current) => {
@@ -271,6 +285,7 @@ export const createNavigator = (deps: NavigatorDeps): Navigator => {
         await switchTo(pr, sha);
         if (pin !== current) await popover.close();
         current = pin;
+        overviewing = false;
         changed();
         const y = localY(card, at.y);
         const fold = foldAt(folds ?? [], y);
@@ -309,7 +324,7 @@ export const createNavigator = (deps: NavigatorDeps): Navigator => {
 
     /**
      * The whole board: the code cards whole, and the PR card from its top down to the lowest code card, so a long
-     * description runs on below. The current card stays. The union comes from each card's own rect: Drawdy's
+     * description runs on below. The PR card is current. The union comes from each card's own rect: Drawdy's
      * `query-combined-rect` takes only the top-left corner of every component after the first.
      */
     const overview = async () => {
@@ -318,6 +333,9 @@ export const createNavigator = (deps: NavigatorDeps): Navigator => {
         asked++;
         await popover.close();
         await deselect();
+        current = idx.pins.has("pr") ? "pr" : null;
+        overviewing = true;
+        changed();
         const [rects, screen] = await Promise.all([rectsOf(ddp, [...idx.pins.values()].map((p) => p.id)), screenOf(ddp)]);
         const code = [...idx.pins].flatMap(([pin, el]) => (pin === "pr" ? [] : [rects.get(el.id)].filter((r): r is Rect => r !== undefined)));
         const prEl = idx.pins.get("pr");
@@ -327,11 +345,6 @@ export const createNavigator = (deps: NavigatorDeps): Navigator => {
 
     const description = async () => {
         if ((await ensureIndex())?.pins.has("pr")) await moveTo("pr");
-    };
-
-    const land = async () => {
-        await focus("pr");
-        await overview();
     };
 
     const attach = (next: Review) => {
@@ -347,6 +360,7 @@ export const createNavigator = (deps: NavigatorDeps): Navigator => {
         review = nextReview;
         if (!same) {
             current = null;
+            overviewing = false;
             void popover.close();
         }
         changed();
@@ -374,7 +388,14 @@ export const createNavigator = (deps: NavigatorDeps): Navigator => {
         readMarks,
         colourOf: (link) => index?.links.get(link)?.colour ?? null,
         cards: () => index?.pins.size ?? review?.pins.length ?? 0,
-        current: () => (review && current ? stepsOf(review).indexOf(current) : -1),
+        current: () => {
+            if (!review) return -1;
+            if (overviewing) return 0;
+            if (current === "pr") return 1;
+            const at = current ? stepsOf(review).indexOf(current) : -1;
+            return at < 0 ? -1 : LEAD + at;
+        },
+        total: () => (review ? LEAD + stepsOf(review).length : 0),
         currentPin: () => current,
         hasPrevious: () => stepAfter(-1) !== null,
         hasNext: () => stepAfter(1) !== null,
@@ -383,7 +404,6 @@ export const createNavigator = (deps: NavigatorDeps): Navigator => {
         previous: () => step(-1),
         overview,
         description,
-        land,
         follow: (link) => follow(link),
         readAll: async (line = null) => {
             if (current) await openReadAll(current, line);

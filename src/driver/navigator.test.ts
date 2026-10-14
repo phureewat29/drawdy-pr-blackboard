@@ -60,33 +60,73 @@ const placed = (req: any) => {
 };
 
 describe("stepping", () => {
-    it("walks the code through eight steps, from the PR card to #dispatch() first, never the unchanged caller", async () => {
+    it("walks ten steps: the overview, the description, then the code from #dispatch(), never the unchanged caller", async () => {
         const { navigator, nameNow } = setup();
-        await navigator.focus("pr");
-        expect(navigator.current()).toBe(-1);
-        const visited: (string | undefined)[] = [];
-        for (let i = 0; i < 10; i++) {
+        expect([navigator.current(), navigator.total()]).toEqual([-1, 10]);
+        const visited: [number, string | undefined][] = [];
+        for (let i = 0; i < 12; i++) {
             await navigator.next();
-            visited.push(nameNow());
+            visited.push([navigator.current(), nameNow()]);
         }
-        expect(visited.slice(0, 8)).toEqual(["#dispatch()", "#handleError()", "compose()", "toError()", "compose.test.ts", "hono-base.ts imports", "onError()", "hono.test.ts"]);
-        expect(visited.slice(8)).toEqual(["hono.test.ts", "hono.test.ts"]);
-        expect(navigator.current()).toBe(7);
+        expect(visited.slice(0, 10)).toEqual([
+            [0, "The PR"],
+            [1, "The PR"],
+            [2, "#dispatch()"],
+            [3, "#handleError()"],
+            [4, "compose()"],
+            [5, "toError()"],
+            [6, "compose.test.ts"],
+            [7, "hono-base.ts imports"],
+            [8, "onError()"],
+            [9, "hono.test.ts"],
+        ]);
+        expect(visited.slice(10)).toEqual([
+            [9, "hono.test.ts"],
+            [9, "hono.test.ts"],
+        ]);
     });
 
-    it("has no step before step 1, nor before the PR card: the description is not a step", async () => {
+    it("goes back from the first code card to the description, then the overview, and no further", async () => {
         const { navigator, pinNamed, nameNow } = setup();
         await navigator.focus(pinNamed("#dispatch()"));
-        expect([navigator.current(), navigator.hasPrevious(), navigator.hasNext()]).toEqual([0, false, true]);
+        expect([navigator.current(), navigator.hasPrevious(), navigator.hasNext()]).toEqual([2, true, true]);
         await navigator.previous();
+        expect([navigator.current(), nameNow(), navigator.hasPrevious()]).toEqual([1, "The PR", true]);
+        await navigator.previous();
+        expect([navigator.current(), nameNow(), navigator.hasPrevious(), navigator.hasNext()]).toEqual([0, "The PR", false, true]);
+        await navigator.previous();
+        expect(navigator.current()).toBe(0);
+    });
+
+    it("makes the overview step 1 from any card, the PR card current", async () => {
+        const { navigator, pinNamed, nameNow } = setup();
+        await navigator.focus(pinNamed("compose()"));
+        await navigator.overview();
+        expect([navigator.current(), nameNow(), navigator.hasPrevious()]).toEqual([0, "The PR", false]);
+        await navigator.next();
+        expect([navigator.current(), nameNow()]).toEqual([1, "The PR"]);
+    });
+
+    it("skips the description when the PR card is gone", async () => {
+        const { navigator, host, pinIds, pinNamed, nameNow } = setup();
+        host.remove(pinIds.get("pr")!);
+        expect(await navigator.refresh()).toBe(true);
+        await navigator.overview();
+        expect([navigator.current(), navigator.currentPin()]).toEqual([0, null]);
+        await navigator.next();
+        expect([navigator.current(), nameNow()]).toEqual([2, "#dispatch()"]);
+        await navigator.previous();
+        expect(navigator.current()).toBe(0);
+        await navigator.focus(pinNamed("#dispatch()"));
+        await navigator.description();
         expect(nameNow()).toBe("#dispatch()");
-        await navigator.focus("pr");
-        expect([navigator.hasPrevious(), navigator.hasNext()]).toEqual([false, true]);
     });
 
     it("says when there is no step before or after, skipping deleted cards", async () => {
         const { navigator, host, pinIds, pinNamed } = setup();
         await navigator.focus("pr");
+        expect([navigator.hasPrevious(), navigator.hasNext()]).toEqual([true, true]);
+        await navigator.overview();
         expect([navigator.hasPrevious(), navigator.hasNext()]).toEqual([false, true]);
         await navigator.focus(pinNamed("hono.test.ts"));
         expect([navigator.hasPrevious(), navigator.hasNext()]).toEqual([true, false]);
@@ -105,8 +145,8 @@ describe("stepping", () => {
     });
 
     it("flies to each step and changes nothing on the board: no popover, no mark", async () => {
-        const { navigator, host, since, nameNow } = setup();
-        await navigator.next();
+        const { navigator, host, since, nameNow, pinNamed } = setup();
+        await navigator.focus(pinNamed("#dispatch()"));
         const before = host.calls.length;
         await navigator.next();
         const steps = since(before);
@@ -453,7 +493,7 @@ describe("Description", () => {
         const before = host.calls.length;
         await navigator.description();
         const calls = since(before);
-        expect([navigator.currentPin(), navigator.current(), popover.shown()]).toEqual(["pr", -1, null]);
+        expect([navigator.currentPin(), navigator.current(), popover.shown()]).toEqual(["pr", 1, null]);
         expect(calls.indexOf("command:scene:clear-selection")).toBeLessThan(calls.indexOf("command:camera:fly-to-rect"));
         // The camera shows the PR card whole, at zoom 0.8 to 1.
         const r = card("The PR");

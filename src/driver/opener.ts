@@ -105,7 +105,7 @@ export const createOpener = ({ ddp, channel, guide, panel, loaders, pinning }: O
     const land = async (index: Index, review: Review) => {
         guide.set(index, review);
         panel.phase = "ready";
-        await guide.land();
+        await guide.overview();
     };
 
     const openPr = async (url: string) => {

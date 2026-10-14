@@ -112,8 +112,8 @@ describe("the runtime on hono#5513", () => {
         expect(types.filter((t) => t === "command:scene:add-drawdy-elements")).toHaveLength(1);
         expect(types.slice(0, add)).not.toContain("command:camera:fly-to-rect");
         expect(types.slice(add).filter((t) => t === "command:camera:fly-to-rect")).toHaveLength(1);
-        // The board lands with the description in the panel: not a step, so – / 8, Previous off, Next on.
-        expect(view()).toMatchObject({ phase: "ready", current: -1, total: 8, hasPrevious: false, hasNext: true, card: { pin: "pr", about: ["usualoma · 4 files"], warnings: [] } });
+        // The board lands at step 1, the overview, with the description in the panel: 1 / 10, Previous off, Next on.
+        expect(view()).toMatchObject({ phase: "ready", current: 0, total: 10, hasPrevious: false, hasNext: true, card: { pin: "pr", about: ["usualoma · 4 files"], warnings: [] } });
         expect(view().card).toHaveProperty("description", expect.stringContaining("<h3>Behavior change</h3>"));
         // Cards take the theme Drawdy shows the reader who pins them.
         const pinned = host.calls.find((c) => c.type === "command:scene:add-drawdy-elements")!.req.elements;
@@ -140,15 +140,17 @@ describe("the runtime on hono#5513", () => {
         const from = host.calls.length;
         await openPanel();
         await until(() => view().phase === "ready");
-        expect(view()).toMatchObject({ phase: "ready", current: -1, hasNext: true, card: { pin: "pr" } });
+        expect(view()).toMatchObject({ phase: "ready", current: 1, hasNext: true, card: { pin: "pr" } });
         expect(host.calls.slice(from).map((c) => c.type)).not.toContain("command:camera:fly-to-rect");
     });
 
     it("closes Read all on Esc in the panel", async () => {
         const { host, message, view, openHono } = await boot();
         await openHono();
-        await message({ type: "next" });
-        await until(() => view().current === 0);
+        for (const step of [1, 2]) {
+            await message({ type: "next" });
+            await until(() => view().current === step);
+        }
         await message({ type: "read-all" });
         // From the overview, Read all first brings the camera to where it reads.
         await until(() => host.calls.some((c) => c.type === "command:dom:upsert-floating-element"));
@@ -170,7 +172,7 @@ describe("the reading view on hono#5513", () => {
     it("names each link in its string's colour, from the string's mark, and a link with no string in none", async () => {
         const { host, message, view } = await opened();
         const colours = new Map([...host.elements.values()].filter((e) => e.schema.type === "arrow").map((e) => [e.schema.meta.prBlackboard.link as string, e.schema.color as string]));
-        for (let i = 0; i < 3; i++) {
+        for (let i = 0; i < 4; i++) {
             const at = view().current;
             await message({ type: "next" });
             await until(() => view().current !== at);
@@ -184,22 +186,33 @@ describe("the reading view on hono#5513", () => {
         expect(chips.filter((c) => c.colour !== null).length).toBeGreaterThan(1);
     });
 
-    it("makes the PR card current on Description and flies the camera to it; the steps go on from there", async () => {
+    it("makes the PR card current on Description, step 2, and flies the camera to it; the steps go on from there", async () => {
         const { host, message, view } = await opened();
-        await message({ type: "next" });
-        await until(() => view().current === 0);
-        await message({ type: "next" });
-        await until(() => view().current === 1);
-        expect(view()).toMatchObject({ current: 1, hasPrevious: true });
+        for (const step of [1, 2, 3]) {
+            await message({ type: "next" });
+            await until(() => view().current === step);
+        }
+        expect(view()).toMatchObject({ current: 3, hasPrevious: true });
         const flights = () => host.calls.filter((c) => c.type === "command:camera:fly-to-rect").length;
         const flown = flights();
         await message({ type: "description" });
         await until(() => view().card?.pin === "pr" && flights() > flown);
-        expect(view()).toMatchObject({ current: -1, hasPrevious: false, hasNext: true, card: { pin: "pr" } });
+        expect(view()).toMatchObject({ current: 1, hasPrevious: true, hasNext: true, card: { pin: "pr" } });
         expect(flights()).toBe(flown + 1);
         await message({ type: "next" });
-        await until(() => view().current === 0);
-        expect(view()).toMatchObject({ current: 0, card: { name: "#dispatch()" } });
+        await until(() => view().current === 2);
+        expect(view()).toMatchObject({ current: 2, card: { name: "#dispatch()" } });
+    });
+
+    it("steps back from the description to the overview, step 1, and flies to the whole board", async () => {
+        const { host, message, view } = await opened();
+        await message({ type: "description" });
+        await until(() => view().current === 1);
+        const flights = () => host.calls.filter((c) => c.type === "command:camera:fly-to-rect").length;
+        const flown = flights();
+        await message({ type: "previous" });
+        await until(() => view().current === 0 && flights() > flown);
+        expect(view()).toMatchObject({ current: 0, hasPrevious: false, hasNext: true, card: { pin: "pr" } });
     });
 
     it("shows a failed action's error on the toolbar's line, in the reading view, until the next action", async () => {
@@ -211,8 +224,10 @@ describe("the reading view on hono#5513", () => {
             },
         });
         refuse = true;
-        await message({ type: "next" });
-        await until(() => view().current === 0);
+        for (const step of [1, 2]) {
+            await message({ type: "next" });
+            await until(() => view().current === step);
+        }
         await message({ type: "read-all" });
         await until(() => view().error !== null);
         expect(view()).toMatchObject({ phase: "ready", card: { name: "#dispatch()" }, error: expect.stringContaining("no room") });
@@ -235,8 +250,10 @@ describe("the runtime and GitHub", () => {
     it("goes back to the start view on Home, Read all closed and the board kept, and a click on one of its cards reads it again", async () => {
         const { host, message, view, click, openHono } = await boot();
         await openHono();
-        await message({ type: "next" });
-        await until(() => view().card?.pin !== "pr");
+        for (const step of [1, 2]) {
+            await message({ type: "next" });
+            await until(() => view().current === step);
+        }
         await message({ type: "read-all" });
         await until(() => host.calls.some((c) => c.type === "command:dom:upsert-floating-element"));
         const from = host.calls.length;
@@ -326,7 +343,7 @@ describe("the runtime and GitHub", () => {
         await click([compose.id], { x: compose.rect.x + 40, y: compose.rect.y + 66 });
         await openPanel();
         await until(() => view().phase === "ready");
-        expect(view()).toMatchObject({ phase: "ready", current: 2, card: { name: "compose()" } });
+        expect(view()).toMatchObject({ phase: "ready", current: 4, card: { name: "compose()" } });
     });
 
     it("says why on the loading view, at its failed step, when the panel opens on a board it can't pick up", async () => {
@@ -550,8 +567,12 @@ describe("rebuilding a board", () => {
         expect(removed.length).toBeGreaterThan(0);
         expect(view()).toMatchObject({ phase: "ready", error: null, card: { pin: "pr" } });
         expect(new Set([...host.elements.values()].map((e) => e.schema.meta?.prBlackboard?.sha).filter(Boolean))).toEqual(new Set([newer]));
-        await message({ type: "next" });
-        await wait(20);
+        // The rebuilt board lands at the overview: the description, then #dispatch().
+        expect(view().current).toBe(0);
+        for (const step of [1, 2]) {
+            await message({ type: "next" });
+            await until(() => view().current === step);
+        }
         expect(view().card).toMatchObject({ name: "#dispatch()" });
     }, SLOW);
 

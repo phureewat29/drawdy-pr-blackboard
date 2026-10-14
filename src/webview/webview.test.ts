@@ -36,10 +36,10 @@ const readyView: PanelView = {
     error: null,
     tag: { label: "honojs/hono#5513", colour: "#E36002" },
     pr: { title: [{ text: "fix(hono): handle non-Error throws with onError", code: false }], state: "merged", additions: 202, deletions: 11 },
-    total: 8,
+    total: 10,
     cards: 10,
-    current: 0,
-    hasPrevious: false,
+    current: 2,
+    hasPrevious: true,
     hasNext: true,
     card: {
         pin: "d",
@@ -330,7 +330,7 @@ describe("panel", () => {
 
     it("shows the current card: its name and chip, its plain path, Read all only when it hides some, and its links by kind, each name in its string's colour", () => {
         panel.show(readyView);
-        expect([$("position").textContent, $("name").textContent, $("name").className]).toEqual(["1 / 8", "#dispatch()", "mono"]);
+        expect([$("position").textContent, $("name").textContent, $("name").className]).toEqual(["3 / 10", "#dispatch()", "mono"]);
         expect([$("path").tagName, $("path").textContent]).toEqual(["DIV", "src/hono-base.ts\u00a0·\u00a0411–471"]);
         expect([$("read-all").hidden, $("read-all").textContent]).toEqual([false, "Read all"]);
         const cells = [...$("links").children].map((c) => c.textContent);
@@ -344,7 +344,7 @@ describe("panel", () => {
         $("read-all").click();
         expect(post.mock.calls.map(([m]) => m)).toEqual([{ type: "follow", link: "k" }, { type: "read-all" }]);
         panel.show({ ...readyView, current: -1, card: { ...codeCard, pin: "f", name: "fetch()", status: "UNCHANGED", canReadAll: false } });
-        expect([$("position").textContent, $("read-all").hidden]).toEqual(["– / 8", true]);
+        expect([$("position").textContent, $("read-all").hidden]).toEqual(["– / 10", true]);
         // The chip sits right after the name.
         expect($("name").lastElementChild!.outerHTML).toBe('<span class="status UNCHANGED">UNCHANGED</span>');
     });
@@ -438,14 +438,20 @@ describe("panel", () => {
         expect(document.body.textContent).not.toMatch(/[‹›]|Open another|Overview/);
     });
 
-    it("marks Description while the PR card is current, and never Overview; Previous is off at step 1 and at the PR card", () => {
-        panel.show({ ...readyView, current: -1, hasPrevious: false, card: prCard });
-        expect([$("description").getAttribute("aria-current"), $("overview").getAttribute("aria-current"), $("position").textContent]).toEqual(["true", null, "– / 8"]);
+    it("marks Overview at step 1 and Description at step 2, neither at a code card or an unchanged one; Previous is off at step 1", () => {
+        const marks = () => [$("overview").getAttribute("aria-current"), $("description").getAttribute("aria-current"), $("position").textContent];
+        panel.show({ ...readyView, current: 0, hasPrevious: false, card: prCard });
+        expect(marks()).toEqual(["true", null, "1 / 10"]);
         expect([$<HTMLButtonElement>("previous").disabled, $<HTMLButtonElement>("next").disabled]).toEqual([true, false]);
+        panel.show({ ...readyView, current: 1, card: prCard });
+        expect(marks()).toEqual([null, "true", "2 / 10"]);
+        expect($<HTMLButtonElement>("previous").disabled).toBe(false);
         panel.show(readyView);
-        expect([$("description").getAttribute("aria-current"), $<HTMLButtonElement>("previous").disabled]).toEqual([null, true]);
-        panel.show({ ...readyView, current: 7, hasPrevious: true, hasNext: false });
-        expect([$<HTMLButtonElement>("previous").disabled, $<HTMLButtonElement>("next").disabled, $("position").textContent]).toEqual([false, true, "8 / 8"]);
+        expect(marks()).toEqual([null, null, "3 / 10"]);
+        panel.show({ ...readyView, current: -1 });
+        expect(marks()).toEqual([null, null, "– / 10"]);
+        panel.show({ ...readyView, current: 9, hasNext: false });
+        expect([$<HTMLButtonElement>("previous").disabled, $<HTMLButtonElement>("next").disabled, $("position").textContent]).toEqual([false, true, "10 / 10"]);
     });
 
     it("goes Home to the start view with the field focused", () => {

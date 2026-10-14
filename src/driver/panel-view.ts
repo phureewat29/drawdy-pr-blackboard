@@ -3,7 +3,6 @@
 import { chipOf, foldsOf, linkGroups, pinCard, whereOf } from "../lib/card.ts";
 import { plural } from "../lib/fp.ts";
 import { pageCount, prLabel } from "../lib/github.ts";
-import { stepsOf } from "../lib/layout.ts";
 import { lexMarkdown, markdownHtml, segments } from "../lib/markdown.ts";
 import type { Pin, Review } from "../lib/model.ts";
 import type { Annotation, CurrentCard, PanelView } from "../shared/protocol.ts";
@@ -83,7 +82,7 @@ export const viewOf = (state: PanelState, guide: Navigator, quota: Quota | null,
         error: state.error,
         tag: tagOf(loading && opening ? opening : review ? prLabel(review.pr.ref) : null),
         pr: review ? { title: segments(review.pr.title), state: review.pr.state, additions: review.pr.additions, deletions: review.pr.deletions } : null,
-        total: review ? stepsOf(review).length : 0,
+        total: guide.total(),
         cards: review ? guide.cards() : 0,
         current: guide.current(),
         hasPrevious: guide.hasPrevious(),

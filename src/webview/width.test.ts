@@ -59,9 +59,9 @@ const base: PanelView = {
     error: null,
     tag: { label: "prometheus/prometheus#18564", colour: "#E6522C" },
     pr: { title: segments("promql: support native histograms with smoothed/anchored rate"), state: "merged", additions: 667, deletions: 36 },
-    total: 8,
+    total: 10,
     cards: 10,
-    current: -1,
+    current: 0,
     hasPrevious: false,
     hasNext: true,
     card: { pin: "pr", about: ["roidelapluie · 4 files"], warnings: [], description: markdownHtml(lexMarkdown(DESCRIPTION), "page") },
@@ -70,11 +70,11 @@ const base: PanelView = {
 };
 const VIEWS: Record<string, PanelView> = {
     description: base,
-    // The widest position a board can show, 32 cards and every one a step but the PR card.
-    toolbar: { ...base, total: 31, current: 26, hasPrevious: true, cards: 32 },
+    // The widest position a board can show: 32 cards, every one a step but the PR card, after the overview and the description.
+    toolbar: { ...base, total: 33, current: 27, hasPrevious: true, cards: 32 },
     // The confirms at their widest: 32 cards, and a rebuild of 3,000 files, 31 of 60 requests.
-    "clear confirm": { ...base, total: 31, current: 26, hasPrevious: true, cards: 32 },
-    "rebuild confirm": { ...base, total: 31, current: 26, hasPrevious: true, cards: 32, rebuildCost: { files: 3000, requests: 31 } },
+    "clear confirm": { ...base, total: 33, current: 27, hasPrevious: true, cards: 32 },
+    "rebuild confirm": { ...base, total: 33, current: 27, hasPrevious: true, cards: 32, rebuildCost: { files: 3000, requests: 31 } },
     "code card": {
         ...base,
         current: 2,
@@ -218,7 +218,7 @@ const measure = (): Record<string, Measure> => {
         expect([short, root]).toEqual(["src/a.ts", "README.md"]);
     });
 
-    it("fits its toolbar at 27 / 31: the five icon buttons whole, the stepper as ever, and clear space between them", () => {
+    it("fits its toolbar at 28 / 33: the five icon buttons whole, the stepper as ever, and clear space between them", () => {
         const { bar } = got.toolbar;
         expect(["home", "rebuild", "clear", "overview", "description"].map((id) => bar[id].width)).toEqual([28, 28, 28, 28, 28]);
         expect(["previous", "position", "next"].map((id) => bar[id].width)).toEqual([30, 52, 30]);

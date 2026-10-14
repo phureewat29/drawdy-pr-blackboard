@@ -63,7 +63,7 @@ export const createRebuilder = ({ ddp, guide, panel, loaders, pinning, sweeper }
                 await guide.closePopover();
                 guide.set(next, review);
             }
-            if (seen) await guide.land();
+            if (seen) await guide.overview();
         } catch (err) {
             console.error("[pr-blackboard]", err);
             const why = githubFailure(err)?.kind === "not-found" ? GONE : explain(err);

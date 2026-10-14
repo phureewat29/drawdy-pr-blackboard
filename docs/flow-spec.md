@@ -22,8 +22,8 @@ stress case excalidraw/excalidraw#12237
    from the row that says `Read all` whenever a card hides code, and open
    the card's whole file from its last row, `View full file`. The panel
    adds what only it can do: open a pull request, show its description,
-   walk the code in order, list every link of a card, drawn or not, each
-   in its string's colour.
+   walk the board in order (the overview, the description, then the code),
+   list every link of a card, drawn or not, each in its string's colour.
 5. Read all, the one popover, shows a whole function or file right of its
    card, on the board, and pans and zooms with it; it also shows a card's
    whole file at the head commit. Nothing opens on a plain click.
@@ -1151,39 +1151,42 @@ three strings (3.4.1) rather than a merged trunk from everywhere.
 
 ## 4. Steps
 
-4.1 **Order.** The steps walk the code (request 54): each band, its
-change cards column by column, top to bottom within a column, then the
-row under it left to right; then the bottom row. The PR card is not a
-step: the panel's Description shows it (4.5). Context cards are not steps
-either. Order is fixed when the board is made; `review.order` still starts
-with the PR card, which `stepsOf` leaves out.
+4.1 **Order.** Step 1 is the overview (4.4) and step 2 the description
+(4.5); then the code (request 67): each band, its change cards column by
+column, top to bottom within a column, then the row under it left to
+right; then the bottom row. Context cards are not steps. Order is fixed
+when the board is made; `review.order` starts with the PR card, and
+`stepsOf` gives the code's steps.
 
-hono#5513: `#dispatch()` → `#handleError()` → `compose()` → `toError()` →
-`compose.test.ts` → imports → `onError()` → `hono.test.ts`. Eight steps.
+hono#5513: the overview → the description → `#dispatch()` →
+`#handleError()` → `compose()` → `toError()` → `compose.test.ts` →
+imports → `onError()` → `hono.test.ts`. Ten steps.
 
 4.2 **Next, Previous:** the panel's chevron buttons, or `←` `→` while the
-reading view has focus. A deleted card is skipped. From the PR card or a
-context card, Next goes to the first step after it in board order.
-Previous is off at step 1 and at the PR card: stepping back into the
-description would make it a step again. The driver sends `hasPrevious`
-and `hasNext`; the panel disables Previous or Next from those alone.
+reading view has focus. A deleted card is skipped, and so is the
+description when the PR card is gone. From a context card, Next and
+Previous go to the nearest step after or before it in board order.
+Previous is off at the overview. The driver sends `hasPrevious` and
+`hasNext`; the panel disables Previous or Next from those alone.
 
-4.3 **After pinning,** the PR card is current, so the panel shows the
-description, and the camera makes one flight, to the overview: the board
-shows what changed while the panel says why. Next goes to step 1.
-**Picking up** a board already pinned (6.3) leaves the same state: the PR
-card current, position `– / 8`, and the camera where it is.
+4.3 **After pinning,** the board lands at step 1: the PR card current, so
+the panel shows the description, and one flight to the overview: the
+board shows what changed while the panel says why. Next goes to the
+description, then `#dispatch()`. **Picking up** a board already pinned
+(6.3) makes the PR card current, position `2 / 10`, and leaves the camera
+where it is.
 
 4.4 **Overview:** the code cards whole, and the PR card from its top down
 to the lowest code card, centred in the usable view (6.4) at the zoom that
 fits them, at most 1 (`overviewBounds`): a very long description runs on
 below the frame instead of shrinking the board. hono#5513 lands at zoom
-0.34 at 1920 × 1080. The current card does not change, and the panel
-keeps explaining it; Overview is never marked as current. The union comes
+0.34 at 1920 × 1080. It is step 1 from any card: the PR card becomes
+current, the panel shows the description, and Overview is marked as
+current. The union comes
 from each card's `element-rects`.
 
-4.5 **Description:** the panel's Description makes the PR card current
-and flies the camera to it as a step frames a card (6.4): zoom 0.8 to 1,
+4.5 **Description:** step 2. The panel's Description makes the PR card
+current, marks itself, and flies the camera to it as a step frames a card (6.4): zoom 0.8 to 1,
 centred when it fits, else its top 24 below Drawdy's toolbar; when it
 already shows whole, nothing moves. Read all closes, and Drawdy's
 selection clears first, as for a step.
@@ -1457,8 +1460,8 @@ always there.
 | A teammate without PR Blackboard | Static cards and native strings: readable, nothing clickable |
 
 What only the panel does: open a pull request (field, paste, example
-rows), show its description (Description), walk the code in order
-(Previous, Next, position), the overview, every link of the current card
+rows), show its description (Description), the overview, walk the board
+in order (Previous, Next, position), every link of the current card
 (drawn or not, each named in its string's colour), Read all for any card
 that hides code from one button, going back to the start view (Home),
 rebuilding the board, loading progress and errors. Opening the panel
@@ -1908,7 +1911,7 @@ extension's own icon is the one exception: a generated image (requests
 and its 64 px copy as a PNG data URI in an SVG for the 20 px action
 button, which Drawdy draws as an image. `npm run icon -- <512px.png>
 <256px.png> <64px.png>` writes all three. Only Next's chevron changes the stroke, to 2.5, so it holds its weight on
-lime. Text that is not an icon stays text: `+N −M`, `–` in `– / 8`, the
+lime. Text that is not an icon stays text: `+N −M`, `–` in `– / 10`, the
 state pill, the cards' `→` and `⋯`.
 
 ### 7.3 The panel: reading
@@ -2016,12 +2019,12 @@ area is never empty.
 │   element (or group) selects │ scrolling
 │   …                          │
 ├──────────────────────────────┤
-│ ⌂  ↻  ⌧ │ ⛶  ▤̲   <  – / 31 > │ Description marked; no step
+│ ⌂  ↻  ⌧ │ ⛶̲  ▤   <  1 / 33 > │ Overview marked; step 1
 └──────────────────────────────┘
 ```
 
 7.3.2 **The toolbar,** padding 8 14, a 1 px `--drawdy-border` rule above.
-One row, flex, gap 2, 30 high, at 320 × 534 with `27 / 31` too: Home,
+One row, flex, gap 2, 30 high, at 320 × 534 with `28 / 33` too: Home,
 Rebuild, Clear, a rule, Overview, Description, then Previous, the
 position and Next at the right edge, where the hand rests; the three rare
 controls sit at the far left, behind the rule, so a slip from Next never
@@ -2033,7 +2036,9 @@ up with the text above. The rule is 1 × 16 in `--shade`, 4 px clear each
 side. Previous, the position and Next are as before, 4 apart (the
 position has 2 px of margin each side) and at the same place: bordered
 30 × 30, Next lime with a 2.5 stroke, the position 11.5 mono, at least 52
-wide, centred: `3 / 8`, or `– / 8` at the PR card or an unchanged card.
+wide, centred: `3 / 10`, or `– / 10` at an unchanged card. Overview is
+marked at step 1 and Description at step 2 (`aria-current`, a 2 px rule
+under the icon).
 With Clear added, 30-wide icons 4 apart squeezed to 28.4 and left 8 px
 before Previous; at 28 and 2 apart, 19 px stay clear
 (`webview/width.test.ts`).
@@ -2253,7 +2258,7 @@ description in its own column, the board landing on the code
 beside `hono.test.ts` (`hono-1920-compose-full-file.png`,
 `hono-1920-hono-test-full-file-dark.png`); and the panel's states: the
 start view with its 13 example rows, loading, reading at the PR card (its whole description), at `#dispatch()`
-(step 1) and at `compose()` (names in their strings' colours), a rebuild
+(step 3) and at `compose()` (names in their strings' colours), a rebuild
 under way, asking with its cost and failed, Clear asking, excalidraw's long description
 and a card with three string colours, and a failure under the field;
 `panel-home-*.png` show the start view as Home leaves it, the field
@@ -2349,7 +2354,7 @@ credits it beside Hono.
 | The PR card's name row, `The pull request`, in the panel | It repeated the header right above it |
 | `Navigator.index`, `reviewOf` beside `reviewFor`, the key-to-link rewrite, `Review.steps`, the navigator's second `planBoard` | One `reviewAt`; a key already reads as `owner/repo#123`; `review.order` holds board order and `stepsOf` derives the steps |
 | The nav row under the header, its borders and its text `Overview` button; `Open another` and its footer row | One toolbar at the panel's foot holds every control, Lucide icons with tooltips (requests 47 and 49) |
-| The PR card as step 1, `1 / 9`; the panel's `Description` row and its `Read all` | The steps walk the code; Description shows the description, and the card area holds it whole (requests 54 and 55) |
+| The PR card as step 1, `1 / 9`; the panel's `Description` row and its `Read all` | The overview is step 1 and the description step 2 (request 67); the card area holds the description whole (requests 54 and 55) |
 | The PR card's fold: `⋯ Read all`, the fold zone to its foot, the fade, `fitBlocks`, and its Read all page; a `<details>` folded to `▸` its summary on the card; the 20,000-character cut | The description shows whole on the card, `<details>` open, and in the panel; GitHub keeps a description to 65,536 characters, and the cut did not stop `marked`'s worst cases either (request 55) |
 | The PR card in the first band's column 0, and on its own over the bottom row when there was no thread | It stands alone in the first column, so a tall description pushes no card down (request 55) |
 | Read all in screen space, the same size at any zoom, as wide as the screen allowed (520 to 720); its pan for room | Read all is a pane on the board, 720 wide in canvas units, scaled with the zoom, clipped to the usable view, and dragged by its header (requests 51 and 52) |
@@ -2554,17 +2559,20 @@ the dev server on a local board. G: the score gate, outside the repository
     review loads or fails. A
     click on an element that isn't PR Blackboard's makes one read and nothing more.
     `camera:moved-rapid` is subscribed only while a popover is open.
-12. (T, C) Eight steps in the order of 4.1, `#dispatch()` first and
-    `hono.test.ts` last, never the PR card or `fetch()`; no step adds,
+12. (T, C) Ten steps in the order of 4.1: the overview, the description,
+    then `#dispatch()` to `hono.test.ts`, never `fetch()`; the
+    description is skipped when the PR card is gone; no step adds,
     updates or creates anything on the board, nor a floating element.
     Next, Previous, a follow, Description and the overview clear Drawdy's
     selection before the camera flies; a fold-row click clears it; any
     other click on a card does not clear it.
 13. (T, C) `hasPrevious`/`hasNext` and the panel's disabled buttons. A new
-    board: the PR card current, `– / 8`, Previous off, Next on and going
-    to `#dispatch()`; one flight, to the overview. Previous is off at step
-    1. Description makes the PR card current and flies to it. Picking up
-    a pinned board leaves the PR card current, with no flight; when the
+    board: the overview, the PR card current, `1 / 10`, Previous off, Next
+    on and going to the description, then `#dispatch()`; one flight, to
+    the overview. Previous is off at the overview and goes back to it from
+    the description. Overview from any card is step 1; Description makes
+    the PR card current, step 2, and flies to it. Picking up a pinned
+    board makes the PR card current, `2 / 10`, with no flight; when the
     review can't be had (GitHub limiting, no stored copy), the start view
     shows why under the field.
 13.1 (T, C) Every code card that hides code ends in `Read all` and the
@@ -2653,7 +2661,7 @@ the dev server on a local board. G: the score gate, outside the repository
     and slides under the panel's strip, never over it.
 22. (L) In Drawdy's dark and light themes, panel open: a new board lands
     with the description in the panel and the board at the overview;
-    Next walks the code; names match their strings' colours by eye on
+    Next goes to the description, then walks the code; names match their strings' colours by eye on
     hono; Rebuild on hono rebuilds in place; Home returns to the start
     view with the field focused and the board kept, and a card click
     returns; Read all opens readable, then pans, zooms and drags with the

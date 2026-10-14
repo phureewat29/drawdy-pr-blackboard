@@ -58,8 +58,8 @@ order in their head. PR Blackboard draws it for you.
 
 ## Stepping through
 
-- **›** and **‹**, or the arrow keys, step through the code in board order,
-  and the camera follows.
+- **›** and **‹**, or the arrow keys, step through the board: the overview,
+  the description, then the code in board order. The camera follows.
 - For each card, the panel lists what calls it, what it calls and what
   tests it. Each name takes its line's colour; click one to go there.
 - **Overview** shows the whole board. **Description** goes to the PR card.
