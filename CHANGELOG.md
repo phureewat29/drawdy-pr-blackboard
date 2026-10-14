@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.1
+
+- Next starts at the overview, then the description, then the first card.
+
 ## 1.3.0
 
 - Lines for C and Kotlin, and for the code of Vue and Svelte components.
