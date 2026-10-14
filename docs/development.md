@@ -28,6 +28,9 @@ npm run worker         # bundle and minify the parser worker into src/worker/scr
 npm run icon -- <512px.png> <256px.png> <64px.png>
 ```
 
+`check`, `preview`, `preview:board`, `worker` and `icon` run the
+maintainer's scripts in `scripts/`, which is kept out of the repo.
+
 ## How it works
 
 ```
@@ -101,7 +104,6 @@ src/
   lib/fixtures/   saved PRs for the tests
   vendor/         marked and web-tree-sitter
   test/           fakes and fixtures for the tests
-scripts/          check, preview servers, worker bundler, icon
 ```
 
 **Style.** Functional TypeScript: a pure core in `src/lib/`, factories and

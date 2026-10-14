@@ -1,4 +1,6 @@
 import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { defineConfig, type Plugin } from "vite";
 import { drawdyExtension } from "./vite-plugin-drawdy";
 
@@ -6,11 +8,13 @@ import { drawdyExtension } from "./vite-plugin-drawdy";
  * Runs `npm run worker` whenever a source changes, so the extension the dev
  * server builds never carries a parser worker older than its sources. The
  * script writes src/worker/script.ts only when it changed, and that write is
- * what rebuilds the extension with it.
+ * what rebuilds the extension with it. scripts/ is kept out of the repo: a
+ * copy without it serves the committed script.
  */
 const parserWorker = (): Plugin => ({
     name: "parser-worker",
     configureServer(server) {
+        if (!existsSync(join(server.config.root, "scripts/worker.ts"))) return;
         let running = false;
         let again = false;
         const run = () => {

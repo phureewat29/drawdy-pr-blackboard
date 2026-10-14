@@ -1,5 +1,4 @@
 import { describe, expect, it } from "@jest/globals";
-import { readFileSync } from "node:fs";
 import { planBoard } from "../lib/layout.ts";
 import { fakeFetch } from "../test/fake-fetch.ts";
 import { fakeHost, keptStorage } from "../test/fake-host.ts";
@@ -9,7 +8,6 @@ import { connectSource, connectSourceWith } from "../test/parser.ts";
 import { WORKER_SCRIPT } from "../worker/script.ts";
 import { unreadCount, type FromWorker } from "../worker/serve.ts";
 import type { PrFile } from "../lib/github.ts";
-import { workerScriptFile, SCRIPT_FILE } from "../../scripts/worker.ts";
 import { createParser, type Connect, type ParserProgress } from "./parser.ts";
 import { quiet } from "./progress.ts";
 
@@ -160,9 +158,5 @@ describe("the parser", () => {
         const followed = seen.filter((s) => s.startsWith("followed")).map((s) => Number(s.split(" ")[1]));
         expect(followed.length).toBeGreaterThan(0);
         expect(followed).toEqual(followed.map((_, i) => i + 1));
-    }, SLOW);
-
-    it("has a script that is current with its sources: npm run worker writes it", async () => {
-        expect(readFileSync(SCRIPT_FILE, "utf8") === (await workerScriptFile())).toBe(true);
     }, SLOW);
 });
