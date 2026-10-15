@@ -52,13 +52,12 @@ export const createRuntime = (args: Parameters<DriverModule["activate"]>[0]): Ru
     let styling = args.styling;
     const net = watchQuota(fetchGithubOrJsdelivr);
     const loaders = { github: createGithub(net.fetch), store: createStore(ddp), parser: createParser({ ddp, fetch: fetchGithubOrJsdelivr }) };
-    const pinning = { ddp, generateId: args.generateId, theme: () => styling.theme };
+    const pinning = { ddp, generateId: args.generateId };
     const channel = createChannel({ ddp, styling: () => styling });
-    const popover = createPopover({ ddp });
+    const popover = createPopover({ ddp, theme: () => styling.theme });
     const guide = createNavigator({
         ddp,
         popover,
-        styling: () => styling,
         changed: () => panel.push(),
         loadReview: (key, sha) => reviewAt(loaders, key, sha, quiet),
         explain,
@@ -180,6 +179,7 @@ export const createRuntime = (args: Parameters<DriverModule["activate"]>[0]): Ru
         switch (event.type) {
             case "subscription:dom:theme-changed":
                 styling = event.body.styling;
+                popover.retheme();
                 return channel.pushTheme();
             case "subscription:dom:element-clicked":
                 if (event.body.domElementId === ACTION_BUTTON_ID) return void safely(opener.openPanel);

@@ -27,8 +27,8 @@ export const CLOSE_BUTTON = "pr-blackboard:read-all:close";
 /** Read all's header, its drag handle, by the DOM id its drags arrive with. */
 export const DRAG_HANDLE = "pr-blackboard:read-all:handle";
 
-/** What Read all shows, in the theme the cards were pinned in: a card's header, then the code, or why it couldn't load. */
-export type PopoverContent = ReadAllPage & { theme: Theme; pin: string };
+/** What Read all shows: a card's header, then the code, or why it couldn't load. */
+export type PopoverContent = ReadAllPage & { pin: string };
 
 /** Where the camera is: a `camera:moved-rapid` body, or `camera:get-info`. */
 type CameraAt = { x: number; y: number; zoom: number };
@@ -47,6 +47,8 @@ export type Popover = {
     drag: (event: Drag) => void;
     /** Clips Read all to the usable view again after the window changed size. */
     resize: (screen: Screen) => void;
+    /** Draws Read all's frame again in the theme Drawdy now shows; its page follows by itself. */
+    retheme: () => void;
     close: () => Promise<void>;
     /** What it shows, when open. */
     shown: () => PopoverContent | null;
@@ -64,7 +66,7 @@ const closeButton = (colours: Colours): DomElementSchema => ({
         transform: `translate(-${BUTTON_INSET}px, ${BUTTON_INSET}px)`,
         hover: { backgroundColor: colours.line },
     },
-    // A schema has no SVG of its own; an image of one draws the icon, stroked in the pinned theme's ink.
+    // A schema has no SVG of its own; an image of one draws the icon, stroked in the theme's ink.
     children: [{ type: "image", child: `data:image/svg+xml,${encodeURIComponent(icon("x", ICON_SIZE, colours.ink))}`, styles: { width: [ICON_SIZE, "px"], height: [ICON_SIZE, "px"] } }],
 });
 
@@ -89,8 +91,8 @@ const dragHandle = (colours: Colours, width: number, grabbing: boolean): DomElem
  * elements since only those report drags and clicks: they come first, in a row of no height, and their transforms
  * draw them above the iframe.
  */
-export const popoverSchema = (content: PopoverContent, size: Size, frame: { clip: Rect; transform: string }, grabbing = false): DomElementSchema => {
-    const colours = PALETTES[content.theme];
+export const popoverSchema = (content: PopoverContent, theme: Theme, size: Size, frame: { clip: Rect; transform: string }, grabbing = false): DomElementSchema => {
+    const colours = PALETTES[theme];
     return {
         type: "box",
         styles: { width: [frame.clip.width, "px"], height: [frame.clip.height, "px"], overflow: "hidden", pointerEvents: "none" },
@@ -129,8 +131,9 @@ export const popoverSchema = (content: PopoverContent, size: Size, frame: { clip
     };
 };
 
-export const createPopover = (deps: { ddp: Ddp }): Popover => {
-    const { ddp } = deps;
+/** `theme` is the one Drawdy shows this reader, which the pane's frame takes. */
+export const createPopover = (deps: { ddp: Ddp; theme: () => Theme }): Popover => {
+    const { ddp, theme } = deps;
     let content: PopoverContent | null = null;
     /** Where Read all is on the board, in canvas units. */
     let pane: Rect | null = null;
@@ -161,7 +164,7 @@ export const createPopover = (deps: { ddp: Ddp }): Popover => {
     /** The floating element as it stands: the clip at the usable view's corner, the pane in it. */
     const placement = (shown: PopoverContent, at: Rect) => {
         const frame = readAllFrame(toScreen(at), camera.zoom, at, screen);
-        return { domId: POPOVER_ID, position: { x: frame.clip.x, y: frame.clip.y }, schema: popoverSchema(shown, at, frame, dragging !== null) };
+        return { domId: POPOVER_ID, position: { x: frame.clip.x, y: frame.clip.y }, schema: popoverSchema(shown, theme(), at, frame, dragging !== null) };
     };
 
     const close = async () => {
@@ -246,5 +249,9 @@ export const createPopover = (deps: { ddp: Ddp }): Popover => {
         if (content) redraw();
     };
 
-    return { open: (card, next) => queue(() => show(card, next)), follow, drag, resize, close: () => queue(close), shown: () => content };
+    const retheme = () => {
+        if (content) redraw();
+    };
+
+    return { open: (card, next) => queue(() => show(card, next)), follow, drag, resize, retheme, close: () => queue(close), shown: () => content };
 };

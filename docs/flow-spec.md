@@ -1262,14 +1262,21 @@ then the name; a group (`describe`) is bold, its cases indented 12.
 two hunks read `⋯ 12 lines`. Cards are inert HTML; clicks arrive as
 `scene:click` and are mapped on the fixed grid.
 
-5.4 **Colours.** Each card fixes its colours to the theme Drawdy shows the
-reader who pins it (`styling.theme`), recorded in the PR card's mark; Read
-all takes the same theme. So a teammate in the other theme, or a reader
-who switches theme, sees the cards as they were pinned: light cards on a
-dark canvas, or dark on light. Opening the pull request again only flies
-to the board (8.3); to pin it in another theme, delete its cards and open
-it again. Re-pinning on every theme change would add undo steps to
-everyone's history. The card surfaces (background, header) stay as
+5.4 **Colours.** Each card's page carries both themes' colours: the light
+ones on `:root`, with `color-scheme: light dark`, and the dark ones under
+`@media (prefers-color-scheme: dark)`. In an iframe that query follows the
+`color-scheme` of the frame, which Drawdy sets on its page with its theme
+(next-themes), so each reader sees the cards in their own theme, and they
+change with it, live, when the reader switches. Nothing is written to the
+board, so a switch adds no undo step and leaves a teammate's theme alone.
+Read all's page does the same; the frame the driver draws around it takes
+the theme from `subscription:dom:theme-changed` and is drawn again on a
+switch, its page kept, so the iframe doesn't reload. Chrome and Edge follow
+the frame. WebKit (Safari) follows the system's appearance instead, so a
+Safari reader whose Drawdy theme differs from macOS sees the cards in
+macOS's (the note to the Drawdy team in `design.md` has the host change
+that closes this). Boards pinned before 1.3.2 keep the theme they were
+pinned in until rebuilt. The card surfaces (background, header) stay as
 they are, since they must sit on Drawdy's board. The diff and syntax
 colours become GitHub's (Primer), so code reads the same as on GitHub, on
 cards, in description code blocks and in Read all:
@@ -1423,7 +1430,7 @@ the camera need no stored review and no GitHub request.
 
 Navigator state is two parts: the **index**, built from marks alone
 (pins by id with name, size and folds; links with kind, from, to and colour;
-labels; the theme), and an optional **review** that the panel and Read
+labels), and an optional **review** that the panel and Read
 all load (stored copy, else GitHub), only when Read all actually opens or
 the panel needs it.
 
@@ -1574,7 +1581,7 @@ of no height before the iframe, their transforms drawing them over the
 header: the drag handle, the header left of its 56 px right end, a box 56
 high with an id of its own (cursor `grab`, `grabbing` while a drag lasts,
 the palette's `hover` fill), and `✕` (`CLOSE_BUTTON`) at that right end.
-Colours come from the cards' palette in the pinned theme. The pane's 1 px
+Colours come from the cards' palette in the theme Drawdy shows. The pane's 1 px
 frame is its `ink3` (`#8a8a93` light, `#85858f` dark), darker than a
 card's `line` frame: on hono#5513 the pane covers most of `hono-base.ts
 imports`, and under a frame as faint as a card's, that card's last rows
@@ -1905,7 +1912,7 @@ Description, `chevron-left` and `chevron-right` for Previous and Next,
 `triangle-alert` and `x` for their rows,
 `chevron-down` on the warnings' row (`loader-circle` also on the toolbar's
 line while a rebuild runs), `x` for Read all's close button (an image of the
-SVG, since a schema has no SVG node, stroked in the pinned theme's ink). The
+SVG, since a schema has no SVG node, stroked in the theme's ink). The
 extension's own icon is the one exception: a generated image (requests
 43, 45 and 59: a stack of diff cards tied with a red string), `.github/assets/icon-256.png` for the listing, 256 px and under the marketplace's 256 KB limit (the 512 px master is `.github/assets/icon.png`),
 and its 64 px copy as a PNG data URI in an SVG for the 20 px action
@@ -2156,7 +2163,7 @@ part (`pr`, `pin`, `link`, `label`) and:
 
 | Part | Also holds |
 |---|---|
-| `pr`, `pin` | `pin`, `name`, `width`, `height`; a code card also `folds` and `full`, the PR card `theme` |
+| `pr`, `pin` | `pin`, `name`, `width`, `height`; a code card also `folds` and `full` |
 | `link` | `link`, `kind`, `from`, `to` (pin ids), `colour` (its index in `STRING_COLOURS`, as pinned) |
 | `label` | `link`, `pin` |
 
@@ -2597,7 +2604,8 @@ the dev server on a local board. G: the score gate, outside the repository
     720 wide in canvas units, at both sizes; opened from a fold row at
     zoom 0.3, the camera first comes to 0.8 to 1. It opens with the card's
     header, the drag handle over it and `✕`; `✕`, `Esc`, another card and
-    every panel move close it; it takes the cards' theme. It is as tall
+    every panel move close it; it takes the cards' theme, and a theme
+    switch redraws its frame with the page kept. It is as tall
     as its page: on `toError()` under 200 (128), on `compose()` the full
     640 with the page scrolling. Zooming out halves it with the board;
     panning keeps it beside its card; at 60 fps it doesn't trail the
@@ -2666,7 +2674,9 @@ the dev server on a local board. G: the score gate, outside the repository
     view with the field focused and the board kept, and a card click
     returns; Read all opens readable, then pans, zooms and drags with the
     board. Panel closed: the PR card shows its whole description; fold
-    rows open Read all.
+    rows open Read all. Switching theme turns every card and Read all to
+    the new one at once, with no undo step and Read all's page not
+    reloaded.
 23. `npm run typecheck`, `npm test`, `npm run check` pass.
 24. (T) Link finding as 2.2.8 lists.
 25. (G) The score gate (2.2.9), `node SCRATCH/research/gate/run.ts`,

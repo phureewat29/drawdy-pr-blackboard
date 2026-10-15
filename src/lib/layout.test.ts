@@ -132,7 +132,7 @@ describe.each(boards())("planBoard on %s", (_, make) => {
 
     it("binds every string to both cards with three bends (R1' through columns: one every 64 or so), no elbows and no roughness, after both cards in one call", () => {
         let n = 0;
-        const { elements, pinIds, linkIds } = reviewElements(review, plan, () => `e${n++}`, "dark");
+        const { elements, pinIds, linkIds } = reviewElements(review, plan, () => `e${n++}`);
         const added = new Set<string>();
         for (const e of elements) {
             if (e.type === "component") added.add(e.drawdyElementId);

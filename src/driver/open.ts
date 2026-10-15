@@ -1,6 +1,5 @@
 /** Opening a PR: read it, build its review, and pin its board. */
 
-import type { Theme } from "../lib/card.ts";
 import { plural } from "../lib/fp.ts";
 import { pageCount, parsePrUrl, prKey, prLabel, type Github, type PrFile, type PrInfo, type PrRef } from "../lib/github.ts";
 import { planBoard, shiftPlan, type BoardPlan, type Point } from "../lib/layout.ts";
@@ -20,8 +19,8 @@ export type Loaded = { review: Review; plan: BoardPlan | null };
 /** What reading a PR takes. */
 export type Loaders = { github: Github; store: Store; parser: Parser };
 
-/** What pinning a board takes; `theme` is the one Drawdy shows the reader who pins it. */
-export type Pinning = { ddp: Ddp; generateId: () => string; theme: () => Theme };
+/** What pinning a board takes. */
+export type Pinning = { ddp: Ddp; generateId: () => string };
 
 /** The PR and file list last read, so a retry after the parser failed costs no GitHub request. */
 let lastRead: { key: string; pr: PrInfo; files: PrFile[] } | null = null;
@@ -81,9 +80,8 @@ const placeAt = async (ddp: Ddp, plan: BoardPlan, corner?: Point): Promise<Point
 /** Pins a review's board in one add call, so one undo removes it. Rejects in words when Drawdy refuses it. */
 export const pinBoard = async (deps: Pinning, review: Review, plan: BoardPlan | null, progress: Progress, corner?: Point): Promise<void> => {
     progress.step("pin", "active", { label: `Pinning ${plural(review.pins.length, "card")}` });
-    const theme = deps.theme();
     const board = plan ?? planBoard(review);
-    const { elements } = reviewElements(review, shiftPlan(board, await placeAt(deps.ddp, board, corner)), deps.generateId, theme);
+    const { elements } = reviewElements(review, shiftPlan(board, await placeAt(deps.ddp, board, corner)), deps.generateId);
     try {
         await deps.ddp.call("command:scene:add-drawdy-elements", { elements });
     } catch (err) {

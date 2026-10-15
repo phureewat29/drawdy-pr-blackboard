@@ -1,6 +1,6 @@
 /** PR Blackboard's elements on the board, read from their marks: by PR, as an index of one board, and as clicked; and taken off. */
 
-import type { Fold, Theme } from "../lib/card.ts";
+import type { Fold } from "../lib/card.ts";
 import { catmullRomSpline } from "../lib/curve.ts";
 import type { Point, Rect } from "../lib/layout.ts";
 import type { LinkKind } from "../lib/model.ts";
@@ -29,8 +29,6 @@ export type Index = BoardRef & {
     links: Map<string, IndexLink>;
     labels: Map<string, string>;
     targets: Map<string, Target>;
-    /** The theme the cards were pinned in, from the PR card's mark; null when that card is gone. */
-    theme: Theme | null;
 };
 
 /** The index of one PR's board at one head commit, from the marks on the board. */
@@ -39,13 +37,11 @@ export const indexOf = (key: string, sha: string, elements: readonly Marked[]): 
     const links = new Map<string, IndexLink>();
     const labels = new Map<string, string>();
     const targets = new Map<string, Target>();
-    let theme: Theme | null = null;
     for (const { id, mark } of elements) {
         if (mark.pr !== key || mark.sha !== sha) continue;
         if ((mark.part === "pr" || mark.part === "pin") && mark.pin) {
             // Two boards stacked at one commit (a reload mid-rebuild): the later card, the newer board's, wins, as its strings and labels do.
             pins.set(mark.pin, { id, name: mark.name ?? mark.pin, width: mark.width ?? 0, height: mark.height ?? 0, folds: mark.folds ?? [] });
-            if (mark.part === "pr" && mark.theme) theme = mark.theme;
             targets.set(id, { kind: "pin", pin: mark.pin });
         } else if (mark.part === "link" && mark.link && mark.kind && mark.from && mark.to) {
             links.set(mark.link, { id, kind: mark.kind, from: mark.from, to: mark.to, colour: mark.colour ?? null });
@@ -55,7 +51,7 @@ export const indexOf = (key: string, sha: string, elements: readonly Marked[]): 
             targets.set(id, { kind: "label", link: mark.link });
         }
     }
-    return { key, sha, pins, links, labels, targets, theme };
+    return { key, sha, pins, links, labels, targets };
 };
 
 /** Every PR Blackboard element on the board, grouped by PR, each group in Drawdy's scene order. */

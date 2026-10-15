@@ -16,8 +16,8 @@ beforeAll(async () => {
 const LIMIT = 400_000;
 const pin = (name: string) => review.pins.find((p) => p.name === name)!;
 /** A card's whole file as the pane shows it: the file at the head commit, opened at the card's first line. */
-const pageOf = (name: string, text: string | null = raw.get(pin(name).path!) ?? null, theme: "light" | "dark" = "light") =>
-    fullFileOf(pin(name), review, text, theme, LIMIT, firstLineOf(pinCard(pin(name), review)));
+const pageOf = (name: string, text: string | null = raw.get(pin(name).path!) ?? null) =>
+    fullFileOf(pin(name), review, text, LIMIT, firstLineOf(pinCard(pin(name), review)));
 /** The page's lines: each one's number, classes, whether it has the + sign, and its code. */
 const linesOf = (html: string) =>
     [...html.matchAll(/<p(?: class="([^"]*)")?><i>(\d+)<\/i>(<b>\+<\/b>)?<code[^>]*>(.*?)<\/code><\/p>/g)].map(([, classes, n, sign, code]) => ({ n: Number(n), classes: classes ?? "", sign: !!sign, code }));
@@ -57,7 +57,7 @@ describe("a card's whole file", () => {
         expect(numbered(pageOf("hono-base.ts imports").html, "focus")).toEqual([4]);
         expect(numbered(pageOf("compose.test.ts").html, "focus")).toEqual([235]);
         const compose = pin("compose()");
-        expect(numbered(fullFileOf(compose, review, raw.get("src/compose.ts")!, "light", LIMIT, null).html, "focus")).toEqual([4]);
+        expect(numbered(fullFileOf(compose, review, raw.get("src/compose.ts")!, LIMIT, null).html, "focus")).toEqual([4]);
         // Read all's script, which runs on its own in the page.
         const { html } = pageOf("compose()");
         const script = html.slice(html.lastIndexOf("<script>") + 8, html.lastIndexOf("</script>"));
@@ -70,7 +70,7 @@ describe("a card's whole file", () => {
         expect(linesOf(html)[17].code).toBe("<k>export</k> <k>const</k> compose = &lt;E <k>extends</k> <t>Env</t> = <t>Env</t>&gt;(");
         expect(html.slice(html.indexOf('<div class="lines"'))).not.toContain("<span");
         expect(html).toContain("k { color: var(--k); } s { color: var(--s); text-decoration: none; }");
-        expect(pageOf("compose()", undefined, "dark").html).toContain("color-scheme: dark;");
+        expect(html).toContain("@media (prefers-color-scheme: dark)");
     });
 
     it("wraps a long line under its own indent, and gives a short one no style for it", () => {
@@ -80,16 +80,16 @@ describe("a card's whole file", () => {
     });
 
     it("is as tall as its lines, a long line counted per row it wraps to", () => {
-        const three = fullFileOf(pin("compose()"), review, "a\nb\nc\n", "light", LIMIT, null);
+        const three = fullFileOf(pin("compose()"), review, "a\nb\nc\n", LIMIT, null);
         expect(three.height(720)).toBe(CARD.header + 3 * CARD.row + CARD.padBottom);
         // 300 characters wrap to 4 rows of a code column 656 wide.
-        const long = fullFileOf(pin("compose()"), review, `a\n${"x".repeat(300)}\nc\n`, "light", LIMIT, null);
+        const long = fullFileOf(pin("compose()"), review, `a\n${"x".repeat(300)}\nc\n`, LIMIT, null);
         expect(long.height(720)).toBe(three.height(720) + 3 * CARD.row);
         expect(pageOf("compose()").height(720)).toBeGreaterThan(77 * CARD.row);
     });
 
     it("says plainly why it can't show a file: not text, over the read limit, empty, or not sent by GitHub", () => {
-        const say = (text: string | null) => fullFileOf(pin("compose()"), review, text, "light", LIMIT, 18).html;
+        const say = (text: string | null) => fullFileOf(pin("compose()"), review, text, LIMIT, 18).html;
         const header = `<span class="base">compose.ts</span></span><span class="where">PR head ${review.pr.headSha.slice(0, 7)}</span></header>`;
         expect(say("x".repeat(LIMIT + 1))).toContain(`${header}<p class="note">This file is 400,001 characters long, and PR Blackboard shows files up to 400,000.</p>`);
         expect(say("x".repeat(LIMIT))).toContain('<div class="lines"');
@@ -99,11 +99,11 @@ describe("a card's whole file", () => {
         expect(say("")).toContain('<p class="note">This file is empty.</p>');
         expect(say(null)).toContain('<p class="note">PR Blackboard couldn&#39;t read this file from GitHub. Try again in a moment.</p>');
         // While it loads, the same header over the words.
-        expect(fullFileMessage("src/compose.ts", review.pr.headSha, "Reading the file…", "dark").html).toContain(`${header}<p class="note">Reading the file…</p>`);
+        expect(fullFileMessage("src/compose.ts", review.pr.headSha, "Reading the file…").html).toContain(`${header}<p class="note">Reading the file…</p>`);
     });
 
     it("drops a Windows line ending, and numbers a file with no last line break as one with it", () => {
-        const crlf = fullFileOf(pin("compose()"), review, "a\r\nb\r\nc", "light", LIMIT, null).html;
+        const crlf = fullFileOf(pin("compose()"), review, "a\r\nb\r\nc", LIMIT, null).html;
         expect(linesOf(crlf).map((l) => [l.n, l.code])).toEqual([
             [1, "a"],
             [2, "b"],
@@ -115,7 +115,7 @@ describe("a card's whole file", () => {
         const source = raw.get("src/hono.test.ts")!.split("\n");
         const text = Array.from({ length: 5000 }, (_, i) => source[i % source.length]).join("\n");
         const started = performance.now();
-        const { html } = fullFileOf(pin("hono.test.ts"), review, text, "light", LIMIT, 1443);
+        const { html } = fullFileOf(pin("hono.test.ts"), review, text, LIMIT, 1443);
         const took = performance.now() - started;
         expect(linesOf(html)).toHaveLength(5000);
         expect(html.length).toBeLessThan(text.length * 3);

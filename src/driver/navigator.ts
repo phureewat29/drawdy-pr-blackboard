@@ -9,8 +9,7 @@
  * pages: Read all's, and a card's whole file, read from GitHub when first asked for.
  */
 
-import type { ModuleStyling } from "@drawdy/driver-protocol";
-import { firstLineOf, foldAt, fullFileMessage, fullFileOf, nameRect, onRow, pinCard, readAllMessage, readAllOf, type Theme } from "../lib/card.ts";
+import { firstLineOf, foldAt, fullFileMessage, fullFileOf, nameRect, onRow, pinCard, readAllMessage, readAllOf } from "../lib/card.ts";
 import { distanceToPath } from "../lib/curve.ts";
 import { isDefined } from "../lib/fp.ts";
 import { prKey } from "../lib/github.ts";
@@ -77,7 +76,6 @@ const LEAD = 2;
 export type NavigatorDeps = {
     ddp: Ddp;
     popover: Popover;
-    styling: () => ModuleStyling;
     changed: () => void;
     /** The review of a board: this device's copy, else GitHub's. Rejects when it can't be had. */
     loadReview: (key: string, sha: string) => Promise<Review>;
@@ -88,7 +86,7 @@ export type NavigatorDeps = {
 };
 
 export const createNavigator = (deps: NavigatorDeps): Navigator => {
-    const { ddp, popover, styling, changed } = deps;
+    const { ddp, popover, changed } = deps;
     let board: BoardRef | null = null;
     let index: Index | null = null;
     let review: Review | null = null;
@@ -99,8 +97,6 @@ export const createNavigator = (deps: NavigatorDeps): Navigator => {
     let asked = 0;
 
     const pinOf = (id: string): Pin | undefined => review?.pins.find((p) => p.id === id);
-    /** The cards' theme; Drawdy's own when the PR card that records it is gone. */
-    const theme = (): Theme => index?.theme ?? styling().theme;
 
     /** Moves to another board: what is known of the one before is dropped. */
     const switchTo = async (key: string, sha: string) => {
@@ -236,7 +232,7 @@ export const createNavigator = (deps: NavigatorDeps): Navigator => {
         const idx = await ensureIndex();
         const at = rect ?? (await liveCard(pin));
         const name = idx?.pins.get(pin)?.name ?? pinOf(pin)?.name ?? "";
-        return { at, message: (text: string): PopoverContent => ({ ...readAllMessage(name, text, theme()), theme: theme(), pin }) };
+        return { at, message: (text: string): PopoverContent => ({ ...readAllMessage(name, text), pin }) };
     };
 
     /** Read all for a card, at head line `line` or the first change, beside the card's rect. */
@@ -248,7 +244,7 @@ export const createNavigator = (deps: NavigatorDeps): Navigator => {
         if (!review && !(await loadForReadAll(board, pin, at, message))) return;
         const p = pinOf(pin);
         if (!p || !review) return;
-        await popover.open(at, { ...readAllOf(p, review, theme(), line), theme: theme(), pin });
+        await popover.open(at, { ...readAllOf(p, review, line), pin });
     };
 
     /**
@@ -266,10 +262,10 @@ export const createNavigator = (deps: NavigatorDeps): Navigator => {
         if (!p?.path || !review) return;
         const { headRepo, headSha } = review.pr;
         const path = p.path;
-        const reading: PopoverContent = { ...fullFileMessage(path, headSha, "Reading the file…", theme()), theme: theme(), pin };
+        const reading: PopoverContent = { ...fullFileMessage(path, headSha, "Reading the file…"), pin };
         const text = await whileLoading(pin, at, reading, () => deps.readFile(headRepo, headSha, path));
         if (current !== pin || asked !== mine || !review) return;
-        await popover.open(at, { ...fullFileOf(p, review, text, theme(), SAID.chars, firstLineOf(pinCard(p, review))), theme: theme(), pin });
+        await popover.open(at, { ...fullFileOf(p, review, text, SAID.chars, firstLineOf(pinCard(p, review))), pin });
     };
 
     /** How far down a clicked card a point is, in the card's own units: a resized card scales, it does not reflow. */

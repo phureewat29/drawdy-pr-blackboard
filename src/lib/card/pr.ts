@@ -11,7 +11,7 @@ import { escapeHtml } from "../highlight.ts";
 import { MARKDOWN_CSS, blocksHeight, lexMarkdown, markdownBlocks, markdownHtml, segments, segmentsHtml } from "../markdown.ts";
 import type { Review } from "../model.ts";
 import { CARD } from "./grid.ts";
-import { cardCss, page, type Theme } from "./html.ts";
+import { cardCss, page } from "./html.ts";
 
 /**
  * The PR card's measures, in px: `titleChar`, about how wide a character of
@@ -87,11 +87,11 @@ const prLead = (review: PrCardInput, titleLines: number) => {
 };
 
 /** The PR card's page. A `<details>` shows open, since nothing on a card can be clicked open; the description keeps its estimated height at most, against a teammate's fonts. */
-export const prCardHtml = (review: PrCardInput, theme: Theme): string => {
+export const prCardHtml = (review: PrCardInput): string => {
     const m = measurePr(review);
     const css = `${cardCss()}${prCss()}${MARKDOWN_CSS}
 .desc { max-height: ${m.estimate}px; overflow: hidden; }
 `;
     const description = m.estimate > 0 ? `<hr class="rule"><div class="desc"><div class="md">${markdownHtml(m.tokens, "card")}</div></div>` : "";
-    return page(css, `${prHeader(review)}<main>${prLead(review, m.titleLines)}${description}</main>`, theme);
+    return page(css, `${prHeader(review)}<main>${prLead(review, m.titleLines)}${description}</main>`);
 };

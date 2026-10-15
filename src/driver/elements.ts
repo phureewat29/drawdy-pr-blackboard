@@ -4,7 +4,7 @@
  */
 
 import type { DomElementSchema, DrawdyElementSchema } from "@drawdy/driver-protocol";
-import { cardHtml, foldsOf, fullFileRow, prCardHtml, type CardModel, type Theme } from "../lib/card.ts";
+import { cardHtml, foldsOf, fullFileRow, prCardHtml, type CardModel } from "../lib/card.ts";
 import * as g from "../lib/guard.ts";
 import { prKey } from "../lib/github.ts";
 import { STRING_COLOURS, type BoardPlan, type PlannedString, type Rect } from "../lib/layout.ts";
@@ -32,8 +32,6 @@ const boardMark = g.object({
     folds: g.optional(g.arrayOf(fold)),
     /** On a code card: the top of its `View full file` row, when it has one. */
     full: g.optional(g.number),
-    /** On the PR card: the theme the cards were pinned in, so Read all matches them. */
-    theme: g.optional(g.oneOf(["light", "dark"])),
     /** The link a string or label stands for, by link id; on a string, its kind and both cards. */
     link: g.optional(g.string),
     kind: g.optional(g.oneOf(["calls", "uses", "context", "tests", "imports"])),
@@ -87,19 +85,19 @@ export type ReviewElements = {
 const point = (p: { x: number; y: number }): [number, number] => [Math.round(p.x * 10) / 10, Math.round(p.y * 10) / 10];
 
 /**
- * The board's elements in `theme`, the one Drawdy shows the reader who pins it. Nothing is grouped, so a click
+ * The board's elements, each card in every reader's own theme. Nothing is grouped, so a click
  * selects one card. Each card's mark holds what a click needs (name, size, the rows that open a pane), and each
  * string's its kind, both cards and colour, so the board works without the review. Strings are curves through their
  * bend points; a drag moves only their ends.
  */
-export const reviewElements = (review: Review, plan: BoardPlan, newId: () => string, theme: Theme): ReviewElements => {
+export const reviewElements = (review: Review, plan: BoardPlan, newId: () => string): ReviewElements => {
     const pinIds = new Map([...plan.pins.keys()].map((id) => [id, newId()]));
     const linkIds = new Map(plan.strings.map((s) => [s.link, newId()]));
 
     const card = ([id, rect]: [string, Rect]): DrawdyElementSchema => {
         const pin = review.pins.find((p) => p.id === id)!;
         const pr = id === "pr";
-        const html = pr ? prCardHtml(review, theme) : cardHtml(plan.cards.get(id)!, pin, theme);
+        const html = pr ? prCardHtml(review) : cardHtml(plan.cards.get(id)!, pin);
         return {
             type: "component",
             drawdyElementId: pinIds.get(id)!,
@@ -111,7 +109,7 @@ export const reviewElements = (review: Review, plan: BoardPlan, newId: () => str
                     name: pin.name,
                     width: rect.width,
                     height: rect.height,
-                    ...(pr ? { theme } : clickRows(plan.cards.get(id)!)),
+                    ...(pr ? {} : clickRows(plan.cards.get(id)!)),
                 }),
             },
         };

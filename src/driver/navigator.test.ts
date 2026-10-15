@@ -27,15 +27,15 @@ const setup = (options: { panel?: boolean; extra?: Record<string, (req: any) => 
     const plan = shiftPlan(planBoard(review), { x: 1000, y: 500 });
     const host = fakeHost(undefined, options.extra);
     let n = 0;
-    const { elements, pinIds, linkIds } = reviewElements(review, plan, () => `e${n++}`, "light");
+    const { elements, pinIds, linkIds } = reviewElements(review, plan, () => `e${n++}`);
     for (const e of elements) host.add(e);
     const marked = () => [...host.elements].map(([id, e]) => ({ id, mark: markOf(e.schema.meta)! })).filter((e) => e.mark);
-    const popover = createPopover({ ddp: host.ddp });
+    const popover = createPopover({ ddp: host.ddp, theme: () => host.styling.theme });
     const loadReview = jest.fn(options.load ?? (async () => review));
     // The head files of the saved PR, as raw.githubusercontent.com sends them.
     const raw = honoFixture().raw;
     const readFile = jest.fn<ReadFile>(options.read ?? (async (_repo, _sha, path) => raw.get(path) ?? null));
-    const navigator = createNavigator({ ddp: host.ddp, popover, styling: () => host.styling, changed: () => undefined, loadReview, explain: (err) => `Explained: ${String(err)}`, readFile });
+    const navigator = createNavigator({ ddp: host.ddp, popover, changed: () => undefined, loadReview, explain: (err) => `Explained: ${String(err)}`, readFile });
     const key = prKey(review.pr.ref);
     const index = () => indexOf(key, review.pr.headSha, marked());
     if (options.panel !== false) navigator.set(index(), review);
@@ -540,7 +540,7 @@ describe("the overview", () => {
 });
 
 describe("Read all on the board", () => {
-    it("shows the card's own header in the page, a drag handle and ✕ drawn over it, in the theme the cards were pinned in", async () => {
+    it("shows the card's own header in the page, a drag handle and ✕ drawn over it, its frame in the theme Drawdy shows", async () => {
         const { navigator, pinNamed, host, shown } = setup();
         await navigator.focus(pinNamed("compose()"));
         await navigator.readAll();
@@ -564,11 +564,31 @@ describe("Read all on the board", () => {
         const page = pageOf(req);
         expect(page).toContain('<header><span class="name">compose()</span>');
         expect(page).toContain(`padding-right: 56px`);
-        // The cards were pinned light; Drawdy now shows dark: Read all matches the cards.
+        // The page follows the reader's theme as the cards do; the frame around it is drawn in the one Drawdy shows, dark here.
         expect(host.styling.theme).toBe("dark");
-        expect(page).toContain("color-scheme: light;");
+        expect(page).toContain("color-scheme: light dark;");
         // Its 1 px frame is the cards' faintest ink, darker than their own frame, so a card under it never reads as more of the pane.
-        expect([pane.styles.backgroundColor, pane.styles.borderColor, pane.styles.borderWidth, pane.styles.pointerEvents]).toEqual(["#ffffff", PALETTES.light.ink3, [1, "px"], "auto"]);
+        expect([pane.styles.backgroundColor, pane.styles.borderColor, pane.styles.borderWidth, pane.styles.pointerEvents]).toEqual([PALETTES.dark.bg, PALETTES.dark.ink3, [1, "px"], "auto"]);
+    });
+
+    it("draws its frame again when the reader switches theme, the page kept, so its iframe doesn't reload", async () => {
+        const { navigator, pinNamed, popover, host, shown } = setup();
+        await navigator.focus(pinNamed("compose()"));
+        await navigator.readAll();
+        const before = shown();
+        host.styling = { ...host.styling, theme: "light" };
+        popover.retheme();
+        await new Promise((done) => setTimeout(done, 20));
+        const after = shown();
+        expect(after).not.toBe(before);
+        expect([paneOf(after).styles.backgroundColor, paneOf(after).styles.borderColor]).toEqual([PALETTES.light.bg, PALETTES.light.ink3]);
+        expect(pageOf(after)).toBe(pageOf(before));
+        // Closed, a switch draws nothing.
+        await navigator.closePopover();
+        const calls = host.calls.length;
+        popover.retheme();
+        await new Promise((done) => setTimeout(done, 20));
+        expect(host.calls.length).toBe(calls);
     });
 
     it("pans and zooms with the board: each camera move places it beside its card again, scaled by the zoom", async () => {

@@ -11,7 +11,7 @@ import { languageOf } from "../language.ts";
 import type { Pin, Review } from "../model.ts";
 import { VIEW } from "../view.ts";
 import { CARD, expandTabs, isDeclaration, type CardModel } from "./grid.ts";
-import { cardCss, page, type Theme } from "./html.ts";
+import { cardCss, page } from "./html.ts";
 import { changedStretches, highlightMarked } from "./lines.ts";
 import { notePage, readAllCss, readAllScript, wrapCount, type ReadAllPage } from "./read-all.ts";
 
@@ -56,7 +56,7 @@ const fileHeader = (path: string, sha: string, lines?: number): string => {
 };
 
 /** The pane with a line of words under the file's header: while the file loads, or why it can't show. */
-export const fullFileMessage = (path: string, sha: string, text: string, theme: Theme): ReadAllPage => notePage(fileHeader(path, sha), text, theme, fullFileCss());
+export const fullFileMessage = (path: string, sha: string, text: string): ReadAllPage => notePage(fileHeader(path, sha), text, fullFileCss());
 
 /** The head line a card starts at: its first code row's, or its first test case's. */
 export const firstLineOf = (card: CardModel): number | null => {
@@ -78,10 +78,10 @@ const isBinary = (text: string) => text.slice(0, 8000).includes("\u0000");
  * longer than `maxChars`, or empty. `text` is the file at the head commit,
  * null when GitHub didn't send it; `focus` the head line the pane opens at.
  */
-export const fullFileOf = (pin: Pin, review: FullFileInput, text: string | null, theme: Theme, maxChars: number, focus: number | null): ReadAllPage => {
+export const fullFileOf = (pin: Pin, review: FullFileInput, text: string | null, maxChars: number, focus: number | null): ReadAllPage => {
     const path = pin.path ?? "";
     const sha = review.pr.headSha;
-    const note = (words: string) => fullFileMessage(path, sha, words, theme);
+    const note = (words: string) => fullFileMessage(path, sha, words);
     if (text === null) return note("PR Blackboard couldn't read this file from GitHub. Try again in a moment.");
     // A binary file says it is not text, whatever its length.
     if (isBinary(text)) return note("This file isn't text, so PR Blackboard can't show it.");
@@ -116,7 +116,7 @@ export const fullFileOf = (pin: Pin, review: FullFileInput, text: string | null,
         return `<p${classes ? ` class="${classes}"` : ""}><i>${n}</i>${isAdded ? "<b>+</b>" : ""}<code${hang}>${html || " "}</code></p>`;
     });
     return {
-        html: page(cardCss() + readAllCss() + fullFileCss(), `${fileHeader(path, sha, lines.length)}<div class="lines" style="--num:${num}px">${rows.join("")}</div>`, theme, {
+        html: page(cardCss() + readAllCss() + fullFileCss(), `${fileHeader(path, sha, lines.length)}<div class="lines" style="--num:${num}px">${rows.join("")}</div>`, {
             script: `(${readAllScript.toString()})();`,
         }),
         height: (width) => CARD.header + sumBy(lines, (line) => wrapCount(line, width - num - SIGN)) * CARD.row + CARD.padBottom,

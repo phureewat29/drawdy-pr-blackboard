@@ -7,7 +7,7 @@ import { sumBy } from "../fp.ts";
 import { escapeHtml } from "../highlight.ts";
 import type { Pin, Review } from "../model.ts";
 import { CARD, expandTabs, gutterOf, isDeclaration, type Row } from "./grid.ts";
-import { cardCss, headerHtml, page, rowsHtml, type Theme } from "./html.ts";
+import { cardCss, headerHtml, page, rowsHtml } from "./html.ts";
 import { declFileOf, declarationRows, fileDiffRows } from "./rows.ts";
 
 /** A page for Read all, and how tall it lays out at a width, estimated from its rows, so the pane is no taller than its page. */
@@ -78,25 +78,24 @@ const readAllRows = (pin: Pin, review: Pick<Review, "files" | "links">): Row[] =
 };
 
 /** Read all for a code card: unified, wrapped, changed words marked, opened at head line `focus` or the first change. The PR card has none: it shows its whole description. */
-export const readAllOf = (pin: Pin, review: Pick<Review, "files" | "links">, theme: Theme, focus: number | null): ReadAllPage => {
+export const readAllOf = (pin: Pin, review: Pick<Review, "files" | "links">, focus: number | null): ReadAllPage => {
     const rows = readAllRows(pin, review);
     const look = { plain: pin.kind === "context", wrap: true };
     return {
-        html: page(cardCss() + readAllCss(), headerHtml(pin) + rowsHtml(rows, look, focus), theme, { script: `(${readAllScript.toString()})();` }),
+        html: page(cardCss() + readAllCss(), headerHtml(pin) + rowsHtml(rows, look, focus), { script: `(${readAllScript.toString()})();` }),
         height: (width) => CARD.header + sumBy(rows, (r) => wrappedRows(r, width - gutterOf(pin)) * CARD.row) + CARD.padBottom,
     };
 };
 
 /** The pane with a line of words under its header, while a page loads or why it couldn't: `css` adds to Read all's own. */
-export const notePage = (header: string, text: string, theme: Theme, css = ""): ReadAllPage => ({
+export const notePage = (header: string, text: string, css = ""): ReadAllPage => ({
     html: page(
         cardCss() + readAllCss() + css + ".note { padding: 16px 14px; color: var(--ink2); font-size: 13px; line-height: 18px; }",
-        `${header}<p class="note">${escapeHtml(text)}</p>`,
-        theme
+        `${header}<p class="note">${escapeHtml(text)}</p>`
     ),
     // The note's padding, 16 above and below and 14 at each side; 18 px lines, 13 px sans running about 7 px a character.
     height: (width) => CARD.header + 32 + Math.ceil((text.length * 7) / (width - 28)) * 18,
 });
 
 /** Read all while the review loads, or why it couldn't: the card's name in the header, then the line. */
-export const readAllMessage = (name: string, text: string, theme: Theme): ReadAllPage => notePage(`<header><span class="name">${escapeHtml(name)}</span></header>`, text, theme);
+export const readAllMessage = (name: string, text: string): ReadAllPage => notePage(`<header><span class="name">${escapeHtml(name)}</span></header>`, text);

@@ -29,12 +29,16 @@ export const PALETTES: Record<Theme, Record<string, string>> = {
     },
 };
 
+const varsOf = (theme: Theme) => Object.entries(PALETTES[theme]).map(([k, v]) => `--${k}: ${v};`).join(" ");
+
 /**
- * Colours for a theme, fixed in the page. A card's iframe can't follow
- * Drawdy's theme: its `prefers-color-scheme` follows the browser's, which
- * often differs, so the card takes the theme Drawdy showed when it was pinned.
+ * Both themes' colours, chosen by `prefers-color-scheme`. An iframe's follows
+ * the `color-scheme` of its frame, which Drawdy sets on its page with its
+ * theme, so every reader sees the cards in their own theme, live as they
+ * switch, with nothing written to the board. WebKit takes it from the system
+ * instead.
  */
-const themeVars = (theme: Theme) => `:root { color-scheme: ${theme}; ${Object.entries(PALETTES[theme]).map(([k, v]) => `--${k}: ${v};`).join(" ")} }`;
+const themeVars = () => `:root { color-scheme: light dark; ${varsOf("light")} } @media (prefers-color-scheme: dark) { :root { ${varsOf("dark")} } }`;
 
 const BASE_CSS = `
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -144,8 +148,8 @@ export const rowsHtml = (rows: readonly Row[], look: RowLook, focusAt: number | 
     return `<div class="${look.plain ? "plain" : ""}">${rows.map((r) => rowHtml(r, { ...look, cases, focus: r.kind === "line" && r.line.at === focusAt })).join("")}</div>`;
 };
 
-export const page = (css: string, body: string, theme: Theme, { script = "", bodyClass = "" } = {}): string =>
-    `<!doctype html><html><head><meta charset="utf-8"><style>${themeVars(theme)}${BASE_CSS}${css}</style></head><body${bodyClass ? ` class="${bodyClass}"` : ""}>${body}${script ? `<script>${script}</script>` : ""}</body></html>`;
+export const page = (css: string, body: string, { script = "", bodyClass = "" } = {}): string =>
+    `<!doctype html><html><head><meta charset="utf-8"><style>${themeVars()}${BASE_CSS}${css}</style></head><body${bodyClass ? ` class="${bodyClass}"` : ""}>${body}${script ? `<script>${script}</script>` : ""}</body></html>`;
 
 /** The card's chip, when it has one: changed code needs none. */
 export const chipOf = (pin: Pick<Pin, "kind" | "status">): "NEW" | "UNCHANGED" | "TESTS" | null =>
@@ -166,7 +170,7 @@ export const headerHtml = (pin: Pin, name = pin.name): string => {
     return `<header><span class="name">${escapeHtml(name)}</span>${chip ? `<span class="chip ${CHIP_CLASS[chip]}">${chip}</span>` : ""}<span class="where">${escapeHtml(whereOf(pin))}</span>${counts}</header>`;
 };
 
-export const cardHtml = (card: CardModel, pin: Pin, theme: Theme): string => {
+export const cardHtml = (card: CardModel, pin: Pin): string => {
     const plain = pin.kind === "context";
-    return page(cardCss(), headerHtml(pin, headerName(pin, card.width)) + rowsHtml(card.rows, { plain }), theme, { bodyClass: plain ? "context" : "" });
+    return page(cardCss(), headerHtml(pin, headerName(pin, card.width)) + rowsHtml(card.rows, { plain }), { bodyClass: plain ? "context" : "" });
 };

@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "@jest/globals";
 import { excalidrawFixture, honoFixture, reviewOf } from "../test/fixture.ts";
 import { twoThreads } from "../test/synthetic.ts";
-import { CARD, cardHtml, foldAt, foldsOf, fullFileRow, linkGroups, pinCard, prCard, prCardHtml, readAllOf, unpinnedText, type CardModel, type Row } from "./card.ts";
+import { CARD, PALETTES, cardHtml, foldAt, foldsOf, fullFileRow, linkGroups, pinCard, prCard, prCardHtml, readAllOf, unpinnedText, type CardModel, type Row } from "./card.ts";
 import { headerName } from "./card/grid.ts";
 import { changedSpan } from "./card/lines.ts";
 import { declarationRows } from "./card/rows.ts";
@@ -91,8 +91,8 @@ describe("header names", () => {
     it("cut only on the card: Read all keeps the whole name", () => {
         const p = { ...pin("toError()"), name: "ModelContextServerProtocolConfigFlow.async_step_user()", path: "a/config_flow.py" };
         const narrow = { ...card("toError()"), width: 480 };
-        expect(cardHtml(narrow, p, "light")).toContain('<span class="name">async_step_user()</span>');
-        expect(readAllOf(p, { ...review, files: [] }, "light", null).html).toContain('<span class="name">ModelContextServerProtocolConfigFlow.async_step_user()</span>');
+        expect(cardHtml(narrow, p)).toContain('<span class="name">async_step_user()</span>');
+        expect(readAllOf(p, { ...review, files: [] }, null).html).toContain('<span class="name">ModelContextServerProtocolConfigFlow.async_step_user()</span>');
     });
 
     it("widen a Python, Go, Rust or Java card to fit its whole name, up to 880, so a short type stays", () => {
@@ -126,11 +126,11 @@ describe("a class card", () => {
 });
 
 describe("card headers", () => {
-    const html = (name: string) => cardHtml(card(name), pin(name), "light");
+    const html = (name: string) => cardHtml(card(name), pin(name));
 
     it("carry no link rows, file dots, CHANGED, FILE or counts in words", () => {
         for (const p of review.pins.filter((x) => x.kind !== "pr")) {
-            const page = cardHtml(pinCard(p, review), p, "light");
+            const page = cardHtml(pinCard(p, review), p);
             for (const cut of ['class="lk"', 'class="links"', 'class="dot"', ">CHANGED<", ">FILE<", "×"]) expect([p.name, page.includes(cut)]).toEqual([p.name, false]);
         }
     });
@@ -154,10 +154,11 @@ describe("card headers", () => {
         expect(html("compose()")).toContain('<span class="where">src/compose.ts · 18–77</span>');
     });
 
-    it("take the theme they are pinned in, whatever the browser prefers", () => {
-        expect(html("compose()")).toContain("color-scheme: light;");
-        expect(cardHtml(card("compose()"), pin("compose()"), "dark")).toContain("color-scheme: dark; --bg: #1f1f23;");
-        expect(html("compose()")).not.toContain("prefers-color-scheme");
+    it("carry both themes and show the one the reader's frame prefers, so each reader sees their own, live as they switch", () => {
+        const page = html("compose()");
+        expect(page).toContain(":root { color-scheme: light dark; --bg: #ffffff;");
+        expect(page).toContain("@media (prefers-color-scheme: dark) { :root { --bg: #1f1f23;");
+        for (const theme of ["light", "dark"] as const) for (const [k, v] of Object.entries(PALETTES[theme])) expect(page).toContain(`--${k}: ${v};`);
     });
 });
 
@@ -178,7 +179,7 @@ describe("other cards", () => {
     it("show an unchanged caller with a dashed border drawn by the page, and no +/− gutter", () => {
         const fetch = card("fetch()");
         expect(fetch.rows.length).toBeLessThanOrEqual(CARD.contextRows);
-        const html = cardHtml(fetch, pin("fetch()"), "light");
+        const html = cardHtml(fetch, pin("fetch()"));
         expect(html).toContain('<body class="context">');
         expect(html).toContain("border: 1.5px dashed");
         expect(html).toContain("UNCHANGED");
@@ -191,14 +192,14 @@ describe("other cards", () => {
         const rows = pinCard(fetch, elsewhere).rows;
         expect(rows.some((r) => r.kind === "info")).toBe(false);
         expect(rows.map(text)).toEqual(card("fetch()").rows.map(text));
-        expect(readAllOf(fetch, elsewhere, "light", null).html).toContain("fetch");
-        expect(readAllOf(fetch, elsewhere, "light", null).html).not.toContain("couldn't read");
+        expect(readAllOf(fetch, elsewhere, null).html).toContain("fetch");
+        expect(readAllOf(fetch, elsewhere, null).html).not.toContain("couldn't read");
     });
 
     it("fold tests to their case names, each with its bare line number in the gutter, cases nested under their group", () => {
         const tests = card("hono.test.ts");
         expect(tests.rows.filter((r) => r.kind === "case")).toHaveLength(7);
-        const html = cardHtml(card("compose.test.ts"), pin("compose.test.ts"), "light");
+        const html = cardHtml(card("compose.test.ts"), pin("compose.test.ts"));
         expect(html).not.toContain("l. ");
         expect(html).toMatch(/<div class="case group"><i>\d+<\/i><b class="a">\+<\/b><span>compose with non-Error throws<\/span><\/div>/);
         const nested = card("compose.test.ts").rows.filter((r) => r.kind === "case" && !r.test.group);
@@ -213,7 +214,7 @@ describe("other cards", () => {
         expect(last("compose.test.ts")).toEqual({ kind: "info", text: "Test code · Read all", readAll: true });
         // Every row that opens Read all has the fold row's shape: ⋯, then what it hides, then Read all underlined; View full file follows.
         for (const name of ["compose.test.ts", "toError()", "compose()"])
-            expect(cardHtml(card(name), pin(name), "light")).toMatch(/<div class="fold( cases)?"><span class="dots">⋯<\/span> [^<]+ · <span class="ra">Read all<\/span><\/div><div class="fold full( cases)?">/);
+            expect(cardHtml(card(name), pin(name))).toMatch(/<div class="fold( cases)?"><span class="dots">⋯<\/span> [^<]+ · <span class="ra">Read all<\/span><\/div><div class="fold full( cases)?">/);
         expect(last("hono.test.ts")).toMatchObject({ kind: "info", readAll: true });
         // toError()'s one changed line runs past an 880-wide card; Read all opens at it.
         const toError = card("toError()");
@@ -221,7 +222,7 @@ describe("other cards", () => {
         expect(last("toError()")).toMatchObject({ kind: "fold", tail: true, cut: true, count: 1, from: 5 });
         // Its last row but one, over View full file.
         expect(foldsOf(toError)).toEqual([[CARD.header + (toError.rows.length - 2) * CARD.row, 5]]);
-        expect(cardHtml(toError, pin("toError()"), "light")).toContain('1 line cut short · <span class="ra">Read all</span>');
+        expect(cardHtml(toError, pin("toError()"))).toContain('1 line cut short · <span class="ra">Read all</span>');
         // A card that fits its lines adds no such row.
         expect(card("#handleError()").rows.some((r) => r.kind === "fold" && r.cut)).toBe(false);
     });
@@ -231,7 +232,7 @@ describe("other cards", () => {
     });
 
     it("escape code", () => {
-        const html = cardHtml(card("compose()"), pin("compose()"), "light");
+        const html = cardHtml(card("compose()"), pin("compose()"));
         expect(html).toContain("compose = &lt;E");
         expect(html).not.toContain("compose = <E");
     });
@@ -244,10 +245,10 @@ describe("View full file", () => {
             expect([p.name, c.rows[c.rows.length - 1]]).toEqual([p.name, { kind: "full" }]);
             expect(fullFileRow(c)).toBe(CARD.header + (c.rows.length - 1) * CARD.row);
         }
-        const html = cardHtml(card("compose()"), pin("compose()"), "light");
+        const html = cardHtml(card("compose()"), pin("compose()"));
         expect(html).toMatch(/<div class="fold full"><svg class="icon" [^>]+>(<path [^>]+\/>){4}<\/svg> <span class="ra">View full file<\/span><\/div><\/div><\/body>/);
         // Under the case names on a test card, as its Read all row is.
-        expect(cardHtml(card("compose.test.ts"), pin("compose.test.ts"), "light")).toContain('<div class="fold full cases">');
+        expect(cardHtml(card("compose.test.ts"), pin("compose.test.ts"))).toContain('<div class="fold full cases">');
     });
 
     it("is left off a card that shows every line of its file at the head commit, and off a file the PR deletes", async () => {
@@ -282,7 +283,7 @@ describe("View full file", () => {
 
 describe("PR card", () => {
     it("has the header every card has, then the title, author and counts, then the description as Markdown", () => {
-        const html = prCardHtml(review, "light");
+        const html = prCardHtml(review);
         expect(html).toContain('<header><span class="prchip">honojs/hono#5513</span><span class="state"');
         expect(html).toContain('>Merged</span></header>');
         expect(html).not.toContain("↗");
@@ -298,7 +299,7 @@ describe("PR card", () => {
         expect(m.estimate).toBe(blocksHeight(markdownBlocks(lexMarkdown(review.pr.body), 608)));
         expect(m.height).toBe(56 + 16 + 26 + 24 + 33 + m.estimate + 16);
         expect(m.height).toBe(779);
-        const html = prCardHtml(review, "dark");
+        const html = prCardHtml(review);
         expect(html).toContain(`.desc { max-height: ${m.estimate}px; overflow: hidden; }`);
         // The last block shows, and nothing folds or fades.
         expect(html).toContain("The author should do the following");
@@ -307,10 +308,10 @@ describe("PR card", () => {
 
     it("shows a short description whole, and none at all, with no rule, when the pull request has none", () => {
         const short = { ...review, pr: { ...review.pr, body: "Fixes the thing." } };
-        expect(prCardHtml(short, "light")).toContain('<div class="md"><p>Fixes the thing.</p></div>');
+        expect(prCardHtml(short)).toContain('<div class="md"><p>Fixes the thing.</p></div>');
         const none = { ...review, pr: { ...review.pr, body: "" } };
         expect([prCard(none).estimate, prCard(none).height]).toEqual([0, 56 + 16 + 26 + 24 + 16]);
-        expect(prCardHtml(none, "light")).not.toContain('class="rule"');
+        expect(prCardHtml(none)).not.toContain('class="rule"');
     });
 
     it("grows with a long description, block by block, and shows a block taller than the old fold whole", () => {
@@ -320,18 +321,18 @@ describe("PR card", () => {
         expect(m.estimate).toBe(blocksHeight(markdownBlocks(lexMarkdown(body), 608)));
         expect(m.estimate).toBeGreaterThan(2000);
         expect(m.height).toBe(56 + 16 + 26 + 24 + 33 + m.estimate + 16);
-        const html = prCardHtml(long, "light");
+        const html = prCardHtml(long);
         expect([html.includes("Paragraph 59 says"), html.includes("line 39"), html.includes("linear-gradient")]).toEqual([true, true, false]);
     });
 
     it("shows a details block open, its summary a bold line over what it holds: nothing on a card opens", () => {
-        const html = prCardHtml({ ...review, pr: { ...review.pr, body: "<details><summary>More</summary>\n\nHidden text.\n\n</details>" } }, "light");
+        const html = prCardHtml({ ...review, pr: { ...review.pr, body: "<details><summary>More</summary>\n\nHidden text.\n\n</details>" } });
         expect(html).toContain('<p class="md-details"><strong>More</strong></p><p>Hidden text.</p>');
         expect(html).not.toMatch(/<(details|summary)\b/);
     });
 
     it("renders inline code in the title as code", () => {
-        const html = prCardHtml({ ...review, pr: { ...review.pr, title: "Add `data` property" } }, "light");
+        const html = prCardHtml({ ...review, pr: { ...review.pr, title: "Add `data` property" } });
         expect(html).toContain("Add <code>data</code> property</h1>");
     });
 
@@ -341,7 +342,7 @@ describe("PR card", () => {
         expect(unpinnedText({ functions: 0, files: 1 })).toBe("1 file not pinned");
         expect(unpinnedText({ functions: 0, files: 0 })).toBeNull();
         const short = { ...review, unpinned: { functions: 3, files: 0 } };
-        expect(prCardHtml(short, "light")).toContain('<div class="unpinned">3 functions not pinned</div>');
+        expect(prCardHtml(short)).toContain('<div class="unpinned">3 functions not pinned</div>');
         expect(prCard(short).height).toBe(prCard(review).height + 20);
     });
 });
@@ -360,7 +361,7 @@ describe("Read all", () => {
     let read: string;
     const compose = () => pin("compose()");
     beforeAll(() => {
-        read = readAllOf(compose(), review, "dark", 56).html;
+        read = readAllOf(compose(), review, 56).html;
     });
 
     it("shows the card's header, then the whole declaration, unified and wrapped, with no folds or tools", () => {
@@ -392,20 +393,20 @@ describe("Read all", () => {
         expect(read).toContain('class="r focus ');
         const script = read.slice(read.lastIndexOf("<script>") + 8, read.lastIndexOf("</script>"));
         expect(() => new Function(script)).not.toThrow();
-        expect(readAllOf(compose(), review, "light", null).html).not.toContain("focus ");
+        expect(readAllOf(compose(), review, null).html).not.toContain("focus ");
     });
 
     it("shows a test or file card's whole diff, gaps between hunks folded", () => {
-        const tests = readAllOf(pin("hono.test.ts"), review, "light", null).html;
+        const tests = readAllOf(pin("hono.test.ts"), review, null).html;
         expect(tests).toContain('<span class="where">src/hono.test.ts</span>');
         expect(tests).toMatch(/<div class="gap"><span class="dots">⋯<\/span> \d+ lines<\/div>/);
         expect(tests).not.toContain("lines 1–");
     });
 
     it("is as tall as its page: a short function short, a long one past the pane's 640, a long line counted per row it wraps to", () => {
-        const toError = readAllOf(pin("toError()"), review, "dark", null);
+        const toError = readAllOf(pin("toError()"), review, null);
         expect(toError.height(720)).toBeLessThan(200);
         expect(toError.height(520)).toBeGreaterThan(toError.height(720) - 1);
-        expect(readAllOf(compose(), review, "dark", null).height(720)).toBeGreaterThan(640);
+        expect(readAllOf(compose(), review, null).height(720)).toBeGreaterThan(640);
     });
 });

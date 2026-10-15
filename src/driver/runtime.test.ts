@@ -115,11 +115,11 @@ describe("the runtime on hono#5513", () => {
         // The board lands at step 1, the overview, with the description in the panel: 1 / 10, Previous off, Next on.
         expect(view()).toMatchObject({ phase: "ready", current: 0, total: 10, hasPrevious: false, hasNext: true, card: { pin: "pr", about: ["usualoma · 4 files"], warnings: [] } });
         expect(view().card).toHaveProperty("description", expect.stringContaining("<h3>Behavior change</h3>"));
-        // Cards take the theme Drawdy shows the reader who pins them.
+        // Cards carry both themes, so each reader sees their own: nothing on the board records the pinner's.
         const pinned = host.calls.find((c) => c.type === "command:scene:add-drawdy-elements")!.req.elements;
         const cards = pinned.filter((e: any) => e.type === "component").map((e: any) => e.schema.children[0].child.srcDoc as string);
-        expect(cards.every((html: string) => html.includes("color-scheme: dark;"))).toBe(true);
-        expect(pinned.find((e: any) => e.meta.prBlackboard.part === "pr").meta.prBlackboard.theme).toBe("dark");
+        expect(cards.every((html: string) => html.includes("color-scheme: light dark;") && html.includes("@media (prefers-color-scheme: dark)"))).toBe(true);
+        expect(pinned.find((e: any) => e.meta.prBlackboard.part === "pr").meta.prBlackboard).not.toHaveProperty("theme");
         const views: LoadStep[][] = host.calls.filter((c) => c.type === "command:webview:post-message" && c.req.message.view?.phase === "loading").map((c) => c.req.message.view.loading);
         // As a CI job: every step ended, each with the time it took, and no `first time only`; pinning showed under way before.
         expect(views.at(-1)!.map((l) => `${l.state} ${l.label}${l.note ? ` · ${l.note}` : ""}`)).toEqual(["done Reading the PR", "done Downloading the parser", "done Reading 4 changed files", "done Finding the lines", "done Pinning 10 cards"]);

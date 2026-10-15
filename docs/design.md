@@ -140,12 +140,15 @@ first:
 4. **`query-combined-rect` for components.** It grows the first element's
    rect by only the top-left corner of each other component, so a union of
    cards loses their far edges. PR Blackboard unions `element-rects` itself.
-5. **A component iframe that follows Drawdy's theme.** A component's iframe
-   takes `prefers-color-scheme` from the browser, never from Drawdy, so
-   PR Blackboard fixes each card to the theme shown when it is pinned. A
-   message from the host to component iframes on mount and on a theme
-   change (`{ type: "drawdy:theme", theme }`), or an iframe that inherits
-   the board's scheme, would let cards follow every reader's theme.
+5. **Drawdy's theme inside a component's iframe on WebKit.** Cards carry
+   both themes and pick one by `prefers-color-scheme`. Chrome and Edge
+   answer that query in an iframe from the frame's `color-scheme`, which
+   next-themes sets on Drawdy's page, so cards follow each reader's theme
+   live. WebKit answers it from the system's appearance, so in Safari a
+   card shows macOS's theme when Drawdy's differs. A message from the host
+   to component iframes on load and on a theme change
+   (`{ type: "drawdy:theme", theme }`), or a `data-drawdy-theme` attribute
+   the host's srcDoc wrapper keeps on the page's root, would close it.
 6. **A label of an arrow's own, and its bends in `update-drawdy-elements`.**
    Arrows have no label, so a label is a text element beside a bend that
    stays put; and since bends can't be updated, a dragged card kinks its
