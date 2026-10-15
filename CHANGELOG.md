@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.2
+
+- Cards and Read all follow each reader's Drawdy theme and switch with it.
+  Safari follows the macOS appearance. Rebuild a board pinned before 1.3.2
+  to make it follow.
+
 ## 1.3.1
 
 - Next starts at the overview, then the description, then the first card.
